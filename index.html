@@ -17,6 +17,13 @@
         body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .wysiwyg-editor { min-height: 150px; outline: none; line-height: 1.6; }
+        .wysiwyg-editor h2 { font-size: 1.25rem; font-weight: 700; margin-bottom: 0.25rem; }
+        .wysiwyg-editor h3 { font-size: 1.05rem; font-weight: 600; margin-bottom: 0.25rem; color: #475569; }
+        .wysiwyg-editor ul { list-style-type: disc; padding-left: 1.5rem; margin-bottom: 0.5rem; }
+        .wysiwyg-editor ol { list-style-type: decimal; padding-left: 1.5rem; margin-bottom: 0.5rem; }
+        .wysiwyg-editor p { margin-bottom: 0.5rem; }
+        .wysiwyg-editor:empty::before { content: 'Schrijf hier de bereiding...'; color: #94a3b8; pointer-events: none; }
     </style>
 </head>
 <body>
@@ -113,8 +120,28 @@ function escapeHtml(text) {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+function isHtml(text) {
+  return /<[a-z][\s\S]*>/i.test(text);
+}
+
+function sanitizeHtml(html) {
+  const div = document.createElement('div');
+  div.innerHTML = html;
+  div.querySelectorAll('script, style, iframe, object, embed, form, link, meta').forEach(el => el.remove());
+  div.querySelectorAll('*').forEach(el => {
+    for (const attr of [...el.attributes]) {
+      if (attr.name.startsWith('on') || attr.name === 'style' || attr.name === 'class') {
+        el.removeAttribute(attr.name);
+      }
+    }
+  });
+  div.querySelectorAll('a[href^="javascript"]').forEach(el => el.removeAttribute('href'));
+  return div.innerHTML;
+}
+
 function renderMarkdown(text) {
   if (!text) return '';
+  if (isHtml(text)) return text;
   const blocks = escapeHtml(text).split('\n\n');
   return blocks.map(block => {
     const lines = block.split('\n');
@@ -1221,84 +1248,40 @@ function RecipeFormModal({ recipe, onSave, onClose, history, setHistory, user, h
       ? recipe.ingredients.map(ing => ({ ...ing, _id: genId() }))
       : [{ _id: genId(), name: '', amount: '', unit: 'stuks', scalable: true, category: 'Overig' }]
   );
-  const [bereiding, setBereiding] = useState(recipe?.bereiding || '');
   const [link, setLink] = useState(recipe?.link || '');
   const [photoFile, setPhotoFile] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(recipe?.photoUrl || '');
   const [uploading, setUploading] = useState(false);
-  const bereidingRef = useRef(null);
-  const undoStack = useRef([recipe?.bereiding || '']);
-  const redoStack = useRef([]);
+  const editorRef = useRef(null);
+  const initialHtml = useRef(
+    recipe?.bereiding
+      ? (isHtml(recipe.bereiding) ? recipe.bereiding : renderMarkdown(recipe.bereiding))
+      : ''
+  );
 
-  function insertMarkdown(prefix, suffix) {
-    const ta = bereidingRef.current;
-    if (!ta) return;
-    const start = ta.selectionStart;
-    const end = ta.selectionEnd;
-    const text = bereiding;
-    const selected = text.slice(start, end);
-    // Save undo state
-    undoStack.current.push(bereiding);
-    redoStack.current = [];
-    const newText = text.slice(0, start) + prefix + selected + suffix + text.slice(end);
-    setBereiding(newText);
-    // Restore cursor position after React re-render
-    setTimeout(() => {
-      ta.focus();
-      const cursorPos = selected ? start + prefix.length + selected.length + suffix.length : start + prefix.length;
-      ta.setSelectionRange(cursorPos, cursorPos);
-    }, 0);
+  function execFormat(command, value) {
+    editorRef.current?.focus();
+    document.execCommand(command, false, value || null);
   }
 
-  function toggleLinePrefix(prefix) {
-    const ta = bereidingRef.current;
-    if (!ta) return;
-    const start = ta.selectionStart;
-    const end = ta.selectionEnd;
-    const text = bereiding;
-    // Find line boundaries
-    const lineStart = text.lastIndexOf('\n', start - 1) + 1;
-    const lineEnd = text.indexOf('\n', end);
-    const selectedLines = text.slice(lineStart, lineEnd === -1 ? text.length : lineEnd);
-    undoStack.current.push(bereiding);
-    redoStack.current = [];
-    const lines = selectedLines.split('\n');
-    const allPrefixed = lines.every(l => l.startsWith(prefix));
-    let newLines;
-    if (allPrefixed) {
-      newLines = lines.map(l => l.slice(prefix.length));
+  function applyBlockFormat(tag) {
+    editorRef.current?.focus();
+    document.execCommand('formatBlock', false, tag);
+  }
+
+  function handlePaste(e) {
+    e.preventDefault();
+    const html = e.clipboardData.getData('text/html');
+    const text = e.clipboardData.getData('text/plain');
+    if (html) {
+      document.execCommand('insertHTML', false, sanitizeHtml(html));
     } else {
-      newLines = lines.map((l, i) => {
-        if (prefix === '1. ') return (i + 1) + '. ' + l.replace(/^\d+\.\s/, '');
-        return prefix + l.replace(/^[-*]\s/, '');
-      });
+      document.execCommand('insertText', false, text);
     }
-    const newText = text.slice(0, lineStart) + newLines.join('\n') + text.slice(lineEnd === -1 ? text.length : lineEnd);
-    setBereiding(newText);
-    setTimeout(() => ta.focus(), 0);
   }
 
-  function handleUndo() {
-    if (undoStack.current.length <= 1) return;
-    const current = undoStack.current.pop();
-    redoStack.current.push(current);
-    setBereiding(undoStack.current[undoStack.current.length - 1]);
-    setTimeout(() => bereidingRef.current?.focus(), 0);
-  }
-
-  function handleRedo() {
-    if (redoStack.current.length === 0) return;
-    const next = redoStack.current.pop();
-    undoStack.current.push(next);
-    setBereiding(next);
-    setTimeout(() => bereidingRef.current?.focus(), 0);
-  }
-
-  function handleBereidingChange(e) {
-    const val = e.target.value;
-    undoStack.current.push(val);
-    redoStack.current = [];
-    setBereiding(val);
+  function getEditorHtml() {
+    return sanitizeHtml(editorRef.current?.innerHTML || '');
   }
 
   function addIngredient() {
@@ -1401,7 +1384,7 @@ function RecipeFormModal({ recipe, onSave, onClose, history, setHistory, user, h
       name: name.trim(),
       basePersons,
       ingredients: validIngredients,
-      bereiding: bereiding.trim(),
+      bereiding: getEditorHtml().trim(),
       link: link.trim(),
       photoUrl,
     });
@@ -1470,27 +1453,37 @@ function RecipeFormModal({ recipe, onSave, onClose, history, setHistory, user, h
         </button>
       </div>
 
-      {/* Bereiding met toolbar */}
+      {/* Bereiding — WYSIWYG editor */}
       <div className="mb-3">
         <label className="text-xs font-semibold text-slate-500 block mb-1">Bereiding</label>
         <div className="border border-slate-200 rounded-xl overflow-hidden bg-white">
           {/* Toolbar */}
           <div className="flex items-center gap-0.5 px-2 py-1.5 bg-slate-50 border-b border-slate-200 flex-wrap">
-            <button type="button" onClick={() => insertMarkdown('**', '**')} title="Vet"
+            {/* Tekststijl dropdown */}
+            <select defaultValue="" onChange={(e) => { if (e.target.value) { applyBlockFormat(e.target.value); e.target.value = ''; } }}
+              onMouseDown={(e) => { e.target.value = ''; }}
+              className="h-8 px-1.5 rounded-lg bg-white border border-slate-200 text-xs text-slate-600 cursor-pointer">
+              <option value="" disabled>Stijl</option>
+              <option value="h2">Kop</option>
+              <option value="h3">Tussenkop</option>
+              <option value="p">Tekst</option>
+            </select>
+            <div className="w-px h-5 bg-slate-300 mx-1"></div>
+            <button type="button" onMouseDown={(e) => { e.preventDefault(); execFormat('bold'); }} title="Vet"
               className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-200 active:bg-slate-300 text-slate-600 font-bold text-sm transition-colors">B</button>
-            <button type="button" onClick={() => insertMarkdown('*', '*')} title="Cursief"
+            <button type="button" onMouseDown={(e) => { e.preventDefault(); execFormat('italic'); }} title="Cursief"
               className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-200 active:bg-slate-300 text-slate-600 italic text-sm transition-colors">I</button>
-            <button type="button" onClick={() => insertMarkdown('~~', '~~')} title="Doorhalen"
+            <button type="button" onMouseDown={(e) => { e.preventDefault(); execFormat('strikeThrough'); }} title="Doorhalen"
               className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-200 active:bg-slate-300 text-slate-600 line-through text-sm transition-colors">S</button>
             <div className="w-px h-5 bg-slate-300 mx-1"></div>
-            <button type="button" onClick={() => toggleLinePrefix('- ')} title="Opsomming"
+            <button type="button" onMouseDown={(e) => { e.preventDefault(); execFormat('insertUnorderedList'); }} title="Opsomming"
               className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-200 active:bg-slate-300 text-slate-600 transition-colors">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                 <circle cx="1.5" cy="6" r="1" fill="currentColor" stroke="none" /><circle cx="1.5" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="1.5" cy="18" r="1" fill="currentColor" stroke="none" />
               </svg>
             </button>
-            <button type="button" onClick={() => toggleLinePrefix('1. ')} title="Genummerde lijst"
+            <button type="button" onMouseDown={(e) => { e.preventDefault(); execFormat('insertOrderedList'); }} title="Genummerde lijst"
               className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-200 active:bg-slate-300 text-slate-600 transition-colors">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 6h13M8 12h13M8 18h13" />
@@ -1500,14 +1493,14 @@ function RecipeFormModal({ recipe, onSave, onClose, history, setHistory, user, h
               </svg>
             </button>
             <div className="w-px h-5 bg-slate-300 mx-1"></div>
-            <button type="button" onClick={handleUndo} title="Ongedaan maken"
+            <button type="button" onMouseDown={(e) => { e.preventDefault(); execFormat('undo'); }} title="Ongedaan maken"
               className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-200 active:bg-slate-300 text-slate-400 transition-colors">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a5 5 0 015 5v0a5 5 0 01-5 5H8" />
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 6l-4 4 4 4" />
               </svg>
             </button>
-            <button type="button" onClick={handleRedo} title="Opnieuw"
+            <button type="button" onMouseDown={(e) => { e.preventDefault(); execFormat('redo'); }} title="Opnieuw"
               className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-200 active:bg-slate-300 text-slate-400 transition-colors">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 10H11a5 5 0 00-5 5v0a5 5 0 005 5h5" />
@@ -1515,10 +1508,12 @@ function RecipeFormModal({ recipe, onSave, onClose, history, setHistory, user, h
               </svg>
             </button>
           </div>
-          {/* Textarea */}
-          <textarea ref={bereidingRef} value={bereiding} onChange={handleBereidingChange}
-            rows={6} placeholder="Stap 1: Verwarm de oven voor op 200°C..."
-            className="w-full px-3 py-2.5 text-sm resize-y border-0 outline-none focus:ring-0" />
+          {/* WYSIWYG Editor */}
+          <div ref={editorRef} contentEditable
+            className="wysiwyg-editor w-full px-3 py-2.5 text-sm"
+            onPaste={handlePaste}
+            dangerouslySetInnerHTML={{ __html: initialHtml.current }}
+            suppressContentEditableWarning />
         </div>
       </div>
 
