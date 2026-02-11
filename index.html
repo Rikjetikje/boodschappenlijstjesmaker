@@ -535,7 +535,7 @@
     }
 
     // ---------------- Products tab ----------------
-    function ProductsTab({ householdId, products, currentUser, activeListId }) {
+    function ProductsTab({ householdId, products, items, currentUser, activeListId }) {
       const [query, setQuery] = useState('');
       const [editingId, setEditingId] = useState(null);
       const [editName, setEditName] = useState('');
@@ -599,16 +599,43 @@
         if (!confirm(`Verwijder "${p.name}"?`)) return;
         await db.doc(`households/${householdId}/products/${p.id}`).delete();
       }
+      function currentQty(it) {
+        const q = (it && it.qty != null) ? Number(it.qty) : NaN;
+        if (!isNaN(q)) return clamp(q, 0, 99);
+        const unit = String(it?.unit || 'st').toLowerCase();
+        const amt = parseFloat(String(it?.amount ?? '1').replace(',','.'));
+        if (!isNaN(amt) && DISCRETE_UNITS.includes(unit)) return clamp(Math.round(amt), 0, 99);
+        return 1;
+      }
+
+      function findExistingByProductId(productId) {
+        if (!productId) return null;
+        const arr = (items || []);
+        return arr.find(x => x.productId === productId && !x.checked) || arr.find(x => x.productId === productId) || null;
+      }
+
       async function addItemFromProduct(p) {
         if (!activeListId) { alert('Maak eerst een lijst aan.'); return; }
+        const existing = findExistingByProductId(p.id);
+        if (existing) {
+          const next = clamp(currentQty(existing) + 1, 0, 99);
+          await db.doc(`households/${householdId}/lists/${activeListId}/items/${existing.id}`).set({
+            qty: next,
+            checked: false,
+            nameSnapshot: p.name || existing.nameSnapshot || '',
+            categorySnapshot: p.category || existing.categorySnapshot || 'Overig',
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            updatedBy: currentUser?.uid || '',
+          }, { merge: true });
+          return;
+        }
         const id = genId('li');
         const doc = {
           id,
           productId: p.id,
           nameSnapshot: p.name || '',
           categorySnapshot: p.category || 'Overig',
-          amount: '1',
-          unit: 'st',
+          qty: 1,
           checked: false,
           createdAt: firebase.firestore.FieldValue.serverTimestamp(),
           createdBy: currentUser?.uid || '',
@@ -616,8 +643,6 @@
         };
         await db.doc(`households/${householdId}/lists/${activeListId}/items/${id}`).set(doc);
       }
-
-
 
       return (
         <div className="pb-24">
@@ -706,22 +731,58 @@
       }
 
 
-      async function addItemFromProduct(p) {
-        if (!activeListId) { alert('Maak eerst een lijst aan.'); return; }
+
+      function currentQty(it) {
+        const q = (it && it.qty != null) ? Number(it.qty) : NaN;
+        if (!isNaN(q)) return clamp(q, 0, 99);
+        // Backward compat: if unit is discrete and amount is an int, use that
+        const unit = String(it?.unit || 'st').toLowerCase();
+        const amt = parseFloat(String(it?.amount ?? '1').replace(',','.'));
+        if (!isNaN(amt) && DISCRETE_UNITS.includes(unit)) return clamp(Math.round(amt), 0, 99);
+        return 1;
+      }
+
+      function findExistingByProductId(productId) {
+        if (!productId) return null;
+        const arr = (items || []);
+        // Prefer unchecked item, else any
+        return arr.find(x => x.productId === productId && !x.checked) || arr.find(x => x.productId === productId) || null;
+      }
+
+      async function upsertListItemFromProduct(productDoc, qtyInc = 1) {
+        if (!householdId || !activeListId) { alert('Maak eerst een lijst aan.'); return; }
+        const inc = clamp(Number(qtyInc)||1, 0, 99);
+        const existing = findExistingByProductId(productDoc.id);
+        if (existing) {
+          const next = clamp(currentQty(existing) + inc, 0, 99);
+          await db.doc(`households/${householdId}/lists/${activeListId}/items/${existing.id}`).set({
+            qty: next,
+            checked: false,
+            // keep snapshots in sync with product
+            nameSnapshot: productDoc.name || existing.nameSnapshot || '',
+            categorySnapshot: productDoc.category || existing.categorySnapshot || 'Overig',
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            updatedBy: (currentUser && currentUser.uid) ? currentUser.uid : '',
+          }, { merge: true });
+          return;
+        }
         const id = genId('li');
         const doc = {
           id,
-          productId: p.id,
-          nameSnapshot: p.name || '',
-          categorySnapshot: p.category || 'Overig',
-          amount: '1',
-          unit: 'st',
+          productId: productDoc.id,
+          nameSnapshot: productDoc.name || '',
+          categorySnapshot: productDoc.category || 'Overig',
+          qty: clamp(inc || 1, 0, 99),
           checked: false,
           createdAt: firebase.firestore.FieldValue.serverTimestamp(),
           createdBy: (currentUser && currentUser.uid) ? currentUser.uid : '',
           source: 'product',
         };
-        await db.doc(`households/${householdId}/lists/${activeListId}/items/${id}`).set(doc);
+        await addItemDoc(doc);
+      }
+
+      async function addItemFromProduct(p) {
+        await upsertListItemFromProduct(p, 1);
       }
 
       async function addFreeText() {
@@ -767,6 +828,22 @@
         await db.doc(`households/${householdId}/lists/${activeListId}/items/${item.id}`).delete();
       }
 
+
+      async function setQty(item, nextQty) {
+        if (!householdId || !activeListId) return;
+        const q = clamp(Number(nextQty)||0, 0, 99);
+        await db.doc(`households/${householdId}/lists/${activeListId}/items/${item.id}`).set({
+          qty: q,
+          checked: (q===0) ? true : false,
+        }, { merge: true });
+      }
+
+      async function incQty(item, delta) {
+        const cur = currentQty(item);
+        const next = clamp(cur + (Number(delta)||0), 0, 99);
+        await setQty(item, next);
+      }
+
       const byCategory = useMemo(() => {
         const productById = new Map((products || []).map(p => [p.id, p]));
         const map = {};
@@ -776,7 +853,7 @@
           const cat = (p?.category) || it.categorySnapshot || 'Overig';
           const key = cat || 'Overig';
           if (!map[key]) map[key] = [];
-          map[key].push({ ...it, _name: name, _cat: cat });
+          map[key].push({ ...it, _name: name, _cat: cat, _qty: currentQty(it) });
         });
         const cats = Object.keys(map).sort((a,b) => CATEGORY_OPTIONS.indexOf(a) - CATEGORY_OPTIONS.indexOf(b));
         return cats.map(c => ({ category: c, items: map[c].sort((a,b)=> (a._name||'').localeCompare(b._name||'', 'nl')) }));
@@ -846,6 +923,21 @@
                         <div className={"flex-1 min-w-0 text-sm " + (it.checked ? "line-through text-slate-400" : "text-slate-800")}>
                           {it._name}
                         </div>
+                        <div className="flex items-center gap-1 ml-2">
+                          <button
+                            onClick={()=>incQty(it, -1)}
+                            disabled={it._qty <= 0}
+                            className={"w-8 h-8 rounded-xl border text-sm " + (it._qty <= 0 ? "bg-slate-50 border-slate-200 text-slate-300" : "bg-white border-slate-200 text-slate-700")}
+                            title="Minder"
+                          >−</button>
+                          <div className="w-8 text-center text-sm tabular-nums text-slate-700">{it._qty}</div>
+                          <button
+                            onClick={()=>incQty(it, +1)}
+                            disabled={it._qty >= 99}
+                            className={"w-8 h-8 rounded-xl border text-sm " + (it._qty >= 99 ? "bg-slate-50 border-slate-200 text-slate-300" : "bg-white border-slate-200 text-slate-700")}
+                            title="Meer"
+                          >+</button>
+                        </div>
                         <button onClick={()=>remove(it)} className="w-8 h-8 rounded-xl bg-slate-100 text-slate-600 text-sm">🗑️</button>
                       </div>
                     ))}
@@ -859,7 +951,7 @@
     }
 
     // ---------------- Recipes tab ----------------
-    function RecipesTab({ householdId, recipes, products, activeListId, currentUser }) {
+    function RecipesTab({ householdId, recipes, products, items, activeListId, currentUser }) {
       const [query, setQuery] = useState('');
       const [openId, setOpenId] = useState(null); // recipe id in modal
       const [draft, setDraft] = useState(null);   // editable recipe
@@ -1004,12 +1096,32 @@ const filtered = useMemo(() => {
         if (!householdId || !activeListId) { alert('Geen actieve lijst gevonden.'); return; }
         const base = r.baseServings || r.servings || r.persons || 5;
         const target = targetServings || base || 5;
+
         const productById = new Map((products||[]).map(p => [p.id, p]));
         const productByName = new Map((products||[]).map(p => [(p.name||'').toLowerCase(), p]));
         const createdProductsByName = new Map();
 
+        // Existing list items by productId (prefer unchecked)
+        const existingByProductId = new Map();
+        (items || []).forEach(it => {
+          if (!it.productId) return;
+          const cur = existingByProductId.get(it.productId);
+          if (!cur) { existingByProductId.set(it.productId, it); return; }
+          if (cur.checked && !it.checked) existingByProductId.set(it.productId, it);
+        });
+
+        const itemQty = (it) => {
+          const q = (it && it.qty != null) ? Number(it.qty) : NaN;
+          if (!isNaN(q)) return clamp(q, 0, 99);
+          const unit = String(it?.unit || 'st').toLowerCase();
+          const amt = parseFloat(String(it?.amount ?? '1').replace(',','.'));
+          if (!isNaN(amt) && DISCRETE_UNITS.includes(unit)) return clamp(Math.round(amt), 0, 99);
+          return 1;
+        };
+
         const batch = db.batch();
         const ings = (r.ingredients || []);
+
         ings.forEach((ing, idx) => {
           const key = ing._id || String(idx);
           const include = pickState?.picks ? (pickState.picks[key] !== false) : true;
@@ -1046,24 +1158,48 @@ const filtered = useMemo(() => {
             }
           }
 
-          const id = genId('li');
-
-          // Calculate amount if numeric; otherwise keep as-is
+          // Calculate amount (string) and determine how much to increment the counter
           let amountStr = scaledAmount(ing, base, target);
           let unit = (ing.unit ?? ing.unitText ?? 'st');
           if (String(unit).toLowerCase()==='g') unit = 'gr';
           const num = parseFloat(String(amountStr).replace(',','.'));
+
+          let qtyInc = 1;
           if (!isNaN(num)) {
             let scaled = num * mult;
-            if (DISCRETE_UNITS.includes((unit||'').toLowerCase())) scaled = Math.ceil(scaled);
+            if (DISCRETE_UNITS.includes((unit||'').toLowerCase())) {
+              scaled = Math.ceil(scaled);
+              qtyInc = clamp(scaled, 0, 99);
+            }
             amountStr = formatNum(scaled);
           }
 
+          const existing = existingByProductId.get(ensuredProductId);
+          if (existing) {
+            const next = clamp(itemQty(existing) + qtyInc, 0, 99);
+            batch.set(db.doc(`households/${householdId}/lists/${activeListId}/items/${existing.id}`), {
+              qty: next,
+              checked: false,
+              nameSnapshot: name,
+              categorySnapshot: (ensuredProduct?.category) || cat,
+              // keep last seen amount/unit around (optional, helps later)
+              amount: amountStr,
+              unit,
+              updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+              updatedBy: currentUser?.uid || '',
+            }, { merge: true });
+            // Update local map so multiple ingredients in same add also merge correctly
+            existingByProductId.set(ensuredProductId, { ...existing, qty: next, amount: amountStr, unit, checked: false });
+            return;
+          }
+
+          const id = genId('li');
           batch.set(db.doc(`households/${householdId}/lists/${activeListId}/items/${id}`), {
             id,
             productId: ensuredProductId,
             nameSnapshot: name,
             categorySnapshot: (ensuredProduct?.category) || cat,
+            qty: clamp(qtyInc || 1, 0, 99),
             amount: amountStr,
             unit,
             checked: false,
@@ -1071,12 +1207,13 @@ const filtered = useMemo(() => {
             createdBy: currentUser?.uid || '',
             source: `recipe:${r.id}`,
           });
+
+          existingByProductId.set(ensuredProductId, { id, productId: ensuredProductId, qty: clamp(qtyInc||1,0,99), checked: false, amount: amountStr, unit });
         });
 
         await batch.commit();
         alert('Toegevoegd aan je lijst.');
       }
-
       const productSuggestions = (text) => {
         const q = (text||'').trim().toLowerCase();
         if (q.length < 2) return [];
@@ -1650,12 +1787,14 @@ const filtered = useMemo(() => {
                 products={products}
                 currentUser={user}
                 activeListId={activeListId}
+                items={items}
               />
 ) : (
               <RecipesTab
                 householdId={householdId}
                 recipes={recipes}
                 products={products}
+                items={items}
                 activeListId={activeListId}
                 currentUser={user}
               />
