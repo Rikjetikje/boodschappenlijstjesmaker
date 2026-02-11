@@ -65,6 +65,14 @@
     }
     function clamp(n, a, b){ return Math.max(a, Math.min(b, n)); }
 
+    function formatNum(n) {
+      if (!isFinite(n)) return '';
+      const rounded = Math.round(n * 100) / 100;
+      const isInt = Math.abs(rounded - Math.round(rounded)) < 1e-9;
+      const s = isInt ? String(Math.round(rounded)) : String(rounded);
+      return s.replace('.', ',');
+    }
+
     function titleFromLegacyDocId(docId) {
       // best-effort: "aardappelen_kruimig_3_kg" -> "aardappelen kruimig 3 kg"
       try {
@@ -683,6 +691,24 @@
       }
 
 
+      async function addItemFromProduct(p) {
+        if (!activeListId) { alert('Maak eerst een lijst aan.'); return; }
+        const id = genId('li');
+        const doc = {
+          id,
+          productId: p.id,
+          nameSnapshot: p.name || '',
+          categorySnapshot: p.category || 'Overig',
+          amount: '1',
+          unit: 'st',
+          checked: false,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+          createdBy: (currentUser && currentUser.uid) ? currentUser.uid : '',
+          source: 'product',
+        };
+        await db.doc(`households/${householdId}/lists/${activeListId}/items/${id}`).set(doc);
+      }
+
       async function addFreeText() {
         const text = newText.trim();
         if (!text) return;
@@ -947,7 +973,7 @@ const filtered = useMemo(() => {
       async function addRecipeToList(r, targetServings, pickState) {
         if (!householdId || !activeListId) { alert('Geen actieve lijst gevonden.'); return; }
         const base = r.baseServings || r.servings || r.persons || 5;
-        const target = targetServings || 5 || base;
+        const target = targetServings || base || 5;
         const productById = new Map((products||[]).map(p => [p.id, p]));
 
         const batch = db.batch();
