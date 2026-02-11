@@ -19,7 +19,7 @@
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         .wysiwyg-editor { min-height: 150px; outline: none; line-height: 1.6; }
         .wysiwyg-editor h2 { font-size: 1.25rem; font-weight: 700; margin-bottom: 0.25rem; }
-        .wysiwyg-editor h3 { font-size: 1.05rem; font-weight: 600; margin-bottom: 0.25rem; color: #475569; }
+        .wysiwyg-editor h3 { font-size: 1.05rem; font-weight: 600; margin-bottom: 0.25rem; }
         .wysiwyg-editor ul { list-style-type: disc; padding-left: 1.5rem; margin-bottom: 0.5rem; }
         .wysiwyg-editor ol { list-style-type: decimal; padding-left: 1.5rem; margin-bottom: 0.5rem; }
         .wysiwyg-editor p { margin-bottom: 0.5rem; }
@@ -1258,6 +1258,22 @@ function RecipeFormModal({ recipe, onSave, onClose, history, setHistory, user, h
       ? (isHtml(recipe.bereiding) ? recipe.bereiding : renderMarkdown(recipe.bereiding))
       : ''
   );
+  const [activeFormats, setActiveFormats] = useState({});
+
+  // Track actieve opmaak bij cursor/selectie wijziging
+  useEffect(() => {
+    function updateFormats() {
+      if (!editorRef.current || !editorRef.current.contains(window.getSelection()?.anchorNode)) return;
+      setActiveFormats({
+        bold: document.queryCommandState('bold'),
+        italic: document.queryCommandState('italic'),
+        underline: document.queryCommandState('underline'),
+        strikeThrough: document.queryCommandState('strikeThrough'),
+      });
+    }
+    document.addEventListener('selectionchange', updateFormats);
+    return () => document.removeEventListener('selectionchange', updateFormats);
+  }, []);
 
   function execFormat(command, value) {
     editorRef.current?.focus();
@@ -1267,6 +1283,25 @@ function RecipeFormModal({ recipe, onSave, onClose, history, setHistory, user, h
   function applyBlockFormat(tag) {
     editorRef.current?.focus();
     document.execCommand('formatBlock', false, tag);
+  }
+
+  // Na Enter in een kop/tussenkop: reset naar <p>
+  function handleKeyDown(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      const sel = window.getSelection();
+      if (!sel.rangeCount) return;
+      let node = sel.anchorNode;
+      while (node && node !== editorRef.current) {
+        if (node.nodeName === 'H2' || node.nodeName === 'H3') {
+          // Laat de Enter doorgaan, dan na een tick het nieuwe blok naar <p> zetten
+          setTimeout(() => {
+            document.execCommand('formatBlock', false, 'p');
+          }, 0);
+          return;
+        }
+        node = node.parentNode;
+      }
+    }
   }
 
   function handlePaste(e) {
@@ -1470,11 +1505,13 @@ function RecipeFormModal({ recipe, onSave, onClose, history, setHistory, user, h
             </select>
             <div className="w-px h-5 bg-slate-300 mx-1"></div>
             <button type="button" onMouseDown={(e) => { e.preventDefault(); execFormat('bold'); }} title="Vet"
-              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-200 active:bg-slate-300 text-slate-600 font-bold text-sm transition-colors">B</button>
+              className={`w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-200 active:bg-slate-300 font-bold text-sm transition-colors ${activeFormats.bold ? 'bg-slate-200 text-emerald-600' : 'text-slate-600'}`}>B</button>
             <button type="button" onMouseDown={(e) => { e.preventDefault(); execFormat('italic'); }} title="Cursief"
-              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-200 active:bg-slate-300 text-slate-600 italic text-sm transition-colors">I</button>
+              className={`w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-200 active:bg-slate-300 italic text-sm transition-colors ${activeFormats.italic ? 'bg-slate-200 text-emerald-600' : 'text-slate-600'}`}>I</button>
+            <button type="button" onMouseDown={(e) => { e.preventDefault(); execFormat('underline'); }} title="Onderstrepen"
+              className={`w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-200 active:bg-slate-300 underline text-sm transition-colors ${activeFormats.underline ? 'bg-slate-200 text-emerald-600' : 'text-slate-600'}`}>U</button>
             <button type="button" onMouseDown={(e) => { e.preventDefault(); execFormat('strikeThrough'); }} title="Doorhalen"
-              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-200 active:bg-slate-300 text-slate-600 line-through text-sm transition-colors">S</button>
+              className={`w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-200 active:bg-slate-300 line-through text-sm transition-colors ${activeFormats.strikeThrough ? 'bg-slate-200 text-emerald-600' : 'text-slate-600'}`}>S</button>
             <div className="w-px h-5 bg-slate-300 mx-1"></div>
             <button type="button" onMouseDown={(e) => { e.preventDefault(); execFormat('insertUnorderedList'); }} title="Opsomming"
               className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-200 active:bg-slate-300 text-slate-600 transition-colors">
@@ -1512,6 +1549,7 @@ function RecipeFormModal({ recipe, onSave, onClose, history, setHistory, user, h
           <div ref={editorRef} contentEditable
             className="wysiwyg-editor w-full px-3 py-2.5 text-sm"
             onPaste={handlePaste}
+            onKeyDown={handleKeyDown}
             dangerouslySetInnerHTML={{ __html: initialHtml.current }}
             suppressContentEditableWarning />
         </div>
