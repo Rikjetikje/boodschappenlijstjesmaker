@@ -3058,32 +3058,28 @@ function HouseholdSetupScreen({ user }) {
 
       const { householdId } = codeSnap.data();
 
-      // Find first available list from lists_meta
-      let activeListId = null;
-      const listsMetaSnap = await db.collection(`households/${householdId}/lists_meta`).limit(1).get();
-      if (!listsMetaSnap.empty) {
-        activeListId = listsMetaSnap.docs[0].id;
-      }
+// Stap 1: eerst member aanmaken (dan mag je households/* lezen volgens de rules)
+await db.doc(`households/${householdId}/members/${user.uid}`).set({
+  displayName: user.displayName || '',
+  photoURL: user.photoURL || '',
+  joinedAt: firebase.firestore.FieldValue.serverTimestamp(),
+});
 
-      const batch = db.batch();
+// Stap 2: nu pas lists_meta lezen
+let activeListId = null;
+const listsMetaSnap = await db.collection(`households/${householdId}/lists_meta`).limit(1).get();
+if (!listsMetaSnap.empty) {
+  activeListId = listsMetaSnap.docs[0].id;
+}
 
-      // Add user as member
-      batch.set(db.doc(`households/${householdId}/members/${user.uid}`), {
-        displayName: user.displayName || '',
-        photoURL: user.photoURL || '',
-        joinedAt: firebase.firestore.FieldValue.serverTimestamp(),
-      });
-
-      // Set user profile
-      batch.set(db.doc(`users/${user.uid}`), {
-        householdId,
-        activeListId: activeListId, // Set to first available list, or null if none found
-        displayName: user.displayName || '',
-        photoURL: user.photoURL || '',
-        email: user.email || '',
-      });
-
-      await batch.commit();
+// Stap 3: user-profiel zetten
+await db.doc(`users/${user.uid}`).set({
+  householdId,
+  activeListId: activeListId, // eerste lijst, of null als er geen is
+  displayName: user.displayName || '',
+  photoURL: user.photoURL || '',
+  email: user.email || '',
+});
 
       // Clear localStorage
       localStorage.removeItem('blm_list');
