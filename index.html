@@ -728,24 +728,29 @@
         const text = newText.trim();
         if (!text) return;
 
-        const p = (products || []).find(x => (x.name||'').toLowerCase() === text.toLowerCase());
-        if (p) {
-          await addItemFromProduct(p);
+        // If the text matches an existing product (exact), just add it
+        const existing = (products || []).find(x => (x.name||'').toLowerCase() === text.toLowerCase());
+        if (existing) {
+          await addItemFromProduct(existing);
         } else {
-          const id = genId('li');
-          const doc = {
-            id,
-            productId: null,
-            nameSnapshot: text,
-            categorySnapshot: newCategory || 'Overig',
-            amount: '',
-            unit: '',
-            checked: false,
-            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-            createdBy: currentUser?.uid || '',
+          // Create a new product so it shows up in the product list, then add it
+          if (!householdId) { alert('Geen huishouden gevonden.'); return; }
+
+          const productId = genId('p');
+          const category = newCategory || 'Overig';
+          const productDoc = {
+            id: productId,
+            schemaVersion: 2,
+            name: text,
+            category,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            updatedBy: currentUser?.uid || '',
           };
-          await addItemDoc(doc);
+
+          await db.doc(`households/${householdId}/products/${productId}`).set(productDoc);
+          await addItemFromProduct(productDoc);
         }
+
         setNewText('');
         setShowSuggestions(false);
       }
@@ -787,6 +792,16 @@
                 onKeyDown={(e)=>{ if (e.key === 'Enter') { e.preventDefault(); addFreeText(); } }}
                 placeholder="Zoek product of typ iets nieuws…"
                 className="flex-1 px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm" />
+
+              <select
+                value={newCategory || 'Overig'}
+                onChange={(e)=>setNewCategory(e.target.value)}
+                className="w-56 px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm"
+                title="Categorie (voor nieuwe producten)"
+              >
+                {CATEGORY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+
               <Button onClick={addFreeText} className="bg-emerald-600 text-white w-12 px-0">+</Button>
             </div>
 
@@ -990,6 +1005,8 @@ const filtered = useMemo(() => {
         const base = r.baseServings || r.servings || r.persons || 5;
         const target = targetServings || base || 5;
         const productById = new Map((products||[]).map(p => [p.id, p]));
+        const productByName = new Map((products||[]).map(p => [(p.name||'').toLowerCase(), p]));
+        const createdProductsByName = new Map();
 
         const batch = db.batch();
         const ings = (r.ingredients || []);
@@ -1004,6 +1021,30 @@ const filtered = useMemo(() => {
           const name = (p?.name) || ing.nameSnapshot || '';
           if (!name) return;
           const cat = (p?.category) || ing.categorySnapshot || 'Overig';
+
+          // Ensure this ingredient exists as a product so it appears in the product list
+          let ensuredProductId = (p?.id) || ing.productId || null;
+          let ensuredProduct = p;
+          if (!ensuredProductId) {
+            const keyName = String(name).toLowerCase();
+            const already = productByName.get(keyName) || createdProductsByName.get(keyName);
+            if (already) {
+              ensuredProductId = already.id;
+              ensuredProduct = already;
+            } else {
+              ensuredProductId = genId('p');
+              ensuredProduct = {
+                id: ensuredProductId,
+                schemaVersion: 2,
+                name,
+                category: cat,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                updatedBy: currentUser?.uid || '',
+              };
+              batch.set(db.doc(`households/${householdId}/products/${ensuredProductId}`), ensuredProduct, { merge: true });
+              createdProductsByName.set(keyName, ensuredProduct);
+            }
+          }
 
           const id = genId('li');
 
@@ -1020,9 +1061,9 @@ const filtered = useMemo(() => {
 
           batch.set(db.doc(`households/${householdId}/lists/${activeListId}/items/${id}`), {
             id,
-            productId: p?.id || ing.productId || null,
+            productId: ensuredProductId,
             nameSnapshot: name,
-            categorySnapshot: cat,
+            categorySnapshot: (ensuredProduct?.category) || cat,
             amount: amountStr,
             unit,
             checked: false,
@@ -1253,7 +1294,51 @@ const filtered = useMemo(() => {
                                     ))}
                                   </div>
                                 )}
-                                <div className="text-[11px] text-slate-400 mt-1">{disp.cat}</div>
+                                {String(ing.productId || '') ? (
+                                  {String(ing.productId || '') ? (
+                                  {String(ing.productId || '') ? (
+                                  {String(ing.productId || '') ? (
+                                  <div className="text-[11px] text-slate-400 mt-1">{disp.cat}</div>
+                                ) : (
+                                  <select
+                                    value={ing.categorySnapshot || 'Overig'}
+                                    onChange={(e)=>updateIng(idx, { categorySnapshot: e.target.value })}
+                                    className="mt-1 w-full px-2 py-1 rounded-lg border border-slate-200 bg-white text-[12px]"
+                                    title="Categorie"
+                                  >
+                                    {CATEGORY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+                                  </select>
+                                )}
+                                ) : (
+                                  <select
+                                    value={ing.categorySnapshot || 'Overig'}
+                                    onChange={(e)=>updateIng(idx, { categorySnapshot: e.target.value })}
+                                    className="mt-1 w-full px-2 py-1 rounded-lg border border-slate-200 bg-white text-[12px]"
+                                    title="Categorie"
+                                  >
+                                    {CATEGORY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+                                  </select>
+                                )}
+                                ) : (
+                                  <select
+                                    value={ing.categorySnapshot || 'Overig'}
+                                    onChange={(e)=>updateIng(idx, { categorySnapshot: e.target.value })}
+                                    className="mt-1 w-full px-2 py-1 rounded-lg border border-slate-200 bg-white text-[12px]"
+                                    title="Categorie"
+                                  >
+                                    {CATEGORY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+                                  </select>
+                                )}
+                                ) : (
+                                  <select
+                                    value={ing.categorySnapshot || 'Overig'}
+                                    onChange={(e)=>updateIng(idx, { categorySnapshot: e.target.value })}
+                                    className="mt-1 w-full px-2 py-1 rounded-lg border border-slate-200 bg-white text-[12px]"
+                                    title="Categorie"
+                                  >
+                                    {CATEGORY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+                                  </select>
+                                )}
                               </div>
                               <button onClick={()=>removeIng(idx)} className="w-10 h-10 mt-5 rounded-xl bg-slate-100 text-slate-600">🗑️</button>
                             </div>
