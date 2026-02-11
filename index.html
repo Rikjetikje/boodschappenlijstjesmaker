@@ -794,9 +794,8 @@
       const [query, setQuery] = useState('');
       const [openId, setOpenId] = useState(null); // recipe id in modal
       const [draft, setDraft] = useState(null);   // editable recipe
-      const [scaleTo, setScaleTo] = useState(0);
-
-      const filtered = useMemo(() => {
+      const [quickServings, setQuickServings] = useState(5);
+const filtered = useMemo(() => {
         const q = query.trim().toLowerCase();
         let rs = recipes || [];
         if (q) rs = rs.filter(r => (r.name||'').toLowerCase().includes(q));
@@ -806,7 +805,7 @@
 
       function newRecipe() {
         const id = genId('r');
-        const baseServings = 4;
+        const baseServings = 5;
         const rec = {
           id,
           name: 'Nieuw recept',
@@ -820,19 +819,17 @@
         };
         setOpenId(id);
         setDraft(rec);
-        setScaleTo(baseServings);
-      }
+}
 
       function editRecipe(r) {
         setOpenId(r.id);
         setDraft(JSON.parse(JSON.stringify(r)));
-        setScaleTo(r.baseServings || 4);
-      }
+}
 
       async function saveRecipe() {
         if (!householdId || !draft) return;
         const id = draft.id || genId('r');
-        const baseServings = clamp(parseInt(draft.baseServings || 4, 10) || 4, 1, 99);
+        const baseServings = clamp(parseInt(draft.baseServings || 5, 10) || 4, 1, 99);
         const payload = {
           ...draft,
           id,
@@ -903,24 +900,38 @@
         return { name, cat };
       }
 
-      function scaledAmount(ing, base, target) {
-        if (!ing.scalable) return ing.amount || '';
-        const a = String(ing.amount || '').trim();
+      const DISCRETE_UNITS = ['st','stuk','bl','blik','zak','pak','pot','fles','tube','bol','krop','teen','tenen','knol','bus'];
+
+      function scaleAmountText(amountText, unitText, base, target) {
+        const a = String(amountText || '').trim();
         if (!a) return '';
-        // If numeric-ish, scale; otherwise keep text
         const num = parseFloat(a.replace(',', '.'));
-        if (!isFinite(num)) return ing.amount;
+        if (!isFinite(num)) return amountText; // keep free text
         const factor = (target || base) / (base || 1);
-        const out = num * factor;
-        // pretty formatting
-        const rounded = Math.round(out * 100) / 100;
-        return String(rounded).replace('.', ',');
+        let out = num * factor;
+        const unit = String(unitText || '').trim().toLowerCase();
+        const isDiscrete = DISCRETE_UNITS.includes(unit);
+        if (isDiscrete) {
+          out = Math.ceil(out - 1e-9);
+        } else {
+          // Keep nice rounding
+          out = Math.round(out * 100) / 100;
+        }
+        // Format: avoid trailing .0
+        const asInt = Math.round(out);
+        const pretty = (Math.abs(out - asInt) < 1e-9) ? String(asInt) : String(out);
+        return pretty.replace('.', ',');
       }
 
-      async function addRecipeToList(r) {
+      function scaledAmount(ing, base, target) {
+        if (!ing.scalable) return ing.amount || '';
+        return scaleAmountText(ing.amount || '', ing.unit || '', base, target);
+      }
+
+      async function addRecipeToList(r, targetServings) {
         if (!householdId || !activeListId) { alert('Geen actieve lijst gevonden.'); return; }
         const base = r.baseServings || 4;
-        const target = scaleTo || base;
+        const target = targetServings || 5 || base;
         const productById = new Map((products||[]).map(p => [p.id, p]));
 
         const batch = db.batch();
@@ -966,6 +977,17 @@
             <Button onClick={newRecipe} className="bg-emerald-600 text-white px-3">+ Recept</Button>
           </div>
 
+          <div className="mb-3 flex items-center justify-between">
+            <div className="text-xs text-slate-500">Porties voor “+ naar lijst”</div>
+            <div className="flex items-center gap-2">
+              <button onClick={()=>setQuickServings(s=>clamp((s||5)-1,1,99))}
+                className="w-9 h-9 rounded-xl bg-white border border-slate-200 text-slate-700 font-bold">−</button>
+              <div className="min-w-[3rem] text-center font-mono font-bold text-emerald-700">{quickServings}</div>
+              <button onClick={()=>setQuickServings(s=>clamp((s||5)+1,1,99))}
+                className="w-9 h-9 rounded-xl bg-white border border-slate-200 text-slate-700 font-bold">+</button>
+            </div>
+          </div>
+
           <Card>
             <div className="divide-y divide-slate-100">
               {filtered.length === 0 ? (
@@ -979,8 +1001,9 @@
                     <div className="font-semibold text-sm truncate">{r.name || 'Recept'}</div>
                     <div className="text-xs text-slate-400 truncate">{(r.ingredients||[]).length} ingrediënten · basis {r.baseServings || 4} pers.</div>
                   </button>
-                  <button onClick={()=>editRecipe(r)} className="w-9 h-9 rounded-xl bg-slate-100 text-slate-600 text-sm">✏️</button>
-                  <button onClick={()=>deleteRecipe(r)} className="w-9 h-9 rounded-xl bg-slate-100 text-slate-600 text-sm">🗑️</button>
+                  <button onClick={()=>addRecipeToList(r, quickServings)} title="Ingrediënten toevoegen aan lijst" className="w-9 h-9 rounded-xl bg-emerald-600 text-white text-sm">＋</button>
+                  <button onClick={()=>editRecipe(r)} title="Bewerken" className="w-9 h-9 rounded-xl bg-slate-100 text-slate-600 text-sm">✏️</button>
+                  <button onClick={()=>deleteRecipe(r)} title="Verwijderen" className="w-9 h-9 rounded-xl bg-slate-100 text-slate-600 text-sm">🗑️</button>
                 </div>
               ))}
             </div>
@@ -999,14 +1022,15 @@
                   <div className="flex gap-2">
                     <div className="flex-1">
                       <div className="text-xs font-semibold text-slate-500 mb-1">Basisporties</div>
-                      <input type="number" min="1" max="99" value={draft.baseServings || 4}
-                        onChange={(e)=>{ const v = parseInt(e.target.value||'4',10)||4; setDraft(d=>({ ...d, baseServings: v })); setScaleTo(v); }}
+                      <input type="number" min="1" max="99" value={draft.baseServings || 5}
+                        onChange={(e)=>{ const v = parseInt(e.target.value||'5',10)||4; setDraft(d=>({ ...d, baseServings: v }));
+}}
                         className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white" />
                     </div>
                     <div className="flex-1">
                       <div className="text-xs font-semibold text-slate-500 mb-1">Schalen naar</div>
                       <input type="number" min="1" max="99" value={scaleTo}
-                        onChange={(e)=>setScaleTo(clamp(parseInt(e.target.value||'4',10)||4,1,99))}
+                        onChange={(e)=>setScaleTo(clamp(parseInt(e.target.value||'5',10)||4,1,99))}
                         className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white" />
                     </div>
                   </div>
@@ -1094,6 +1118,13 @@
                     </div>
                   </div>
                 </div>
+                <div className="sticky bottom-0 -mx-4 px-4 py-3 bg-white/95 backdrop-blur border-t border-slate-100 mt-4">
+                  <div className="flex gap-2">
+                    <Button onClick={addIngredientRow} className="bg-white border border-slate-200 text-slate-700 flex-1">+ ingrediënt</Button>
+                    <Button onClick={saveRecipe} className="bg-emerald-600 text-white flex-1">Opslaan</Button>
+                  </div>
+                </div>
+
 
                 <div className="space-y-2">
                   <div className="text-sm font-bold text-slate-800">Bereiding</div>
