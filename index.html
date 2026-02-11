@@ -564,6 +564,13 @@
         setEditingId(null);
       }
 
+      async function cycleProduct(p) {
+        if (!householdId) return;
+        const cur = (p.cycle || '');
+        const next = cur === '' ? 'W' : (cur === 'W' ? '2W' : (cur === '2W' ? '3W' : ''));
+        await db.doc(`households/${householdId}/products/${p.id}`).update({ cycle: next });
+      }
+
       async function deleteProduct(p) {
         if (!householdId) return;
         if (!confirm(`Verwijder "${p.name}"?`)) return;
@@ -594,6 +601,8 @@
                     <div className="font-semibold text-sm truncate">{p.name}</div>
                     <div className="text-xs text-slate-400 truncate">{p.category || 'Overig'}</div>
                   </div>
+                  <button onClick={()=>addItemFromProduct(p)} title="Toevoegen aan lijst" className="w-9 h-9 rounded-xl bg-emerald-600 text-white text-sm">＋</button>
+                  <button onClick={()=>cycleProduct(p)} title="Herhaal" className="px-2 h-9 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold">{p.cycle || "—"}</button>
                   <button onClick={()=>startEdit(p)} className="w-9 h-9 rounded-xl bg-slate-100 text-slate-600 text-sm">✏️</button>
                   <button onClick={()=>deleteProduct(p)} className="w-9 h-9 rounded-xl bg-slate-100 text-slate-600 text-sm">🗑️</button>
                 </div>
@@ -931,48 +940,43 @@ const filtered = useMemo(() => {
 
       async function addRecipeToList(r, targetServings, pickState) {
         if (!householdId || !activeListId) { alert('Geen actieve lijst gevonden.'); return; }
-        const base = r.baseServings || 4;
+        const base = r.baseServings || 5;
         const target = targetServings || 5 || base;
         const productById = new Map((products||[]).map(p => [p.id, p]));
 
         const batch = db.batch();
         const ings = (r.ingredients || []);
-        ings.forEach(ing => {
+        ings.forEach((ing, idx) => {
+          const key = ing._id || String(idx);
+          const include = pickState?.picks ? (pickState.picks[key] !== false) : true;
+          if (!include) return;
+
+          const mult = Number(pickState?.mults?.[key] || 1) || 1;
+
           const p = ing.productId ? productById.get(ing.productId) : null;
           const name = (p?.name) || ing.nameSnapshot || '';
           if (!name) return;
-
           const cat = (p?.category) || ing.categorySnapshot || 'Overig';
-          const id = genId('li');
-          batch.set(db.doc(`households/${householdId}/lists/${activeListId}/items/${id}`), {
-            id,
-            productId: p?.id || null,
-            nameSnapshot: name,
-            categorySnapshot: cat,
-            amount: scaledAmount(ing, base, target),
-            unit: ing.unit || '',
-            checked: false,
-            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-            createdBy: currentUser?.uid || '',
-            source: `recipe:${r.id}`,
-          });
-        });
 
-        // Extras (one-off additions)
-        const extras = (pickState?.extras || []).filter(x => x && x.include !== false);
-        extras.forEach((extra) => {
-          const p = extra.productId ? productById.get(extra.productId) : null;
-          const name = (p?.name) || extra.nameSnapshot || '';
-          if (!name) return;
-          const cat = (p?.category) || extra.categorySnapshot || 'Overig';
           const id = genId('li');
+
+          // Calculate amount if numeric; otherwise keep as-is
+          let amountStr = scaledAmount(ing, base, target);
+          let unit = (ing.unit || 'st');
+          const num = parseFloat(String(amountStr).replace(',','.'));
+          if (!isNaN(num)) {
+            let scaled = num * mult;
+            if (DISCRETE_UNITS.includes((unit||'').toLowerCase())) scaled = Math.ceil(scaled);
+            amountStr = formatNum(scaled);
+          }
+
           batch.set(db.doc(`households/${householdId}/lists/${activeListId}/items/${id}`), {
             id,
-            productId: p?.id || null,
+            productId: p?.id || ing.productId || null,
             nameSnapshot: name,
             categorySnapshot: cat,
-            amount: scaledAmount({ amount: extra.amount || '', unit: extra.unit || 'st' }, base, target),
-            unit: extra.unit || 'st',
+            amount: amountStr,
+            unit,
             checked: false,
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
             createdBy: currentUser?.uid || '',
@@ -981,7 +985,7 @@ const filtered = useMemo(() => {
         });
 
         await batch.commit();
-        alert('Ingrediënten toegevoegd aan je lijst.');
+        alert('Toegevoegd aan je lijst.');
       }
 
       const productSuggestions = (text) => {
@@ -996,13 +1000,13 @@ const filtered = useMemo(() => {
         setPickMap(prev => {
           if (prev[recipe.id]) return prev;
           const picks = {};
-          const overrides = {};
+          const mults = {};
           (recipe.ingredients || []).forEach((ing, i) => {
             const key = ing._id || String(i);
             picks[key] = true;
-            overrides[key] = { amount: String(ing.amount || ''), unit: String(ing.unit || 'st') };
+            mults[key] = 1;
           });
-          return { ...prev, [recipe.id]: { servings: 5, picks, overrides, extras: [] } };
+          return { ...prev, [recipe.id]: { servings: 5, picks, mults } };
         });
       }
 
@@ -1023,47 +1027,13 @@ const filtered = useMemo(() => {
         });
       }
 
-      function setOverride(recipeId, key, patch) {
+      function bumpMult(recipeId, key, delta) {
         setPickMap(prev => {
           const st = prev[recipeId];
           if (!st) return prev;
-          return { ...prev, [recipeId]: { ...st, overrides: { ...st.overrides, [key]: { ...st.overrides?.[key], ...patch } } } };
-        });
-      }
-
-      function addExtraRow(recipeId) {
-        setPickMap(prev => {
-          const st = prev[recipeId];
-          if (!st) return prev;
-          const extras = [...(st.extras || [])];
-          extras.push({
-            _tmpId: genId('x'),
-            productId: null,
-            nameSnapshot: '',
-            categorySnapshot: 'Overig',
-            amount: '',
-            unit: 'st',
-            include: true
-          });
-          return { ...prev, [recipeId]: { ...st, extras } };
-        });
-      }
-
-      function updateExtra(recipeId, tmpId, patch) {
-        setPickMap(prev => {
-          const st = prev[recipeId];
-          if (!st) return prev;
-          const extras = (st.extras || []).map(x => x._tmpId === tmpId ? { ...x, ...patch } : x);
-          return { ...prev, [recipeId]: { ...st, extras } };
-        });
-      }
-
-      function removeExtra(recipeId, tmpId) {
-        setPickMap(prev => {
-          const st = prev[recipeId];
-          if (!st) return prev;
-          const extras = (st.extras || []).filter(x => x._tmpId !== tmpId);
-          return { ...prev, [recipeId]: { ...st, extras } };
+          const cur = Number(st.mults?.[key] || 1) || 1;
+          const next = clamp(cur + delta, 1, 99);
+          return { ...prev, [recipeId]: { ...st, mults: { ...(st.mults||{}), [key]: next } } };
         });
       }
 
@@ -1131,114 +1101,29 @@ const filtered = useMemo(() => {
                           </div>
                         </div>
 
-                        <div className="space-y-2">
+                        <div className="space-y-1">
                           {(r.ingredients||[]).map((ing, idx) => {
                             const key = ing._id || String(idx);
                             const disp = resolveIngDisplay(ing);
                             const checked = st.picks?.[key] !== false;
-                            const ov = st.overrides?.[key] || { amount: String(ing.amount||''), unit: String(ing.unit||'st') };
+                            const mult = st.mults?.[key] || 1;
                             return (
-                              <div key={key} className="bg-white border border-slate-200 rounded-2xl p-3">
-                                <div className="flex items-center gap-2">
-                                  <button onClick={()=>togglePick(r.id, key)} className={
-                                    "w-6 h-6 rounded-lg border flex items-center justify-center text-xs " +
-                                    (checked ? "bg-emerald-600 border-emerald-600 text-white" : "bg-white border-slate-300 text-slate-400")
-                                  }>
-                                    {checked ? "✓" : ""}
-                                  </button>
-                                  <div className={"flex-1 min-w-0 text-sm font-semibold truncate " + (checked ? "text-slate-800" : "text-slate-400 line-through")}>
-                                    {disp.name || "(onbekend)"}
-                                  </div>
-                                  <div className="text-[11px] text-slate-400">{disp.cat}</div>
+                              <div key={key} className="flex items-center gap-2 py-2 border-b border-slate-100 last:border-b-0">
+                                <button onClick={()=>togglePick(r.id, key)} className={
+                                  "w-6 h-6 rounded-lg border flex items-center justify-center text-xs " +
+                                  (checked ? "bg-emerald-600 border-emerald-600 text-white" : "bg-white border-slate-300 text-slate-400")
+                                }>
+                                  {checked ? "✓" : ""}
+                                </button>
+
+                                <div className={"flex-1 min-w-0 text-sm font-semibold truncate " + (checked ? "text-slate-800" : "text-slate-400 line-through")}>
+                                  {disp.name || "(onbekend)"}
                                 </div>
 
-                                <div className="mt-2 grid grid-cols-2 gap-2">
-                                  <div>
-                                    <div className="text-[11px] font-semibold text-slate-500 mb-1">Hoeveelheid</div>
-                                    <input
-                                      value={ov.amount}
-                                      onChange={(e)=>setOverride(r.id, key, { amount: e.target.value })}
-                                      className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-sm"
-                                    />
-                                  </div>
-                                  <div>
-                                    <div className="text-[11px] font-semibold text-slate-500 mb-1">Eenheid</div>
-                                    <select
-                                      value={ov.unit || 'st'}
-                                      onChange={(e)=>setOverride(r.id, key, { unit: e.target.value })}
-                                      className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-sm"
-                                    >
-                                      <option value="st">st</option>
-                                      <option value="gr">gr</option>
-                                      <option value="ml">ml</option>
-                                    </select>
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })}
-
-                          <div className="pt-2">
-                            <button onClick={()=>addExtraRow(r.id)} className="text-xs px-3 py-2 rounded-xl bg-slate-100 text-slate-700 w-full">
-                              + extra ingrediënt (alleen voor deze keer)
-                            </button>
-                          </div>
-
-                          {(st.extras||[]).map(extra => {
-                            const sugg = productSuggestions(extra.nameSnapshot || '');
-                            return (
-                              <div key={extra._tmpId} className="bg-white border border-slate-200 rounded-2xl p-3">
-                                <div className="flex items-center gap-2">
-                                  <button onClick={()=>updateExtra(r.id, extra._tmpId, { include: !extra.include })} className={
-                                    "w-6 h-6 rounded-lg border flex items-center justify-center text-xs " +
-                                    (extra.include ? "bg-emerald-600 border-emerald-600 text-white" : "bg-white border-slate-300 text-slate-400")
-                                  }>
-                                    {extra.include ? "✓" : ""}
-                                  </button>
-                                  <div className="flex-1 relative">
-                                    <input
-                                      value={extra.nameSnapshot}
-                                      onChange={(e)=>updateExtra(r.id, extra._tmpId, { nameSnapshot: e.target.value, productId: null })}
-                                      placeholder="Product…"
-                                      className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-sm"
-                                    />
-                                    {(String(extra.productId||'')==='' && (extra.nameSnapshot||'').trim().length>=2 && sugg.length>0) && (
-                                      <div className="absolute left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-30 overflow-hidden">
-                                        {sugg.map(p => (
-                                          <button key={p.id} onMouseDown={(e)=>e.preventDefault()}
-                                            onClick={() => updateExtra(r.id, extra._tmpId, { productId: p.id, nameSnapshot: p.name||'', categorySnapshot: p.category||'Overig' })}
-                                            className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 flex items-center gap-2 border-b border-slate-100 last:border-b-0">
-                                            <span className="flex-1 truncate">{p.name}</span>
-                                            <span className="text-[11px] text-slate-400 shrink-0">{(p.category||'Overig').split(',')[0]}</span>
-                                          </button>
-                                        ))}
-                                      </div>
-                                    )}
-                                  </div>
-                                  <button onClick={()=>removeExtra(r.id, extra._tmpId)} className="w-10 h-10 rounded-xl bg-slate-100 text-slate-600">🗑️</button>
-                                </div>
-
-                                <div className="mt-2 grid grid-cols-2 gap-2">
-                                  <div>
-                                    <div className="text-[11px] font-semibold text-slate-500 mb-1">Hoeveelheid</div>
-                                    <input
-                                      value={extra.amount}
-                                      onChange={(e)=>updateExtra(r.id, extra._tmpId, { amount: e.target.value })}
-                                      className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-sm"
-                                    />
-                                  </div>
-                                  <div>
-                                    <div className="text-[11px] font-semibold text-slate-500 mb-1">Eenheid</div>
-                                    <select
-                                      value={extra.unit || 'st'}
-                                      onChange={(e)=>updateExtra(r.id, extra._tmpId, { unit: e.target.value })}
-                                      className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-sm"
-                                    >
-                                      <option value="st">st</option>
-                                      <option value="gr">gr</option>
-                                      <option value="ml">ml</option>
-                                    </select>
-                                  </div>
+                                <div className="flex items-center gap-1">
+                                  <button onClick={()=>bumpMult(r.id, key, -1)} className="w-8 h-8 rounded-xl bg-white border border-slate-200 text-slate-700 font-bold">−</button>
+                                  <div className="w-6 text-center font-mono font-bold text-slate-700">{mult}</div>
+                                  <button onClick={()=>bumpMult(r.id, key, +1)} className="w-8 h-8 rounded-xl bg-white border border-slate-200 text-slate-700 font-bold">+</button>
                                 </div>
                               </div>
                             );
