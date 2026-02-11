@@ -1075,14 +1075,6 @@ const filtered = useMemo(() => {
               className="flex-1 px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm" />
             <Button onClick={newRecipe} className="bg-emerald-600 text-white px-3">+ Recept</Button>
           </div>
-            <div className="flex items-center gap-2">
-              <button onClick={()=>setQuickServings(s=>clamp((s||5)-1,1,99))}
-                className="w-9 h-9 rounded-xl bg-white border border-slate-200 text-slate-700 font-bold">−</button>
-              <div className="min-w-[3rem] text-center font-mono font-bold text-emerald-700">{quickServings}</div>
-              <button onClick={()=>setQuickServings(s=>clamp((s||5)+1,1,99))}
-                className="w-9 h-9 rounded-xl bg-white border border-slate-200 text-slate-700 font-bold">+</button>
-            </div>
-          </div>
 
           <Card>
             <div className="divide-y divide-slate-100">
