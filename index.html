@@ -1295,40 +1295,7 @@ const filtered = useMemo(() => {
                                   </div>
                                 )}
                                 {String(ing.productId || '') ? (
-                                  {String(ing.productId || '') ? (
-                                  {String(ing.productId || '') ? (
-                                  {String(ing.productId || '') ? (
                                   <div className="text-[11px] text-slate-400 mt-1">{disp.cat}</div>
-                                ) : (
-                                  <select
-                                    value={ing.categorySnapshot || 'Overig'}
-                                    onChange={(e)=>updateIng(idx, { categorySnapshot: e.target.value })}
-                                    className="mt-1 w-full px-2 py-1 rounded-lg border border-slate-200 bg-white text-[12px]"
-                                    title="Categorie"
-                                  >
-                                    {CATEGORY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
-                                  </select>
-                                )}
-                                ) : (
-                                  <select
-                                    value={ing.categorySnapshot || 'Overig'}
-                                    onChange={(e)=>updateIng(idx, { categorySnapshot: e.target.value })}
-                                    className="mt-1 w-full px-2 py-1 rounded-lg border border-slate-200 bg-white text-[12px]"
-                                    title="Categorie"
-                                  >
-                                    {CATEGORY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
-                                  </select>
-                                )}
-                                ) : (
-                                  <select
-                                    value={ing.categorySnapshot || 'Overig'}
-                                    onChange={(e)=>updateIng(idx, { categorySnapshot: e.target.value })}
-                                    className="mt-1 w-full px-2 py-1 rounded-lg border border-slate-200 bg-white text-[12px]"
-                                    title="Categorie"
-                                  >
-                                    {CATEGORY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
-                                  </select>
-                                )}
                                 ) : (
                                   <select
                                     value={ing.categorySnapshot || 'Overig'}
