@@ -512,7 +512,7 @@
     }
 
     // ---------------- Products tab ----------------
-    function ProductsTab({ householdId, products, currentUser }) {
+    function ProductsTab({ householdId, products, currentUser, activeListId }) {
       const [query, setQuery] = useState('');
       const [editingId, setEditingId] = useState(null);
       const [editName, setEditName] = useState('');
@@ -1556,8 +1556,9 @@ const filtered = useMemo(() => {
                 householdId={householdId}
                 products={products}
                 currentUser={user}
+                activeListId={activeListId}
               />
-            ) : (
+) : (
               <RecipesTab
                 householdId={householdId}
                 recipes={recipes}
