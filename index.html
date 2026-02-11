@@ -118,14 +118,23 @@ function renderMarkdown(text) {
   const blocks = escapeHtml(text).split('\n\n');
   return blocks.map(block => {
     const lines = block.split('\n');
-    const listItems = lines.filter(l => l.match(/^[-*]\s/));
-    if (listItems.length === lines.length && listItems.length > 0) {
+    // Unordered list block
+    const ulItems = lines.filter(l => l.match(/^[-*]\s/));
+    if (ulItems.length === lines.length && ulItems.length > 0) {
       return '<ul class="list-disc pl-4 mb-2">' + lines.map(l =>
         '<li>' + formatInline(l.replace(/^[-*]\s/, '')) + '</li>'
       ).join('') + '</ul>';
     }
+    // Ordered list block
+    const olItems = lines.filter(l => l.match(/^\d+\.\s/));
+    if (olItems.length === lines.length && olItems.length > 0) {
+      return '<ol class="list-decimal pl-4 mb-2">' + lines.map(l =>
+        '<li>' + formatInline(l.replace(/^\d+\.\s/, '')) + '</li>'
+      ).join('') + '</ol>';
+    }
     return '<p class="mb-2">' + lines.map(l => {
       if (l.match(/^[-*]\s/)) return '<li class="ml-4 list-disc">' + formatInline(l.replace(/^[-*]\s/, '')) + '</li>';
+      if (l.match(/^\d+\.\s/)) return '<li class="ml-4 list-decimal">' + formatInline(l.replace(/^\d+\.\s/, '')) + '</li>';
       return formatInline(l);
     }).join('<br/>') + '</p>';
   }).join('');
@@ -134,7 +143,8 @@ function renderMarkdown(text) {
 function formatInline(text) {
   return text
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.+?)\*/g, '<em>$1</em>');
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/~~(.+?)~~/g, '<s>$1</s>');
 }
 
 // --- Image Resize ---
@@ -1216,6 +1226,80 @@ function RecipeFormModal({ recipe, onSave, onClose, history, setHistory, user, h
   const [photoFile, setPhotoFile] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(recipe?.photoUrl || '');
   const [uploading, setUploading] = useState(false);
+  const bereidingRef = useRef(null);
+  const undoStack = useRef([recipe?.bereiding || '']);
+  const redoStack = useRef([]);
+
+  function insertMarkdown(prefix, suffix) {
+    const ta = bereidingRef.current;
+    if (!ta) return;
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    const text = bereiding;
+    const selected = text.slice(start, end);
+    // Save undo state
+    undoStack.current.push(bereiding);
+    redoStack.current = [];
+    const newText = text.slice(0, start) + prefix + selected + suffix + text.slice(end);
+    setBereiding(newText);
+    // Restore cursor position after React re-render
+    setTimeout(() => {
+      ta.focus();
+      const cursorPos = selected ? start + prefix.length + selected.length + suffix.length : start + prefix.length;
+      ta.setSelectionRange(cursorPos, cursorPos);
+    }, 0);
+  }
+
+  function toggleLinePrefix(prefix) {
+    const ta = bereidingRef.current;
+    if (!ta) return;
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    const text = bereiding;
+    // Find line boundaries
+    const lineStart = text.lastIndexOf('\n', start - 1) + 1;
+    const lineEnd = text.indexOf('\n', end);
+    const selectedLines = text.slice(lineStart, lineEnd === -1 ? text.length : lineEnd);
+    undoStack.current.push(bereiding);
+    redoStack.current = [];
+    const lines = selectedLines.split('\n');
+    const allPrefixed = lines.every(l => l.startsWith(prefix));
+    let newLines;
+    if (allPrefixed) {
+      newLines = lines.map(l => l.slice(prefix.length));
+    } else {
+      newLines = lines.map((l, i) => {
+        if (prefix === '1. ') return (i + 1) + '. ' + l.replace(/^\d+\.\s/, '');
+        return prefix + l.replace(/^[-*]\s/, '');
+      });
+    }
+    const newText = text.slice(0, lineStart) + newLines.join('\n') + text.slice(lineEnd === -1 ? text.length : lineEnd);
+    setBereiding(newText);
+    setTimeout(() => ta.focus(), 0);
+  }
+
+  function handleUndo() {
+    if (undoStack.current.length <= 1) return;
+    const current = undoStack.current.pop();
+    redoStack.current.push(current);
+    setBereiding(undoStack.current[undoStack.current.length - 1]);
+    setTimeout(() => bereidingRef.current?.focus(), 0);
+  }
+
+  function handleRedo() {
+    if (redoStack.current.length === 0) return;
+    const next = redoStack.current.pop();
+    undoStack.current.push(next);
+    setBereiding(next);
+    setTimeout(() => bereidingRef.current?.focus(), 0);
+  }
+
+  function handleBereidingChange(e) {
+    const val = e.target.value;
+    undoStack.current.push(val);
+    redoStack.current = [];
+    setBereiding(val);
+  }
 
   function addIngredient() {
     setIngredients(prev => [...prev, { _id: genId(), name: '', amount: '', unit: 'stuks', scalable: true, category: 'Overig' }]);
@@ -1386,13 +1470,56 @@ function RecipeFormModal({ recipe, onSave, onClose, history, setHistory, user, h
         </button>
       </div>
 
-      {/* Bereiding */}
+      {/* Bereiding met toolbar */}
       <div className="mb-3">
         <label className="text-xs font-semibold text-slate-500 block mb-1">Bereiding</label>
-        <p className="text-[10px] text-slate-400 mb-1">Gebruik **vet**, *cursief*, en - voor opsommingen</p>
-        <textarea value={bereiding} onChange={(e) => setBereiding(e.target.value)}
-          rows={5} placeholder="Stap 1: Verwarm de oven voor op 200°C..."
-          className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm resize-y" />
+        <div className="border border-slate-200 rounded-xl overflow-hidden bg-white">
+          {/* Toolbar */}
+          <div className="flex items-center gap-0.5 px-2 py-1.5 bg-slate-50 border-b border-slate-200 flex-wrap">
+            <button type="button" onClick={() => insertMarkdown('**', '**')} title="Vet"
+              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-200 active:bg-slate-300 text-slate-600 font-bold text-sm transition-colors">B</button>
+            <button type="button" onClick={() => insertMarkdown('*', '*')} title="Cursief"
+              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-200 active:bg-slate-300 text-slate-600 italic text-sm transition-colors">I</button>
+            <button type="button" onClick={() => insertMarkdown('~~', '~~')} title="Doorhalen"
+              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-200 active:bg-slate-300 text-slate-600 line-through text-sm transition-colors">S</button>
+            <div className="w-px h-5 bg-slate-300 mx-1"></div>
+            <button type="button" onClick={() => toggleLinePrefix('- ')} title="Opsomming"
+              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-200 active:bg-slate-300 text-slate-600 transition-colors">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                <circle cx="1.5" cy="6" r="1" fill="currentColor" stroke="none" /><circle cx="1.5" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="1.5" cy="18" r="1" fill="currentColor" stroke="none" />
+              </svg>
+            </button>
+            <button type="button" onClick={() => toggleLinePrefix('1. ')} title="Genummerde lijst"
+              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-200 active:bg-slate-300 text-slate-600 transition-colors">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 6h13M8 12h13M8 18h13" />
+                <text x="1" y="8" fontSize="7" fill="currentColor" stroke="none" fontFamily="system-ui" fontWeight="bold">1</text>
+                <text x="1" y="14" fontSize="7" fill="currentColor" stroke="none" fontFamily="system-ui" fontWeight="bold">2</text>
+                <text x="1" y="20" fontSize="7" fill="currentColor" stroke="none" fontFamily="system-ui" fontWeight="bold">3</text>
+              </svg>
+            </button>
+            <div className="w-px h-5 bg-slate-300 mx-1"></div>
+            <button type="button" onClick={handleUndo} title="Ongedaan maken"
+              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-200 active:bg-slate-300 text-slate-400 transition-colors">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a5 5 0 015 5v0a5 5 0 01-5 5H8" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 6l-4 4 4 4" />
+              </svg>
+            </button>
+            <button type="button" onClick={handleRedo} title="Opnieuw"
+              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-200 active:bg-slate-300 text-slate-400 transition-colors">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 10H11a5 5 0 00-5 5v0a5 5 0 005 5h5" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 6l4 4-4 4" />
+              </svg>
+            </button>
+          </div>
+          {/* Textarea */}
+          <textarea ref={bereidingRef} value={bereiding} onChange={handleBereidingChange}
+            rows={6} placeholder="Stap 1: Verwarm de oven voor op 200°C..."
+            className="w-full px-3 py-2.5 text-sm resize-y border-0 outline-none focus:ring-0" />
+        </div>
       </div>
 
       {/* Link */}
