@@ -663,7 +663,7 @@
         await db.doc(`households/${householdId}/lists/${activeListId}/items/${doc.id}`).set(doc);
       }
 
-      async async function addItemFromProduct(p) {
+      async function addItemFromProduct(p) {
         const id = genId('li');
         const doc = {
           id,
