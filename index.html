@@ -576,6 +576,25 @@
         if (!confirm(`Verwijder "${p.name}"?`)) return;
         await db.doc(`households/${householdId}/products/${p.id}`).delete();
       }
+      async function addItemFromProduct(p) {
+        if (!activeListId) { alert('Maak eerst een lijst aan.'); return; }
+        const id = genId('li');
+        const doc = {
+          id,
+          productId: p.id,
+          nameSnapshot: p.name || '',
+          categorySnapshot: p.category || 'Overig',
+          amount: '1',
+          unit: 'st',
+          checked: false,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+          createdBy: currentUser?.uid || '',
+          source: 'product',
+        };
+        await db.doc(`households/${householdId}/lists/${activeListId}/items/${id}`).set(doc);
+      }
+
+
 
       return (
         <div className="pb-24">
@@ -663,21 +682,6 @@
         await db.doc(`households/${householdId}/lists/${activeListId}/items/${doc.id}`).set(doc);
       }
 
-      async function addItemFromProduct(p) {
-        const id = genId('li');
-        const doc = {
-          id,
-          productId: p.id,
-          nameSnapshot: p.name || '',
-          categorySnapshot: p.category || 'Overig',
-          amount: '',
-          unit: '',
-          checked: false,
-          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-          createdBy: currentUser?.uid || '',
-        };
-        await addItemDoc(doc);
-      }
 
       async function addFreeText() {
         const text = newText.trim();
