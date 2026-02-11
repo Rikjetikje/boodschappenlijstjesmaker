@@ -585,6 +585,509 @@
             <div className="divide-y divide-slate-100">
               {filtered.length === 0 ? (
                 <div className="p-6 text-center text-slate-400">
+                  <div className="text-4xl mb-1">📋</div>
+                  <div className="text-sm">Geen producten</div>
+                </div>
+              ) : filtered.map(p => (
+                <div key={p.id} className="p-3 flex items-center gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-sm truncate">{p.name}</div>
+                    <div className="text-xs text-slate-400 truncate">{p.category || 'Overig'}</div>
+                  </div>
+                  <button onClick={()=>startEdit(p)} className="w-9 h-9 rounded-xl bg-slate-100 text-slate-600 text-sm">✏️</button>
+                  <button onClick={()=>deleteProduct(p)} className="w-9 h-9 rounded-xl bg-slate-100 text-slate-600 text-sm">🗑️</button>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          {editingId && (
+            <Modal title="Product bewerken" onClose={()=>setEditingId(null)}>
+              <div className="space-y-3">
+                <div>
+                  <div className="text-xs font-semibold text-slate-500 mb-1">Naam</div>
+                  <input value={editName} onChange={(e)=>setEditName(e.target.value)}
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white" />
+                </div>
+                <div>
+                  <div className="text-xs font-semibold text-slate-500 mb-1">Categorie</div>
+                  <select value={editCategory} onChange={(e)=>setEditCategory(e.target.value)}
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-sm">
+                    {CATEGORY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div className="flex gap-2">
+                  <Button onClick={()=>setEditingId(null)} className="bg-slate-100 text-slate-700 flex-1">Annuleren</Button>
+                  <Button onClick={saveEdit} className="bg-emerald-600 text-white flex-1">Opslaan</Button>
+                </div>
+              </div>
+            </Modal>
+          )}
+        </div>
+      );
+    }
+
+    // ---------------- List tab ----------------
+    function ListTab({ householdId, activeListId, products, items, currentUser }) {
+      const [newText, setNewText] = useState('');
+      const [newCategory, setNewCategory] = useState('Overig');
+      const [showSuggestions, setShowSuggestions] = useState(false);
+
+      const suggestions = useMemo(() => {
+        const q = newText.trim().toLowerCase();
+        if (q.length < 2) return [];
+        return (products || [])
+          .filter(p => (p.name||'').toLowerCase().includes(q))
+          .sort((a,b) => (a.name||'').localeCompare(b.name||'', 'nl'))
+          .slice(0, 12);
+      }, [products, newText]);
+
+      useEffect(() => {
+        const q = newText.trim().toLowerCase();
+        if (!q) return;
+        const p = (products || []).find(x => (x.name||'').toLowerCase() === q);
+        if (p) setNewCategory(p.category || 'Overig');
+      }, [newText, products]);
+
+      async function addItemDoc(doc) {
+        if (!householdId || !activeListId) return;
+        await db.doc(`households/${householdId}/lists/${activeListId}/items/${doc.id}`).set(doc);
+      }
+
+      async function addItemFromProduct(p) {
+        const id = genId('li');
+        const doc = {
+          id,
+          productId: p.id,
+          nameSnapshot: p.name || '',
+          categorySnapshot: p.category || 'Overig',
+          amount: '',
+          unit: '',
+          checked: false,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+          createdBy: currentUser?.uid || '',
+        };
+        await addItemDoc(doc);
+      }
+
+      async function addFreeText() {
+        const text = newText.trim();
+        if (!text) return;
+
+        const p = (products || []).find(x => (x.name||'').toLowerCase() === text.toLowerCase());
+        if (p) {
+          await addItemFromProduct(p);
+        } else {
+          const id = genId('li');
+          const doc = {
+            id,
+            productId: null,
+            nameSnapshot: text,
+            categorySnapshot: newCategory || 'Overig',
+            amount: '',
+            unit: '',
+            checked: false,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            createdBy: currentUser?.uid || '',
+          };
+          await addItemDoc(doc);
+        }
+        setNewText('');
+        setShowSuggestions(false);
+      }
+
+      async function toggle(item) {
+        if (!householdId || !activeListId) return;
+        await db.doc(`households/${householdId}/lists/${activeListId}/items/${item.id}`).set({
+          checked: !item.checked
+        }, { merge: true });
+      }
+
+      async function remove(item) {
+        if (!householdId || !activeListId) return;
+        await db.doc(`households/${householdId}/lists/${activeListId}/items/${item.id}`).delete();
+      }
+
+      const byCategory = useMemo(() => {
+        const productById = new Map((products || []).map(p => [p.id, p]));
+        const map = {};
+        (items || []).forEach(it => {
+          const p = it.productId ? productById.get(it.productId) : null;
+          const name = (p?.name) || it.nameSnapshot || '';
+          const cat = (p?.category) || it.categorySnapshot || 'Overig';
+          const key = cat || 'Overig';
+          if (!map[key]) map[key] = [];
+          map[key].push({ ...it, _name: name, _cat: cat });
+        });
+        const cats = Object.keys(map).sort((a,b) => CATEGORY_OPTIONS.indexOf(a) - CATEGORY_OPTIONS.indexOf(b));
+        return cats.map(c => ({ category: c, items: map[c].sort((a,b)=> (a._name||'').localeCompare(b._name||'', 'nl')) }));
+      }, [items, products]);
+
+      return (
+        <div className="pb-24">
+          <div className="mb-3 relative">
+            <div className="flex gap-2">
+              <input value={newText} onChange={(e)=>{ setNewText(e.target.value); setShowSuggestions(true); }}
+                onFocus={()=> newText.trim().length>=2 && setShowSuggestions(true)}
+                onBlur={()=> setTimeout(()=>setShowSuggestions(false), 150)}
+                onKeyDown={(e)=>{ if (e.key === 'Enter') { e.preventDefault(); addFreeText(); } }}
+                placeholder="Zoek product of typ iets nieuws…"
+                className="flex-1 px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm" />
+              <Button onClick={addFreeText} className="bg-emerald-600 text-white w-12 px-0">+</Button>
+            </div>
+
+            {showSuggestions && suggestions.length > 0 && (
+              <div className="absolute left-0 right-14 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-30 overflow-hidden">
+                {suggestions.map(s => (
+                  <button key={s.id} onMouseDown={(e)=>e.preventDefault()}
+                    onClick={()=>{ addItemFromProduct(s); setNewText(''); setShowSuggestions(false); }}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 flex items-center gap-2 border-b border-slate-100 last:border-b-0">
+                    <span className="flex-1 truncate">{s.name}</span>
+                    <span className="text-[11px] text-slate-400 shrink-0">{(s.category||'Overig').split(',')[0]}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <Card>
+            <div className="p-3 border-b border-slate-100 text-xs text-slate-500">
+              Items: gekoppeld aan productId (als mogelijk) + snapshot als fallback.
+            </div>
+            <div className="p-3 space-y-3">
+              {byCategory.length === 0 ? (
+                <div className="text-center py-10 text-slate-400">
+                  <div className="text-4xl mb-1">🛒</div>
+                  <div className="text-sm">Je lijst is leeg</div>
+                </div>
+              ) : byCategory.map(group => (
+                <div key={group.category}>
+                  <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide px-1 mb-1">
+                    {group.category}
+                  </div>
+                  <div className="space-y-1">
+                    {group.items.map(it => (
+                      <div key={it.id} className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-2">
+                        <button onClick={()=>toggle(it)} className={
+                          "w-6 h-6 rounded-lg border flex items-center justify-center text-xs " +
+                          (it.checked ? "bg-emerald-600 border-emerald-600 text-white" : "bg-white border-slate-300 text-slate-400")
+                        }>
+                          {it.checked ? "✓" : ""}
+                        </button>
+                        <div className={"flex-1 min-w-0 text-sm " + (it.checked ? "line-through text-slate-400" : "text-slate-800")}>
+                          {it._name}
+                        </div>
+                        <button onClick={()=>remove(it)} className="w-8 h-8 rounded-xl bg-slate-100 text-slate-600 text-sm">🗑️</button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </div>
+      );
+    }
+
+    // ---------------- Recipes tab ----------------
+    function RecipesTab({ householdId, recipes, products, activeListId, currentUser }) {
+      const [query, setQuery] = useState('');
+      const [openId, setOpenId] = useState(null); // recipe id in modal
+      const [draft, setDraft] = useState(null);   // editable recipe
+      const [quickServings, setQuickServings] = useState(5);
+      const [expandedId, setExpandedId] = useState(null);
+      const [pickMap, setPickMap] = useState({});
+const filtered = useMemo(() => {
+        const q = query.trim().toLowerCase();
+        let rs = recipes || [];
+        if (q) rs = rs.filter(r => (r.name||'').toLowerCase().includes(q));
+        rs = [...rs].sort((a,b) => (a.name||'').localeCompare(b.name||'', 'nl'));
+        return rs;
+      }, [recipes, query]);
+
+      function newRecipe() {
+        const id = genId('r');
+        const baseServings = 5;
+        const rec = {
+          id,
+          name: 'Nieuw recept',
+          baseServings,
+          ingredients: [],
+          preparationHtml: '',
+          createdAt: null,
+          createdBy: currentUser?.uid || '',
+          updatedAt: null,
+          updatedBy: currentUser?.uid || '',
+        };
+        setOpenId(id);
+        setDraft(rec);
+}
+
+      function editRecipe(r) {
+        setOpenId(r.id);
+        setDraft(JSON.parse(JSON.stringify(r)));
+}
+
+      async function saveRecipe() {
+        if (!householdId || !draft) return;
+        const id = draft.id || genId('r');
+        const baseServings = clamp(parseInt(draft.baseServings || 5, 10) || 4, 1, 99);
+        const payload = {
+          ...draft,
+          id,
+          name: (draft.name || '').trim() || 'Recept',
+          baseServings,
+          ingredients: Array.isArray(draft.ingredients) ? draft.ingredients : [],
+          preparationHtml: draft.preparationHtml || '',
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          updatedBy: currentUser?.uid || '',
+        };
+        // if new, set createdAt
+        const ref = db.doc(`households/${householdId}/recipes/${id}`);
+        const snap = await ref.get();
+        if (!snap.exists) {
+          payload.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+          payload.createdBy = currentUser?.uid || '';
+        }
+        await ref.set(payload, { merge: true });
+        setOpenId(null);
+        setDraft(null);
+      }
+
+      async function deleteRecipe(r) {
+        if (!householdId) return;
+        if (!confirm(`Recept verwijderen: "${r.name}"?`)) return;
+        await db.doc(`households/${householdId}/recipes/${r.id}`).delete();
+      }
+
+      function addIngredientRow() {
+        setDraft(d => ({
+          ...d,
+          ingredients: [...(d.ingredients||[]), {
+            _id: genId('ing'),
+            productId: null,
+            nameSnapshot: '',
+            categorySnapshot: 'Overig',
+            amount: '',
+            unit: 'st',
+            
+          }]
+        }));
+      }
+
+      function updateIng(idx, patch) {
+        setDraft(d => {
+          const arr = [...(d.ingredients||[])];
+          arr[idx] = { ...arr[idx], ...patch };
+          return { ...d, ingredients: arr };
+        });
+      }
+
+      function removeIng(idx) {
+        setDraft(d => {
+          const arr = [...(d.ingredients||[])];
+          arr.splice(idx, 1);
+          return { ...d, ingredients: arr };
+        });
+      }
+
+      function findProductById(pid) {
+        return (products||[]).find(p => p.id === pid) || null;
+      }
+
+      function resolveIngDisplay(ing) {
+        const p = ing.productId ? findProductById(ing.productId) : null;
+        const name = (p?.name) || ing.nameSnapshot || '';
+        const cat = (p?.category) || ing.categorySnapshot || 'Overig';
+        return { name, cat };
+      }
+
+      const DISCRETE_UNITS = ['st','stuk','bl','blik','zak','pak','pot','fles','tube','bol','krop','teen','tenen','knol','bus'];
+
+      function scaleAmountText(amountText, unitText, base, target) {
+        const a = String(amountText || '').trim();
+        if (!a) return '';
+        const num = parseFloat(a.replace(',', '.'));
+        if (!isFinite(num)) return amountText; // keep free text
+        const factor = (target || base) / (base || 1);
+        let out = num * factor;
+        const unit = String(unitText || '').trim().toLowerCase();
+        const isDiscrete = DISCRETE_UNITS.includes(unit);
+        if (isDiscrete) {
+          out = Math.ceil(out - 1e-9);
+        } else {
+          // Keep nice rounding
+          out = Math.round(out * 100) / 100;
+        }
+        // Format: avoid trailing .0
+        const asInt = Math.round(out);
+        const pretty = (Math.abs(out - asInt) < 1e-9) ? String(asInt) : String(out);
+        return pretty.replace('.', ',');
+      }
+
+      function scaledAmount(ing, base, target) {
+        return scaleAmountText(ing.amount || '', ing.unit || '', base, target);
+      }
+
+      async function addRecipeToList(r, targetServings, pickState) {
+        if (!householdId || !activeListId) { alert('Geen actieve lijst gevonden.'); return; }
+        const base = r.baseServings || 4;
+        const target = targetServings || 5 || base;
+        const productById = new Map((products||[]).map(p => [p.id, p]));
+
+        const batch = db.batch();
+        const ings = (r.ingredients || []);
+        ings.forEach(ing => {
+          const p = ing.productId ? productById.get(ing.productId) : null;
+          const name = (p?.name) || ing.nameSnapshot || '';
+          if (!name) return;
+
+          const cat = (p?.category) || ing.categorySnapshot || 'Overig';
+          const id = genId('li');
+          batch.set(db.doc(`households/${householdId}/lists/${activeListId}/items/${id}`), {
+            id,
+            productId: p?.id || null,
+            nameSnapshot: name,
+            categorySnapshot: cat,
+            amount: scaledAmount(ing, base, target),
+            unit: ing.unit || '',
+            checked: false,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            createdBy: currentUser?.uid || '',
+            source: `recipe:${r.id}`,
+          });
+        });
+
+        // Extras (one-off additions)
+        const extras = (pickState?.extras || []).filter(x => x && x.include !== false);
+        extras.forEach((extra) => {
+          const p = extra.productId ? productById.get(extra.productId) : null;
+          const name = (p?.name) || extra.nameSnapshot || '';
+          if (!name) return;
+          const cat = (p?.category) || extra.categorySnapshot || 'Overig';
+          const id = genId('li');
+          batch.set(db.doc(`households/${householdId}/lists/${activeListId}/items/${id}`), {
+            id,
+            productId: p?.id || null,
+            nameSnapshot: name,
+            categorySnapshot: cat,
+            amount: scaledAmount({ amount: extra.amount || '', unit: extra.unit || 'st' }, base, target),
+            unit: extra.unit || 'st',
+            checked: false,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            createdBy: currentUser?.uid || '',
+            source: `recipe:${r.id}`,
+          });
+        });
+
+        await batch.commit();
+        alert('Ingrediënten toegevoegd aan je lijst.');
+      }
+
+      const productSuggestions = (text) => {
+        const q = (text||'').trim().toLowerCase();
+        if (q.length < 2) return [];
+        return (products||[]).filter(p => (p.name||'').toLowerCase().includes(q))
+          .sort((a,b)=>(a.name||'').localeCompare(b.name||'', 'nl'))
+          .slice(0, 8);
+      };
+
+      function ensurePickState(recipe) {
+        setPickMap(prev => {
+          if (prev[recipe.id]) return prev;
+          const picks = {};
+          const overrides = {};
+          (recipe.ingredients || []).forEach((ing, i) => {
+            const key = ing._id || String(i);
+            picks[key] = true;
+            overrides[key] = { amount: String(ing.amount || ''), unit: String(ing.unit || 'st') };
+          });
+          return { ...prev, [recipe.id]: { servings: 5, picks, overrides, extras: [] } };
+        });
+      }
+
+      function togglePick(recipeId, key) {
+        setPickMap(prev => {
+          const st = prev[recipeId];
+          if (!st) return prev;
+          const cur = st.picks?.[key] !== false;
+          return { ...prev, [recipeId]: { ...st, picks: { ...st.picks, [key]: !cur } } };
+        });
+      }
+
+      function setServing(recipeId, next) {
+        setPickMap(prev => {
+          const st = prev[recipeId];
+          if (!st) return prev;
+          return { ...prev, [recipeId]: { ...st, servings: clamp(next,1,99) } };
+        });
+      }
+
+      function setOverride(recipeId, key, patch) {
+        setPickMap(prev => {
+          const st = prev[recipeId];
+          if (!st) return prev;
+          return { ...prev, [recipeId]: { ...st, overrides: { ...st.overrides, [key]: { ...st.overrides?.[key], ...patch } } } };
+        });
+      }
+
+      function addExtraRow(recipeId) {
+        setPickMap(prev => {
+          const st = prev[recipeId];
+          if (!st) return prev;
+          const extras = [...(st.extras || [])];
+          extras.push({
+            _tmpId: genId('x'),
+            productId: null,
+            nameSnapshot: '',
+            categorySnapshot: 'Overig',
+            amount: '',
+            unit: 'st',
+            include: true
+          });
+          return { ...prev, [recipeId]: { ...st, extras } };
+        });
+      }
+
+      function updateExtra(recipeId, tmpId, patch) {
+        setPickMap(prev => {
+          const st = prev[recipeId];
+          if (!st) return prev;
+          const extras = (st.extras || []).map(x => x._tmpId === tmpId ? { ...x, ...patch } : x);
+          return { ...prev, [recipeId]: { ...st, extras } };
+        });
+      }
+
+      function removeExtra(recipeId, tmpId) {
+        setPickMap(prev => {
+          const st = prev[recipeId];
+          if (!st) return prev;
+          const extras = (st.extras || []).filter(x => x._tmpId !== tmpId);
+          return { ...prev, [recipeId]: { ...st, extras } };
+        });
+      }
+
+      return (
+        <div className="pb-24">
+          <div className="mb-3 flex gap-2">
+            <input value={query} onChange={(e)=>setQuery(e.target.value)}
+              placeholder="Zoek recept…"
+              className="flex-1 px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm" />
+            <Button onClick={newRecipe} className="bg-emerald-600 text-white px-3">+ Recept</Button>
+          </div>
+            <div className="flex items-center gap-2">
+              <button onClick={()=>setQuickServings(s=>clamp((s||5)-1,1,99))}
+                className="w-9 h-9 rounded-xl bg-white border border-slate-200 text-slate-700 font-bold">−</button>
+              <div className="min-w-[3rem] text-center font-mono font-bold text-emerald-700">{quickServings}</div>
+              <button onClick={()=>setQuickServings(s=>clamp((s||5)+1,1,99))}
+                className="w-9 h-9 rounded-xl bg-white border border-slate-200 text-slate-700 font-bold">+</button>
+            </div>
+          </div>
+
+          <Card>
+            <div className="divide-y divide-slate-100">
+              {filtered.length === 0 ? (
+                <div className="p-6 text-center text-slate-400">
                   <div className="text-4xl mb-1">🍲</div>
                   <div className="text-sm">Nog geen recepten</div>
                 </div>
@@ -657,7 +1160,7 @@
                                   <div className="text-[11px] text-slate-400">{disp.cat}</div>
                                 </div>
 
-                                <div className="mt-2 grid grid-cols-3 gap-2">
+                                <div className="mt-2 grid grid-cols-2 gap-2">
                                   <div>
                                     <div className="text-[11px] font-semibold text-slate-500 mb-1">Hoeveelheid</div>
                                     <input
@@ -677,9 +1180,6 @@
                                       <option value="gr">gr</option>
                                       <option value="ml">ml</option>
                                     </select>
-                                  </div>
-                                  <div className="flex items-end">
-                                    <div className="text-[11px] text-slate-400"> </div>
                                   </div>
                                 </div>
                               </div>
