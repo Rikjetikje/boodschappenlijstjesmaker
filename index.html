@@ -34,7 +34,18 @@
 <body class="bg-slate-50">
   <div id="root"></div>
 
-  <script type="text/babel">
+  <script>
+  // Global helper (outside Babel wrapper) so any transformed chunk can access it.
+  function formatNum(n) {
+    if (!isFinite(n)) return '';
+    const rounded = Math.round(n * 100) / 100;
+    const isInt = Math.abs(rounded - Math.round(rounded)) < 1e-9;
+    const s = isInt ? String(Math.round(rounded)) : String(rounded);
+    return s.replace('.', ',');
+  }
+</script>
+
+<script type="text/babel">
     const { useEffect, useMemo, useRef, useState } = React;
 
     // ---------------- Firebase ----------------
@@ -72,6 +83,10 @@
       const s = isInt ? String(Math.round(rounded)) : String(rounded);
       return s.replace('.', ',');
     }
+
+    // Expose for safety (in case Babel wraps scopes)
+    window.formatNum = formatNum;
+
 
     function titleFromLegacyDocId(docId) {
       // best-effort: "aardappelen_kruimig_3_kg" -> "aardappelen kruimig 3 kg"
