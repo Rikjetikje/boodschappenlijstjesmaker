@@ -663,7 +663,7 @@
         await db.doc(`households/${householdId}/lists/${activeListId}/items/${doc.id}`).set(doc);
       }
 
-      async function addItemFromProduct(p) {
+      async async function addItemFromProduct(p) {
         const id = genId('li');
         const doc = {
           id,
@@ -935,12 +935,14 @@ const filtered = useMemo(() => {
       }
 
       function scaledAmount(ing, base, target) {
-        return scaleAmountText(ing.amount || '', ing.unit || '', base, target);
+        const amount = (ing.amount ?? ing.qty ?? ing.quantity ?? ing.amountText ?? '');
+        const unit = (ing.unit ?? ing.unitText ?? '');
+        return scaleAmountText(amount, unit, base, target);
       }
 
       async function addRecipeToList(r, targetServings, pickState) {
         if (!householdId || !activeListId) { alert('Geen actieve lijst gevonden.'); return; }
-        const base = r.baseServings || 5;
+        const base = r.baseServings || r.servings || r.persons || 5;
         const target = targetServings || 5 || base;
         const productById = new Map((products||[]).map(p => [p.id, p]));
 
@@ -962,7 +964,8 @@ const filtered = useMemo(() => {
 
           // Calculate amount if numeric; otherwise keep as-is
           let amountStr = scaledAmount(ing, base, target);
-          let unit = (ing.unit || 'st');
+          let unit = (ing.unit ?? ing.unitText ?? 'st');
+          if (String(unit).toLowerCase()==='g') unit = 'gr';
           const num = parseFloat(String(amountStr).replace(',','.'));
           if (!isNaN(num)) {
             let scaled = num * mult;
