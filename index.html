@@ -129,7 +129,7 @@
       useEffect(() => {
         if (!user) { setProfile(null); setLoading(false); return; }
         setLoading(true);
-        const ref = db.doc(\`users/\${user.uid}\`);
+        const ref = db.doc(`users/${user.uid}`);
         const unsub = ref.onSnapshot(snap => {
           setProfile(snap.exists ? snap.data() : null);
           setLoading(false);
@@ -142,7 +142,7 @@
 
       async function setActiveListId(listId) {
         if (!user) return;
-        try { await db.doc(\`users/\${user.uid}\`).set({ activeListId: listId }, { merge: true }); }
+        try { await db.doc(`users/${user.uid}`).set({ activeListId: listId }, { merge: true }); }
         catch(e) { console.warn("setActiveListId failed:", e); }
       }
 
@@ -168,13 +168,13 @@
         setSyncing(true);
 
         unsubs.push(
-          db.collection(\`households/\${hid}/members\`).onSnapshot(snap => {
+          db.collection(`households/${hid}/members`).onSnapshot(snap => {
             setMembers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
           }, err => console.error("Members listener error:", err))
         );
 
         unsubs.push(
-          db.collection(\`households/\${hid}/lists_meta\`).onSnapshot(snap => {
+          db.collection(`households/${hid}/lists_meta`).onSnapshot(snap => {
             const ls = snap.docs.map(d => ({ id: d.id, ...d.data() }))
               .sort((a,b) => (a.createdAt?.seconds||0) - (b.createdAt?.seconds||0));
             setLists(ls);
@@ -182,7 +182,7 @@
         );
 
         unsubs.push(
-          db.collection(\`households/\${hid}/products\`).onSnapshot(snap => {
+          db.collection(`households/${hid}/products`).onSnapshot(snap => {
             const psAll = snap.docs.map(d => ({ id: d.id, ...d.data() }));
             // Only show v2 products (stable IDs) to avoid duplicates with legacy docs.
             const ps = psAll.filter(p => p.schemaVersion === 2 || (typeof p.id === 'string' && p.id.startsWith('p_')));
@@ -192,7 +192,7 @@
         );
 
         unsubs.push(
-          db.collection(\`households/\${hid}/recipes\`).onSnapshot(snap => {
+          db.collection(`households/${hid}/recipes`).onSnapshot(snap => {
             const rs = snap.docs.map(d => ({ id: d.id, ...d.data() }))
               .sort((a,b) => (a.updatedAt?.seconds||0) < (b.updatedAt?.seconds||0) ? 1 : -1);
             setRecipes(rs);
@@ -205,7 +205,7 @@
       useEffect(() => {
         if (!user || !householdId || !activeListId) { setItems([]); return; }
         const hid = householdId;
-        const ref = db.collection(\`households/\${hid}/lists/\${activeListId}/items\`);
+        const ref = db.collection(`households/${hid}/lists/${activeListId}/items`);
         const unsub = ref.onSnapshot(snap => {
           setItems(snap.docs.map(d => ({ id: d.id, ...d.data() })));
         }, err => console.error("List items listener error:", err));
@@ -330,25 +330,25 @@
 
           // ensure code uniqueness (best-effort)
           for (let i=0;i<5;i++) {
-            const s = await db.doc(\`invite_codes/\${inviteCode}\`).get();
+            const s = await db.doc(`invite_codes/${inviteCode}`).get();
             if (!s.exists) break;
             inviteCode = makeCode();
           }
 
-          await db.doc(\`households/\${householdId}/meta/info\`).set({
+          await db.doc(`households/${householdId}/meta/info`).set({
             name: householdName.trim() || 'Ons huishouden',
             code: inviteCode,
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
             createdBy: user.uid,
           });
 
-          await db.doc(\`invite_codes/\${inviteCode}\`).set({
+          await db.doc(`invite_codes/${inviteCode}`).set({
             householdId,
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
           });
 
           // member first
-          await db.doc(\`households/\${householdId}/members/\${user.uid}\`).set({
+          await db.doc(`households/${householdId}/members/${user.uid}`).set({
             displayName: user.displayName || '',
             photoURL: user.photoURL || '',
             joinedAt: firebase.firestore.FieldValue.serverTimestamp(),
@@ -356,13 +356,13 @@
 
           // default list
           const listId = genId('l');
-          await db.doc(\`households/\${householdId}/lists_meta/\${listId}\`).set({
+          await db.doc(`households/${householdId}/lists_meta/${listId}`).set({
             name: 'Boodschappen',
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
             createdBy: user.uid,
           });
 
-          await db.doc(\`users/\${user.uid}\`).set({
+          await db.doc(`users/${user.uid}`).set({
             householdId,
             activeListId: listId,
             displayName: user.displayName || '',
@@ -382,12 +382,12 @@
         try {
           const joinCode = code.trim().toUpperCase();
           if (joinCode.length !== 6) { setError('Code moet 6 tekens zijn.'); setBusy(false); return; }
-          const codeSnap = await db.doc(\`invite_codes/\${joinCode}\`).get();
+          const codeSnap = await db.doc(`invite_codes/${joinCode}`).get();
           if (!codeSnap.exists) { setError('Code niet gevonden.'); setBusy(false); return; }
           const { householdId } = codeSnap.data();
 
           // 1) member eerst
-          await db.doc(\`households/\${householdId}/members/\${user.uid}\`).set({
+          await db.doc(`households/${householdId}/members/${user.uid}`).set({
             displayName: user.displayName || '',
             photoURL: user.photoURL || '',
             joinedAt: firebase.firestore.FieldValue.serverTimestamp(),
@@ -395,19 +395,19 @@
 
           // 2) daarna: kies eerste lijst
           let activeListId = null;
-          const listsSnap = await db.collection(\`households/\${householdId}/lists_meta\`).orderBy('createdAt','asc').limit(1).get();
+          const listsSnap = await db.collection(`households/${householdId}/lists_meta`).orderBy('createdAt','asc').limit(1).get();
           if (!listsSnap.empty) activeListId = listsSnap.docs[0].id;
 
           if (!activeListId) {
             activeListId = genId('l');
-            await db.doc(\`households/\${householdId}/lists_meta/\${activeListId}\`).set({
+            await db.doc(`households/${householdId}/lists_meta/${activeListId}`).set({
               name: 'Boodschappen',
               createdAt: firebase.firestore.FieldValue.serverTimestamp(),
               createdBy: user.uid,
             });
           }
 
-          await db.doc(\`users/\${user.uid}\`).set({
+          await db.doc(`users/${user.uid}`).set({
             householdId,
             activeListId,
             displayName: user.displayName || '',
@@ -541,7 +541,7 @@
           updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
           updatedBy: currentUser?.uid || '',
         };
-        await db.doc(\`households/\${householdId}/products/\${id}\`).set(product);
+        await db.doc(`households/${householdId}/products/${id}`).set(product);
         setQuery('');
       }
 
@@ -555,7 +555,7 @@
         if (!householdId || !editingId) return;
         const name = editName.trim();
         if (!name) return;
-        await db.doc(\`households/\${householdId}/products/\${editingId}\`).set({
+        await db.doc(`households/${householdId}/products/${editingId}`).set({
           name,
           category: editCategory || 'Overig',
           updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
@@ -566,8 +566,8 @@
 
       async function deleteProduct(p) {
         if (!householdId) return;
-        if (!confirm(\`Verwijder "\${p.name}"?\`)) return;
-        await db.doc(\`households/\${householdId}/products/\${p.id}\`).delete();
+        if (!confirm(`Verwijder "${p.name}"?`)) return;
+        await db.doc(`households/${householdId}/products/${p.id}`).delete();
       }
 
       return (
@@ -651,7 +651,7 @@
 
       async function addItemDoc(doc) {
         if (!householdId || !activeListId) return;
-        await db.doc(\`households/\${householdId}/lists/\${activeListId}/items/\${doc.id}\`).set(doc);
+        await db.doc(`households/${householdId}/lists/${activeListId}/items/${doc.id}`).set(doc);
       }
 
       async function addItemFromProduct(p) {
@@ -698,14 +698,14 @@
 
       async function toggle(item) {
         if (!householdId || !activeListId) return;
-        await db.doc(\`households/\${householdId}/lists/\${activeListId}/items/\${item.id}\`).set({
+        await db.doc(`households/${householdId}/lists/${activeListId}/items/${item.id}`).set({
           checked: !item.checked
         }, { merge: true });
       }
 
       async function remove(item) {
         if (!householdId || !activeListId) return;
-        await db.doc(\`households/\${householdId}/lists/\${activeListId}/items/\${item.id}\`).delete();
+        await db.doc(`households/${householdId}/lists/${activeListId}/items/${item.id}`).delete();
       }
 
       const byCategory = useMemo(() => {
@@ -1172,7 +1172,7 @@
       // Load household info (name + code)
       useEffect(() => {
         if (!user || !householdId) { setHouseholdInfo(null); return; }
-        const ref = db.doc(\`households/\${householdId}/meta/info\`);
+        const ref = db.doc(`households/${householdId}/meta/info`);
         const unsub = ref.onSnapshot(snap => {
           setHouseholdInfo(snap.exists ? snap.data() : null);
         }, err => console.error("Household info error:", err));
@@ -1285,7 +1285,7 @@
       async function handleCreateList(name) {
         if (!householdId || !user) return;
         const listId = genId('l');
-        await db.doc(\`households/\${householdId}/lists_meta/\${listId}\`).set({
+        await db.doc(`households/${householdId}/lists_meta/${listId}`).set({
           name: (name || '').trim() || 'Nieuwe lijst',
           createdAt: firebase.firestore.FieldValue.serverTimestamp(),
           createdBy: user.uid,
@@ -1297,9 +1297,9 @@
         if (!householdId) return;
         if (!confirm('Lijst verwijderen? Items in die lijst worden ook verwijderd.')) return;
 
-        await db.doc(\`households/\${householdId}/lists_meta/\${listId}\`).delete();
+        await db.doc(`households/${householdId}/lists_meta/${listId}`).delete();
 
-        const snap = await db.collection(\`households/\${householdId}/lists/\${listId}/items\`).get();
+        const snap = await db.collection(`households/${householdId}/lists/${listId}/items`).get();
         if (!snap.empty) {
           const batch = db.batch();
           snap.docs.forEach(d => batch.delete(d.ref));
