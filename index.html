@@ -1240,20 +1240,30 @@ async function addRecipeToList(r, targetServings, pickState) {
           }
 
           // Calculate amount (string) and determine how much to increment the counter
-          let amountStr = (ing.amount ?? ing.qty ?? ing.quantity ?? '');
           let unit = (ing.unit ?? ing.unitText ?? 'st');
           if (String(unit).toLowerCase()==='g') unit = 'gr';
-          // For now: no scaling by servings; recipes already store quantities for their base servings.
-          const num = parseFloat(String(amountStr).replace(',','.'));
+
+          // Quantity overrides from the picker (defaults to recipe quantity)
+          const overrideQty = (pickState?.qtys && pickState.qtys[key] != null) ? Number(pickState.qtys[key]) : null;
+
+          let amountStr = (ing.amount ?? ing.qty ?? ing.quantity ?? '');
           let qtyInc = 1;
-          if (isFinite(num)) {
-            if (DISCRETE_UNITS.includes(String(unit||'').toLowerCase())) {
-              qtyInc = clamp(Math.ceil(num), 0, 99);
-            }
-            // Keep amount display tidy
-            amountStr = formatNum(num);
+
+          if (overrideQty != null && isFinite(overrideQty)) {
+            // Treat as discrete counter (product-based ingredient)
+            qtyInc = clamp(Math.round(overrideQty), 0, 99);
+            amountStr = String(qtyInc);
           } else {
-            amountStr = String(amountStr || '');
+            // Fallback: parse from stored amount
+            const num = parseFloat(String(amountStr).replace(',','.'));
+            if (isFinite(num)) {
+              if (DISCRETE_UNITS.includes(String(unit||'').toLowerCase())) {
+                qtyInc = clamp(Math.ceil(num), 0, 99);
+              }
+              amountStr = formatNum(num);
+            } else {
+              amountStr = String(amountStr || '');
+            }
           }
           const id = itemIdForProduct(ensuredProductId);
           batch.set(db.doc(`households/${householdId}/lists/${activeListId}/items/${id}`), {
@@ -1300,26 +1310,57 @@ function ensurePickState(recipe) {
         setPickMap(prev => {
           if (prev[recipe.id]) return prev;
           const picks = {};
+          const qtys = {};
           (recipe.ingredients || []).forEach((ing, i) => {
             const key = ing._id || String(i);
-            picks[key] = true;
+            const def = parseDefaultQty(ing);
+            qtys[key] = def;
+            picks[key] = def > 0;
           });
-          return { ...prev, [recipe.id]: { picks } };
+          return { ...prev, [recipe.id]: { picks, qtys } };
         });
       }
 
-      function togglePick(recipeId, key) {
+
+      function setQty(recipeId, key, nextQty, defaultQty) {
+        const q = clamp(parseInt(nextQty || 0, 10) || 0, 0, 99);
+        setPickMap(prev => {
+          const st = prev[recipeId];
+          if (!st) return prev;
+          const curPicks = st.picks || {};
+          const curQtys = st.qtys || {};
+          const shouldPick = q > 0;
+          return {
+            ...prev,
+            [recipeId]: {
+              ...st,
+              picks: { ...curPicks, [key]: shouldPick },
+              qtys: { ...curQtys, [key]: q },
+            }
+          };
+        });
+      }
+
+      function togglePick(recipeId, key, defaultQty) {
+        const def = clamp(parseInt(defaultQty || 1, 10) || 1, 0, 99);
         setPickMap(prev => {
           const st = prev[recipeId];
           if (!st) return prev;
           const curOn = st.picks?.[key] !== false;
           const nextOn = !curOn;
+          const curQty = (st.qtys && st.qtys[key] != null) ? Number(st.qtys[key]) : def;
+          const nextQty = nextOn ? (curQty > 0 ? curQty : def) : 0;
           return {
             ...prev,
             [recipeId]: {
               ...st,
-              picks: { ...st.picks, [key]: nextOn },
+              picks: { ...(st.picks||{}), [key]: nextOn },
+              qtys: { ...(st.qtys||{}), [key]: clamp(parseInt(nextQty||0,10)||0,0,99) },
             }
+          };
+        });
+      }
+
           };
         });
       }
@@ -1375,6 +1416,7 @@ function ensurePickState(recipe) {
                           {(r.ingredients||[]).map((ing, idx) => {
                             const key = ing._id || String(idx);
                             const disp = resolveIngDisplay(ing);
+                            const defaultQty = parseDefaultQty(ing);
                             const checked = st.picks?.[key] !== false;
                                                         return (
                               <div key={key} className="flex items-center gap-2 py-2 border-b border-slate-100 last:border-b-0">
@@ -1389,7 +1431,28 @@ function ensurePickState(recipe) {
                                   {disp.name || "(onbekend)"}
                                 </div>
 
-                                <div className="text-[11px] text-slate-500 whitespace-nowrap">{(ing.amount ? String(ing.amount) : "")}</div>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <button
+                                    onClick={() => setQty(r.id, key, (Number(st.qtys?.[key] ?? defaultQty) || 0) - 1, defaultQty)}
+                                    className={"w-7 h-7 rounded-lg text-sm flex items-center justify-center " + ((Number(st.qtys?.[key] ?? defaultQty) || 0) <= 0 ? "bg-slate-100 text-slate-300" : "bg-slate-100 text-slate-700")}
+                                    title="Minder"
+                                  >−</button>
+                                  <div className={"w-10 text-center text-sm tabular-nums " + (checked ? "text-slate-800" : "text-slate-400")}>
+                                    {Number(st.qtys?.[key] ?? defaultQty) || 0}
+                                  </div>
+                                  <button
+                                    onClick={() => setQty(r.id, key, (Number(st.qtys?.[key] ?? defaultQty) || 0) + 1, defaultQty)}
+                                    className="w-7 h-7 rounded-lg bg-slate-100 text-slate-700 text-sm flex items-center justify-center"
+                                    title="Meer"
+                                  >+</button>
+                                  {(Number(st.qtys?.[key] ?? defaultQty) || 0) !== defaultQty && (
+                                    <button
+                                      onClick={() => setQty(r.id, key, defaultQty, defaultQty)}
+                                      className="w-7 h-7 rounded-lg bg-slate-100 text-slate-700 text-sm flex items-center justify-center"
+                                      title="Terug naar recept"
+                                    >↺</button>
+                                  )}
+                                </div>
                               </div>
                             );
                           })}
