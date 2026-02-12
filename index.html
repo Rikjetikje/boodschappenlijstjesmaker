@@ -1255,7 +1255,7 @@ async function addRecipeToList(r, targetServings, pickState) {
           } else {
             amountStr = String(amountStr || '');
           }
-const id = itemIdForProduct(ensuredProductId);
+          const id = itemIdForProduct(ensuredProductId);
           batch.set(db.doc(`households/${householdId}/lists/${activeListId}/items/${id}`), {
             id,
             productId: ensuredProductId,
