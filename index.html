@@ -581,6 +581,8 @@ const { useEffect, useMemo, useRef, useState } = React;
           category: 'Overig',
           updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
           updatedBy: currentUser?.uid || '',
+            updatedByName: currentUser?.displayName || '',
+            updatedByPhotoURL: currentUser?.photoURL || '',
         };
         await db.doc(`households/${householdId}/products/${id}`).set(product);
         setQuery('');
@@ -601,6 +603,8 @@ const { useEffect, useMemo, useRef, useState } = React;
           category: editCategory || 'Overig',
           updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
           updatedBy: currentUser?.uid || '',
+            updatedByName: currentUser?.displayName || '',
+            updatedByPhotoURL: currentUser?.photoURL || '',
         }, { merge: true });
         setEditingId(null);
       }
@@ -665,6 +669,8 @@ const { useEffect, useMemo, useRef, useState } = React;
           categorySnapshot: p.category || existing.categorySnapshot || 'Overig',
           updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
           updatedBy: currentUser?.uid || '',
+            updatedByName: currentUser?.displayName || '',
+            updatedByPhotoURL: currentUser?.photoURL || '',
         }, { merge: true });
       }
 
@@ -682,6 +688,8 @@ async function addItemFromProduct(p) {
             categorySnapshot: p.category || existing.categorySnapshot || 'Overig',
             updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
             updatedBy: currentUser?.uid || '',
+            updatedByName: currentUser?.displayName || '',
+            updatedByPhotoURL: currentUser?.photoURL || '',
           }, { merge: true });
           return;
         }
@@ -697,6 +705,12 @@ async function addItemFromProduct(p) {
           checked: false,
           createdAt: firebase.firestore.FieldValue.serverTimestamp(),
           createdBy: currentUser?.uid || '',
+          createdByName: currentUser?.displayName || '',
+          createdByPhotoURL: currentUser?.photoURL || '',
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          updatedBy: currentUser?.uid || '',
+          updatedByName: currentUser?.displayName || '',
+          updatedByPhotoURL: currentUser?.photoURL || '',
           source: 'product',
         });
       }
@@ -831,8 +845,12 @@ async function addItemFromProduct(p) {
           checked: false,
           updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
           updatedBy: (currentUser && currentUser.uid) ? currentUser.uid : '',
+          updatedByName: (currentUser && currentUser.displayName) ? currentUser.displayName : '',
+          updatedByPhotoURL: (currentUser && currentUser.photoURL) ? currentUser.photoURL : '',
           createdAt: firebase.firestore.FieldValue.serverTimestamp(),
           createdBy: (currentUser && currentUser.uid) ? currentUser.uid : '',
+          createdByName: (currentUser && currentUser.displayName) ? currentUser.displayName : '',
+          createdByPhotoURL: (currentUser && currentUser.photoURL) ? currentUser.photoURL : '',
           source: 'product',
         }, { merge: true });
 
@@ -869,6 +887,8 @@ async function addItemFromProduct(p) {
             category,
             updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
             updatedBy: currentUser?.uid || '',
+            updatedByName: currentUser?.displayName || '',
+            updatedByPhotoURL: currentUser?.photoURL || '',
           };
 
           await db.doc(`households/${householdId}/products/${productId}`).set(productDoc);
@@ -882,7 +902,11 @@ async function addItemFromProduct(p) {
       async function toggle(item) {
         if (!householdId || !activeListId) return;
         await db.doc(`households/${householdId}/lists/${activeListId}/items/${item.id}`).set({
-          checked: !item.checked
+          checked: !item.checked,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          updatedBy: (currentUser && currentUser.uid) ? currentUser.uid : '',
+          updatedByName: (currentUser && currentUser.displayName) ? currentUser.displayName : '',
+          updatedByPhotoURL: (currentUser && currentUser.photoURL) ? currentUser.photoURL : '',
         }, { merge: true });
       }
 
@@ -898,6 +922,10 @@ async function addItemFromProduct(p) {
         await db.doc(`households/${householdId}/lists/${activeListId}/items/${item.id}`).set({
           qty: q,
           checked: (q===0) ? true : false,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          updatedBy: (currentUser && currentUser.uid) ? currentUser.uid : '',
+          updatedByName: (currentUser && currentUser.displayName) ? currentUser.displayName : '',
+          updatedByPhotoURL: (currentUser && currentUser.photoURL) ? currentUser.photoURL : '',
         }, { merge: true });
       }
 
@@ -961,8 +989,7 @@ async function addItemFromProduct(p) {
 
           <Card>
             <div className="p-3 border-b border-slate-100 text-xs text-slate-500">
-              Items: gekoppeld aan productId (als mogelijk) + snapshot als fallback.
-            </div>
+</div>
             <div className="p-3 space-y-3">
               {byCategory.length === 0 ? (
                 <div className="text-center py-10 text-slate-400">
@@ -1000,6 +1027,19 @@ async function addItemFromProduct(p) {
                             className={"w-8 h-8 rounded-xl border text-sm " + (it._qty >= 99 ? "bg-slate-50 border-slate-200 text-slate-300" : "bg-white border-slate-200 text-slate-700")}
                             title="Meer"
                           >+</button>
+                        </div>
+                        <div className="w-8 h-8 rounded-full overflow-hidden bg-slate-200 flex items-center justify-center text-[11px] font-bold text-slate-600 shrink-0"
+                          title={(() => {
+                            const nm = (it.updatedByName || it.createdByName || '').trim();
+                            return nm ? `Laatst aangepast door ${nm}` : 'Laatst aangepast (onbekend)';
+                          })()}
+                        >
+                          {(() => {
+                            const url = it.updatedByPhotoURL || it.createdByPhotoURL || '';
+                            const nm = (it.updatedByName || it.createdByName || '').trim();
+                            const initial = (nm ? nm[0] : '?').toUpperCase();
+                            return url ? <img src={url} alt={nm || 'avatar'} className="w-full h-full object-cover" /> : initial;
+                          })()}
                         </div>
                         <button onClick={()=>remove(it)} className="w-8 h-8 rounded-xl bg-slate-100 text-slate-600 text-sm">🗑️</button>
                       </div>
@@ -1042,6 +1082,8 @@ const filtered = useMemo(() => {
           createdBy: currentUser?.uid || '',
           updatedAt: null,
           updatedBy: currentUser?.uid || '',
+            updatedByName: currentUser?.displayName || '',
+            updatedByPhotoURL: currentUser?.photoURL || '',
         };
         setOpenId(id);
         setDraft(rec);
@@ -1065,6 +1107,8 @@ const filtered = useMemo(() => {
           preparationHtml: draft.preparationHtml || '',
           updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
           updatedBy: currentUser?.uid || '',
+            updatedByName: currentUser?.displayName || '',
+            updatedByPhotoURL: currentUser?.photoURL || '',
         };
         // if new, set createdAt
         const ref = db.doc(`households/${householdId}/recipes/${id}`);
@@ -1233,6 +1277,8 @@ async function addRecipeToList(r, targetServings, pickState) {
                 category: cat,
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
                 updatedBy: currentUser?.uid || '',
+            updatedByName: currentUser?.displayName || '',
+            updatedByPhotoURL: currentUser?.photoURL || '',
               };
               batch.set(db.doc(`households/${householdId}/products/${ensuredProductId}`), ensuredProduct, { merge: true });
               createdProductsByName.set(keyName, ensuredProduct);
