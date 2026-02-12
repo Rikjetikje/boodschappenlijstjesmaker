@@ -56,7 +56,7 @@
     var DISCRETE_UNITS = ['st','stuk','bl','blik','zak','pak','pot','fles','tube','bol','rol','doos','ei','teen','stronk','bos','krop','blikje','beker','sachet','sachets','cup','portie'];
   </script>
 
-<script type="text/babel">console.log("APP_BUILD products-plusminus-v3");
+<script type="text/babel">console.log("APP_BUILD products-plusminus-v4");
 console.log("APP_BUILD fixed12-qty");
 
     const { useEffect, useMemo, useRef, useState } = React;
@@ -703,20 +703,6 @@ async function addItemFromProduct(p) {
         });
       }
 
-        const id = genId('li');
-        const doc = {
-          id,
-          productId: p.id,
-          nameSnapshot: p.name || '',
-          categorySnapshot: p.category || 'Overig',
-          qty: 1,
-          checked: false,
-          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-          createdBy: currentUser?.uid || '',
-          source: 'product',
-        };
-        await db.doc(`households/${householdId}/lists/${activeListId}/items/${id}`).set(doc);
-      }
 
       return (
         <div className="pb-24">
