@@ -767,7 +767,8 @@
         const inc = clamp(Number(qtyInc)||1, 0, 99);
         const id = itemIdForProduct(productDoc.id);
         const ref = db.doc(`households/${householdId}/lists/${activeListId}/items/${id}`);
-        // Atomic increment prevents duplicates even with fast repeated clicks / multiple tabs
+
+        // Atomic merge: increment qty for same product
         await ref.set({
           id,
           productId: productDoc.id,
@@ -782,31 +783,15 @@
           source: 'product',
         }, { merge: true });
 
-        // Clamp to 0..99 (increment can exceed). We do a follow-up read+set only if needed.
+        // Clamp to 0..99 (increment can exceed if user spams)
         const snap = await ref.get();
         const q = Number(snap.data()?.qty);
         if (!isNaN(q) && (q < 0 || q > 99)) {
           await ref.set({ qty: clamp(q, 0, 99) }, { merge: true });
         }
-      }, { merge: true });
-          return;
-        }
-        const id = genId('li');
-        const doc = {
-          id,
-          productId: productDoc.id,
-          nameSnapshot: productDoc.name || '',
-          categorySnapshot: productDoc.category || 'Overig',
-          qty: clamp(inc || 1, 0, 99),
-          checked: false,
-          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-          createdBy: (currentUser && currentUser.uid) ? currentUser.uid : '',
-          source: 'product',
-        };
-        await addItemDoc(doc);
       }
 
-      async function addItemFromProduct(p) {
+async function addItemFromProduct(p) {
         await upsertListItemFromProduct(p, 1);
       }
 
