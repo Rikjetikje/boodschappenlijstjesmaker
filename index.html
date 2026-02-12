@@ -56,7 +56,11 @@
     var DISCRETE_UNITS = ['st','stuk','bl','blik','zak','pak','pot','fles','tube','bol','rol','doos','ei','teen','stronk','bos','krop','blikje','beker','sachet','sachets','cup','portie'];
   </script>
 
+<<<<<<< HEAD
 <script type="text/babel">console.log("APP_BUILD products-plusminus-v4");
+=======
+<script type="text/babel">console.log("APP_BUILD recipes-qty-v1");
+>>>>>>> 499b4f4 (nieuwe poging)
 console.log("APP_BUILD fixed12-qty");
 
     const { useEffect, useMemo, useRef, useState } = React;
@@ -1157,7 +1161,26 @@ const filtered = useMemo(() => {
         return scaleAmountText(amount, unit, base, target);
       }
 
-      async function addRecipeToList(r, targetServings, pickState) {
+      
+      function applyMultToAmountText(amountText, mult) {
+        const m = Number(mult || 1);
+        if (!amountText) return '';
+        if (!m || m === 1) return String(amountText);
+        // Try multiplying first number in the string
+        const s = String(amountText);
+        const match = s.match(/(-?\d+(?:[\.,]\d+)?)/);
+        if (match) {
+          const raw = match[1].replace(',', '.');
+          const num = parseFloat(raw);
+          if (!isNaN(num)) {
+            const scaled = num * m;
+            return s.replace(match[1], formatNum(scaled));
+          }
+        }
+        return s + ` ×${m}`;
+      }
+
+async function addRecipeToList(r, targetServings, pickState) {
         if (!householdId || !activeListId) { alert('Geen actieve lijst gevonden.'); return; }
         const base = r.baseServings || r.servings || r.persons || 5;
         const target = targetServings || base || 5;
@@ -1231,7 +1254,7 @@ const filtered = useMemo(() => {
 
           let qtyInc = 1;
           if (!isNaN(num)) {
-            let scaled = num * mult;
+            let scaled = num * multUse;
             if (DISCRETE_UNITS.includes((unit||'').toLowerCase())) {
               scaled = Math.ceil(scaled);
               qtyInc = clamp(scaled, 0, 99);
@@ -1287,8 +1310,19 @@ const filtered = useMemo(() => {
         setPickMap(prev => {
           const st = prev[recipeId];
           if (!st) return prev;
-          const cur = st.picks?.[key] !== false;
-          return { ...prev, [recipeId]: { ...st, picks: { ...st.picks, [key]: !cur } } };
+          const curOn = st.picks?.[key] !== false;
+          const nextOn = !curOn;
+          const curMult = Number(st.mults?.[key] ?? 1);
+          const safeMult = (!isNaN(curMult) ? curMult : 1);
+          const nextMult = nextOn ? clamp(Math.max(1, safeMult), 1, 99) : safeMult;
+          return {
+            ...prev,
+            [recipeId]: {
+              ...st,
+              picks: { ...st.picks, [key]: nextOn },
+              mults: { ...st.mults, [key]: nextMult },
+            }
+          };
         });
       }
 
@@ -1305,7 +1339,7 @@ const filtered = useMemo(() => {
           const st = prev[recipeId];
           if (!st) return prev;
           const cur = Number(st.mults?.[key] || 1) || 1;
-          const next = clamp(cur + delta, 1, 99);
+          const next = clamp(cur + delta, 0, 99);
           return { ...prev, [recipeId]: { ...st, mults: { ...(st.mults||{}), [key]: next } } };
         });
       }
@@ -1345,17 +1379,7 @@ const filtered = useMemo(() => {
                         </div>
                       </button>
 
-                      <button
-                        onClick={() => {
-                          ensurePickState(r);
-                          const servings = (pickMap[r.id]?.servings) || 5;
-                          addRecipeToList(r, servings, pickMap[r.id]);
-                        }}
-                        title="Ingrediënten toevoegen aan lijst"
-                        className="w-9 h-9 rounded-xl bg-emerald-600 text-white text-sm"
-                      >
-                        ＋
-                      </button>
+                      <button onClick={() => { if (!isOpen) ensurePickState(r); setExpandedId(isOpen ? null : r.id); }} title="Openen/sluiten" className="w-9 h-9 rounded-xl bg-slate-100 text-slate-700 text-sm">{isOpen ? "▴" : "▾"}</button>
 
                       <button onClick={()=>editRecipe(r)} title="Bewerken" className="w-9 h-9 rounded-xl bg-slate-100 text-slate-600 text-sm">✏️</button>
                       <button onClick={()=>deleteRecipe(r)} title="Verwijderen" className="w-9 h-9 rounded-xl bg-slate-100 text-slate-600 text-sm">🗑️</button>
@@ -1393,10 +1417,15 @@ const filtered = useMemo(() => {
                                   {disp.name || "(onbekend)"}
                                 </div>
 
-                                <div className="flex items-center gap-1">
-                                  <button onClick={()=>bumpMult(r.id, key, -1)} className="w-8 h-8 rounded-xl bg-white border border-slate-200 text-slate-700 font-bold">−</button>
-                                  <div className="w-6 text-center font-mono font-bold text-slate-700">{mult}</div>
-                                  <button onClick={()=>bumpMult(r.id, key, +1)} className="w-8 h-8 rounded-xl bg-white border border-slate-200 text-slate-700 font-bold">+</button>
+                                <div className="flex items-center gap-2">
+                                  <div className="text-[11px] text-slate-500 whitespace-nowrap">
+                                    {applyMultToAmountText(scaledAmount(ing, r.baseServings || 5, st.servings || 5), mult)} {disp.unit || ""}
+                                  </div>
+                                  <div className="flex items-center gap-1">
+                                    <button onClick={()=>bumpMult(r.id, key, -1)} className={"w-8 h-8 rounded-xl bg-white border border-slate-200 text-slate-700 font-bold " + (mult<=0 ? "opacity-50" : "")}>−</button>
+                                    <div className="w-7 text-center font-mono font-bold text-slate-700 tabular-nums">{mult}</div>
+                                    <button onClick={()=>bumpMult(r.id, key, +1)} className={"w-8 h-8 rounded-xl bg-white border border-slate-200 font-bold " + (mult>=99 ? "text-slate-300" : "text-slate-700")}>+</button>
+                                  </div>
                                 </div>
                               </div>
                             );
