@@ -56,7 +56,7 @@
     var DISCRETE_UNITS = ['st','stuk','bl','blik','zak','pak','pot','fles','tube','bol','rol','doos','ei','teen','stronk','bos','krop','blikje','beker','sachet','sachets','cup','portie'];
   </script>
 
-<script type="text/babel">console.log("APP_BUILD products-plusminus-v4 + recipes-qty-v1");
+<script type="text/babel">console.log("APP_BUILD products-plusminus-v4 + recipes-qty-v2");
 const { useEffect, useMemo, useRef, useState } = React;
 
     // ---------------- Firebase ----------------
@@ -1208,8 +1208,9 @@ async function addRecipeToList(r, targetServings, pickState) {
           const key = ing._id || String(idx);
           const include = pickState?.picks ? (pickState.picks[key] !== false) : true;
           if (!include) return;
+          if (mult <= 0) return;
 
-          const mult = Number(pickState?.mults?.[key] || 1) || 1;
+          const mult = clamp(Number(pickState?.mults?.[key] ?? 1) || 0, 0, 99);
 
           const p = ing.productId ? productById.get(ing.productId) : null;
           const name = (p?.name) || ing.nameSnapshot || '';
@@ -1248,7 +1249,7 @@ async function addRecipeToList(r, targetServings, pickState) {
 
           let qtyInc = 1;
           if (!isNaN(num)) {
-            let scaled = num * multUse;
+            let scaled = num * mult;
             if (DISCRETE_UNITS.includes((unit||'').toLowerCase())) {
               scaled = Math.ceil(scaled);
               qtyInc = clamp(scaled, 0, 99);
@@ -1286,7 +1287,19 @@ async function addRecipeToList(r, targetServings, pickState) {
           .slice(0, 8);
       };
 
-      function ensurePickState(recipe) {
+      
+      function parseDefaultQty(ing) {
+        const unit = String(ing?.unit || 'st').toLowerCase();
+        const amtStr = String(ing?.amount ?? '').trim();
+        const num = parseFloat(amtStr.replace(',', '.'));
+        if (DISCRETE_UNITS.includes(unit)) {
+          if (!isNaN(num)) return clamp(Math.round(num), 0, 99);
+          return 1;
+        }
+        return 1;
+      }
+
+function ensurePickState(recipe) {
         setPickMap(prev => {
           if (prev[recipe.id]) return prev;
           const picks = {};
@@ -1294,7 +1307,7 @@ async function addRecipeToList(r, targetServings, pickState) {
           (recipe.ingredients || []).forEach((ing, i) => {
             const key = ing._id || String(i);
             picks[key] = true;
-            mults[key] = 1;
+            mults[key] = parseDefaultQty(ing);
           });
           return { ...prev, [recipe.id]: { servings: 5, picks, mults } };
         });
@@ -1308,7 +1321,7 @@ async function addRecipeToList(r, targetServings, pickState) {
           const nextOn = !curOn;
           const curMult = Number(st.mults?.[key] ?? 1);
           const safeMult = (!isNaN(curMult) ? curMult : 1);
-          const nextMult = nextOn ? clamp(Math.max(1, safeMult), 1, 99) : safeMult;
+          const nextMult = nextOn ? clamp((safeMult>0? safeMult : 1), 1, 99) : safeMult;
           return {
             ...prev,
             [recipeId]: {
@@ -1413,7 +1426,7 @@ async function addRecipeToList(r, targetServings, pickState) {
 
                                 <div className="flex items-center gap-2">
                                   <div className="text-[11px] text-slate-500 whitespace-nowrap">
-                                    {applyMultToAmountText(scaledAmount(ing, r.baseServings || 5, st.servings || 5), mult)} {disp.unit || ""}
+                                    {(ing.amount ? String(ing.amount) : "")} {disp.unit || ""}
                                   </div>
                                   <div className="flex items-center gap-1">
                                     <button onClick={()=>bumpMult(r.id, key, -1)} className={"w-8 h-8 rounded-xl bg-white border border-slate-200 text-slate-700 font-bold " + (mult<=0 ? "opacity-50" : "")}>−</button>
