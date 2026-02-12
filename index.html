@@ -1209,10 +1209,7 @@ async function addRecipeToList(r, targetServings, pickState) {
           const key = ing._id || String(idx);
           const include = pickState?.picks ? (pickState.picks[key] !== false) : true;
           if (!include) return;
-          if (mult <= 0) return;
-
           const mult = 1;
-
           const p = ing.productId ? productById.get(ing.productId) : null;
           const name = (p?.name) || ing.nameSnapshot || '';
           if (!name) return;
