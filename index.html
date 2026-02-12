@@ -80,6 +80,13 @@
     function genId(prefix='') {
       return (prefix ? prefix + '_' : '') + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
     }
+
+
+      function itemIdForProduct(productId) {
+        return productId ? (`li_${productId}`) : genId('li');
+      }
+
+
     function clamp(n, a, b){ return Math.max(a, Math.min(b, n)); }
 
     function formatNum(n) {
@@ -758,18 +765,30 @@
       async function upsertListItemFromProduct(productDoc, qtyInc = 1) {
         if (!householdId || !activeListId) { alert('Maak eerst een lijst aan.'); return; }
         const inc = clamp(Number(qtyInc)||1, 0, 99);
-        const existing = findExistingByProductId(productDoc.id);
-        if (existing) {
-          const next = clamp(currentQty(existing) + inc, 0, 99);
-          await db.doc(`households/${householdId}/lists/${activeListId}/items/${existing.id}`).set({
-            qty: next,
-            checked: false,
-            // keep snapshots in sync with product
-            nameSnapshot: productDoc.name || existing.nameSnapshot || '',
-            categorySnapshot: productDoc.category || existing.categorySnapshot || 'Overig',
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-            updatedBy: (currentUser && currentUser.uid) ? currentUser.uid : '',
-          }, { merge: true });
+        const id = itemIdForProduct(productDoc.id);
+        const ref = db.doc(`households/${householdId}/lists/${activeListId}/items/${id}`);
+        // Atomic increment prevents duplicates even with fast repeated clicks / multiple tabs
+        await ref.set({
+          id,
+          productId: productDoc.id,
+          nameSnapshot: productDoc.name || '',
+          categorySnapshot: productDoc.category || 'Overig',
+          qty: firebase.firestore.FieldValue.increment(inc),
+          checked: false,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          updatedBy: (currentUser && currentUser.uid) ? currentUser.uid : '',
+          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+          createdBy: (currentUser && currentUser.uid) ? currentUser.uid : '',
+          source: 'product',
+        }, { merge: true });
+
+        // Clamp to 0..99 (increment can exceed). We do a follow-up read+set only if needed.
+        const snap = await ref.get();
+        const q = Number(snap.data()?.qty);
+        if (!isNaN(q) && (q < 0 || q > 99)) {
+          await ref.set({ qty: clamp(q, 0, 99) }, { merge: true });
+        }
+      }, { merge: true });
           return;
         }
         const id = genId('li');
@@ -1180,11 +1199,14 @@ const filtered = useMemo(() => {
             amountStr = formatNum(scaled);
           }
 
-          const existing = existingByProductId.get(ensuredProductId);
-          if (existing) {
-            const next = clamp(itemQty(existing) + qtyInc, 0, 99);
-            batch.set(db.doc(`households/${householdId}/lists/${activeListId}/items/${existing.id}`), {
-              qty: next,
+          const id = itemIdForProduct(ensuredProductId);
+          const ref = db.doc(`households/${householdId}/lists/${activeListId}/items/${id}`);
+
+          // Atomic merge: increment qty for same product
+          batch.set(ref, {
+            id,
+            productId: ensuredProductId,
+            qty: firebase.firestore.FieldValue.increment(qtyInc),
               checked: false,
               nameSnapshot: name,
               categorySnapshot: (ensuredProduct?.category) || cat,
@@ -1195,17 +1217,16 @@ const filtered = useMemo(() => {
               updatedBy: currentUser?.uid || '',
             }, { merge: true });
             // Update local map so multiple ingredients in same add also merge correctly
-            existingByProductId.set(ensuredProductId, { ...existing, qty: next, amount: amountStr, unit, checked: false });
             return;
           }
 
-          const id = genId('li');
+          const id = itemIdForProduct(ensuredProductId);
           batch.set(db.doc(`households/${householdId}/lists/${activeListId}/items/${id}`), {
             id,
             productId: ensuredProductId,
             nameSnapshot: name,
             categorySnapshot: (ensuredProduct?.category) || cat,
-            qty: clamp(qtyInc || 1, 0, 99),
+            qty: firebase.firestore.FieldValue.increment(qtyInc || 1),
             amount: amountStr,
             unit,
             checked: false,
