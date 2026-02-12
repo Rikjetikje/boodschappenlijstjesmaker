@@ -1442,13 +1442,13 @@ function ensurePickState(recipe) {
                                     className="w-7 h-7 rounded-lg bg-slate-100 text-slate-700 text-sm flex items-center justify-center"
                                     title="Meer"
                                   >+</button>
-                                  {(Number(st.qtys?.[key] ?? defaultQty) || 0) !== defaultQty && (
-                                    <button
-                                      onClick={() => setQty(r.id, key, defaultQty, defaultQty)}
-                                      className="w-7 h-7 rounded-lg bg-slate-100 text-slate-700 text-sm flex items-center justify-center"
-                                      title="Terug naar recept"
-                                    >↺</button>
-                                  )}
+                                  <button
+                                    onClick={() => setQty(r.id, key, defaultQty, defaultQty)}
+                                    disabled={(Number(st.qtys?.[key] ?? defaultQty) || 0) === defaultQty}
+                                    style={{ visibility: ((Number(st.qtys?.[key] ?? defaultQty) || 0) !== defaultQty) ? 'visible' : 'hidden' }}
+                                    className="w-7 h-7 rounded-lg bg-slate-100 text-slate-700 text-sm flex items-center justify-center disabled:opacity-50"
+                                    title="Terug naar recept"
+                                  >↺</button>
                                 </div>
                               </div>
                             );
