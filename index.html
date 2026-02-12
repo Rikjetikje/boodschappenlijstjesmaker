@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Boodschappenlijstjemaker — fixed10</title>
+  <title>Boodschappenlijstjemaker — fixed10 — fixed12</title>
 
   <!-- Tailwind (CDN) -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -31,6 +31,8 @@
   </style>
 
   <script>window.APP_BUILD = "fixed10-qty"; console.log("APP_BUILD", window.APP_BUILD);</script>
+
+  <script>window.APP_BUILD="fixed12-qty"; console.log("APP_BUILD", window.APP_BUILD);</script>
 </head>
 
 <body class="bg-slate-50">
@@ -53,7 +55,8 @@
     var DISCRETE_UNITS = ['st','stuk','bl','blik','zak','pak','pot','fles','tube','bol','rol','doos','ei','teen','stronk','bos','krop','blikje','beker','sachet','sachets','cup','portie'];
   </script>
 
-<script type="text/babel">
+<script type="text/babel">console.log("APP_BUILD fixed12-qty");
+
     const { useEffect, useMemo, useRef, useState } = React;
 
     // ---------------- Firebase ----------------
