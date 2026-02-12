@@ -1186,26 +1186,6 @@ const filtered = useMemo(() => {
             amountStr = formatNum(scaled);
           }
 
-          const id = itemIdForProduct(ensuredProductId);
-          const ref = db.doc(`households/${householdId}/lists/${activeListId}/items/${id}`);
-
-          // Atomic merge: increment qty for same product
-          batch.set(ref, {
-            id,
-            productId: ensuredProductId,
-            qty: firebase.firestore.FieldValue.increment(qtyInc),
-              checked: false,
-              nameSnapshot: name,
-              categorySnapshot: (ensuredProduct?.category) || cat,
-              // keep last seen amount/unit around (optional, helps later)
-              amount: amountStr,
-              unit,
-              updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-              updatedBy: currentUser?.uid || '',
-            }, { merge: true });
-            // Update local map so multiple ingredients in same add also merge correctly
-            return;
-          }
 
           const id = itemIdForProduct(ensuredProductId);
           batch.set(db.doc(`households/${householdId}/lists/${activeListId}/items/${id}`), {
