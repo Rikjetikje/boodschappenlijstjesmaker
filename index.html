@@ -1613,7 +1613,8 @@ async function addItemFromProduct(p) {
       const [quickServings, setQuickServings] = useState(5);
       const [expandedId, setExpandedId] = useState(null);
       const [pickMap, setPickMap] = useState({});
-const filtered = useMemo(() => {
+
+      const filtered = useMemo(() => {
         const q = query.trim().toLowerCase();
         let rs = recipes || [];
         if (q) rs = rs.filter(r => (r.name||'').toLowerCase().includes(q));
@@ -1639,12 +1640,12 @@ const filtered = useMemo(() => {
         };
         setOpenId(id);
         setDraft(rec);
-}
+      }
 
       function editRecipe(r) {
         setOpenId(r.id);
         setDraft(JSON.parse(JSON.stringify(r)));
-}
+      }
 
       async function saveRecipe() {
         if (!householdId || !draft) return;
