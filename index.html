@@ -1072,7 +1072,6 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
       function scrollAddBoxIntoView() {
         const el = addInputRef.current;
         if (!el) return;
-        // Move the input near the top so suggestions stay visible above the iOS keyboard
         const r = el.getBoundingClientRect();
         const target = window.scrollY + r.top - 12;
         window.requestAnimationFrame(() => {
