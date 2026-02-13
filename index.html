@@ -1476,6 +1476,8 @@ async function addItemFromProduct(p) {
               <div className="relative w-full sm:flex-1">
                 <input
                   ref={addInputRef}
+                  type="search"
+                  inputMode="search"
                   value={newText}
                   onChange={(e)=>{ setNewText(e.target.value); setShowSuggestions(true); }}
                   onFocus={()=>{ setStickyAdd(true); scrollAddBoxIntoView(true); if (newText.trim().length>=2) setShowSuggestions(true); }}
@@ -1483,14 +1485,8 @@ async function addItemFromProduct(p) {
                   onKeyDown={(e)=>{ if (e.key === 'Enter') { e.preventDefault(); addFreeText(); }
                     if (e.key === 'Escape') { e.preventDefault(); setStickyAdd(false); } }}
                   placeholder="Zoek product of typ iets nieuws…"
-                  className="w-full pr-12 px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm"
+                  className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm"
                 />
-                <button
-                  onClick={addFreeText}
-                  className="absolute right-1 top-1/2 -translate-y-1/2 w-10 h-10 rounded-xl bg-emerald-600 text-white font-bold"
-                  title="Toevoegen"
-                  type="button"
-                >+</button>
               </div>
 
               <select
