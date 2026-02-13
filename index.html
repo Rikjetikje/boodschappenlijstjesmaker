@@ -522,17 +522,112 @@ const { useEffect, useMemo, useRef, useState } = React;
     }
 
     // ---------------- Header ----------------
-    function Header({ user, householdInfo, memberCount, syncing, onCopyCode, onSignOut }) {
+    function Header({ user, householdId, householdInfo, members, syncing, onCopyCode, onSignOut }) {
+      const [editingName, setEditingName] = useState(false);
+      const [draftName, setDraftName] = useState(householdInfo?.name || '');
+
+      useEffect(() => {
+        setDraftName(householdInfo?.name || '');
+      }, [householdInfo?.name, householdId]);
+
+      async function saveName() {
+        const next = (draftName || '').trim();
+        setEditingName(false);
+        if (!householdId) return;
+        if (!next) return;
+        try {
+          await db.doc(`households/${householdId}/meta/info`).set({ name: next }, { merge: true });
+        } catch (e) {
+          console.error('Household name update failed', e);
+        }
+      }
+
+      function HouseholdNameLine() {
+        const name = householdInfo?.name || '';
+        if (!editingName) {
+          return (
+            <button
+              onClick={() => setEditingName(true)}
+              className="text-left text-xs text-slate-500 mt-0.5 inline-flex items-center gap-2"
+              title="Huishoudnaam wijzigen"
+            >
+              <span>🏠</span>
+              <span className="truncate max-w-[14rem]">{name || "Mijn huishouden"}</span>
+              <span className="text-[10px] text-slate-400">✏️</span>
+            </button>
+          );
+        }
+        return (
+          <div className="mt-0.5 inline-flex items-center gap-2">
+            <span className="text-xs text-slate-500">🏠</span>
+            <input
+              value={draftName}
+              onChange={(e) => setDraftName(e.target.value)}
+              onBlur={saveName}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') { e.preventDefault(); saveName(); }
+                if (e.key === 'Escape') { e.preventDefault(); setEditingName(false); setDraftName(householdInfo?.name || ''); }
+              }}
+              autoFocus
+              placeholder="Huishoudnaam"
+              className="text-xs px-2 py-1 rounded-lg border border-slate-200 bg-white w-48"
+            />
+            <button
+              onClick={saveName}
+              className="text-[11px] px-2 py-1 rounded-lg bg-emerald-600 text-white"
+            >
+              Ok
+            </button>
+          </div>
+        );
+      }
+
+      function Avatar({ m, i }) {
+        const url = m?.photoURL || '';
+        const name = m?.name || m?.displayName || 'Lid';
+        const initial = (name.trim()[0] || '?').toUpperCase();
+        return (
+          <div
+            key={m?.uid || i}
+            className="w-5 h-5 rounded-full ring-2 ring-white bg-slate-200 overflow-hidden flex items-center justify-center text-[10px] font-bold text-slate-600"
+            style={{ zIndex: 50 - i }}
+            title={name}
+          >
+            {url ? <img src={url} className="w-full h-full object-cover" /> : initial}
+          </div>
+        );
+      }
+
+      const membersSorted = (members || []).slice().sort((a,b) => (a?.name||'').localeCompare(b?.name||''));
+      const maxShow = 10;
+      const show = membersSorted.slice(0, maxShow);
+      const extra = Math.max(0, membersSorted.length - show.length);
+
       return (
         <header className="mb-4">
-          <div className="flex items-center justify-between">
-            <div>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
               <h1 className="text-xl font-black text-slate-900 leading-tight">Boodschappenlijstjemaker</h1>
-              {householdInfo?.name && (
-                <div className="text-xs text-slate-500 mt-0.5">🏠 {householdInfo.name} · 👥 {memberCount}</div>
-              )}
+
+              <div className="flex items-center gap-3 flex-wrap">
+                <HouseholdNameLine />
+
+                <div className="inline-flex items-center -space-x-2" aria-label="Leden">
+                  {show.map((m, idx) => <Avatar m={m} i={idx} />)}
+                  {extra > 0 && (
+                    <div
+                      className="w-5 h-5 rounded-full ring-2 ring-white bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-600"
+                      style={{ zIndex: 0 }}
+                      title={`${extra} meer`}
+                    >
+                      +{extra}
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
+
+            <div className="flex items-center gap-2 shrink-0">
               {syncing ? <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" title="Synchroniseren"></span>
                         : <span className="w-2 h-2 rounded-full bg-emerald-400" title="Gesynchroniseerd"></span>}
               <button onClick={onSignOut} className="flex items-center gap-2">
@@ -553,235 +648,401 @@ const { useEffect, useMemo, useRef, useState } = React;
     }
 
     // ---------------- Products tab ----------------
-    function ProductsTab({ householdId, products, items, currentUser, activeListId }) {
-      const [query, setQuery] = useState('');
-      const [editingId, setEditingId] = useState(null);
-      const [editName, setEditName] = useState('');
-      const [editCategory, setEditCategory] = useState('Overig');
+    
+function ProductsTab({ householdId, products, items, currentUser, activeListId }) {
+  const [query, setQuery] = useState('');
+  const [editingId, setEditingId] = useState(null);
+  const [editName, setEditName] = useState('');
+  const [editCategory, setEditCategory] = useState('Overig');
 
-      const filtered = useMemo(() => {
-        const q = query.trim().toLowerCase();
-        let items = products || [];
-        if (q) items = items.filter(p => (p.name||'').toLowerCase().includes(q));
-        items = [...items].sort((a,b) => (a.name||'').localeCompare(b.name||'', 'nl'));
-        return items;
-      }, [products, query]);
+  // Sorting / filtering for frequently-needed products (W / 2W / 3W)
+  const [cyclesFirst, setCyclesFirst] = useState(true);
+  const [cyclesOnly, setCyclesOnly] = useState(false);
 
-      async function createProduct() {
-        const name = query.trim();
-        if (!name || !householdId) return;
-        const exists = (products||[]).some(p => (p.name||'').toLowerCase() === name.toLowerCase());
-        if (exists) { alert('Dit product bestaat al (op naam).'); return; }
+  // Cycle filter chips (W / 2W / 3W)
+  const [cycleFlags, setCycleFlags] = useState(() => ({ W: true, '2W': true, '3W': true }));
 
-        const id = genId('p');
-        const product = {
-          id,
-          schemaVersion: 2,
-          name,
-          category: 'Overig',
-          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-          updatedBy: currentUser?.uid || '',
-            updatedByName: currentUser?.displayName || '',
-            updatedByPhotoURL: currentUser?.photoURL || '',
-        };
-        await db.doc(`households/${householdId}/products/${id}`).set(product);
-        setQuery('');
-      }
+  function normCycle(c) {
+    return String(c || '').toUpperCase().trim();
+  }
 
-      function startEdit(p) {
-        setEditingId(p.id);
-        setEditName(p.name || '');
-        setEditCategory(p.category || 'Overig');
-      }
+  function cycleEnabled(c) {
+    const nc = normCycle(c);
+    return nc === 'W' || nc === '2W' || nc === '3W' ? !!cycleFlags[nc] : false;
+  }
 
-      async function saveEdit() {
-        if (!householdId || !editingId) return;
-        const name = editName.trim();
-        if (!name) return;
-        await db.doc(`households/${householdId}/products/${editingId}`).set({
-          name,
-          category: editCategory || 'Overig',
-          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-          updatedBy: currentUser?.uid || '',
-            updatedByName: currentUser?.displayName || '',
-            updatedByPhotoURL: currentUser?.photoURL || '',
-        }, { merge: true });
-        setEditingId(null);
-      }
+  // Selection for quick add
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
 
-      async function cycleProduct(p) {
-        if (!householdId) return;
-        const cur = (p.cycle || '');
-        const next = cur === '' ? 'W' : (cur === 'W' ? '2W' : (cur === '2W' ? '3W' : ''));
-        await db.doc(`households/${householdId}/products/${p.id}`).update({ cycle: next });
-      }
+  function cycleRank(cycle) {
+    const c = String(cycle || '').toUpperCase();
+    if (c === 'W') return 0;
+    if (c === '2W') return 1;
+    if (c === '3W') return 2;
+    return 3; // none last
+  }
 
-      async function deleteProduct(p) {
-        if (!householdId) return;
-        if (!confirm(`Verwijder "${p.name}"?`)) return;
-        await db.doc(`households/${householdId}/products/${p.id}`).delete();
-      }
-      function currentQty(it) {
-        const q = (it && it.qty != null) ? Number(it.qty) : NaN;
-        if (!isNaN(q)) return clamp(q, 0, 99);
-        const unit = String(it?.unit || 'st').toLowerCase();
-        const amt = parseFloat(String(it?.amount ?? '1').replace(',','.'));
-        if (!isNaN(amt) && DISCRETE_UNITS.includes(unit)) return clamp(Math.round(amt), 0, 99);
-        return 1;
-      }
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    let arr = products || [];
+    if (q) arr = arr.filter(p => (p.name||'').toLowerCase().includes(q));
 
-      function findExistingByProductId(productId) {
-        if (!productId) return null;
-        const arr = (items || []);
-        return arr.find(x => x.productId === productId && !x.checked) || arr.find(x => x.productId === productId) || null;
-      }
+    if (cyclesOnly) arr = arr.filter(p => cycleEnabled(p.cycle));
 
-      
-      function findExistingByProductId(productId) {
-        if (!productId) return null;
-        const arr = (items || []);
-        return arr.find(x => x.productId === productId && !x.checked) || arr.find(x => x.productId === productId) || null;
-      }
-
-      function currentQty(it) {
-        if (!it) return 0;
-        const q = (it.qty != null) ? Number(it.qty) : NaN;
-        if (!isNaN(q)) return clamp(q, 0, 99);
-        const unit = String(it.unit || 'st').toLowerCase();
-        const amt = parseFloat(String(it.amount ?? '0').replace(',','.'));
-        if (!isNaN(amt) && DISCRETE_UNITS.includes(unit)) return clamp(Math.round(amt), 0, 99);
-        return 0;
-      }
-
-      async function decItemFromProduct(p) {
-        if (!activeListId) { alert('Maak eerst een lijst aan.'); return; }
-        const existing = findExistingByProductId(p.id);
-        if (!existing) return;
-        const next = clamp(currentQty(existing) - 1, 0, 99);
-        const ref = db.doc(`households/${householdId}/lists/${activeListId}/items/${existing.id}`);
-        if (next <= 0) { await ref.delete(); return; }
-        await ref.set({
-          qty: next,
-          amount: String(next),
-          unit: 'st',
-          checked: false,
-          nameSnapshot: p.name || existing.nameSnapshot || '',
-          categorySnapshot: p.category || existing.categorySnapshot || 'Overig',
-          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-          updatedBy: currentUser?.uid || '',
-            updatedByName: currentUser?.displayName || '',
-            updatedByPhotoURL: currentUser?.photoURL || '',
-        }, { merge: true });
-      }
-
-async function addItemFromProduct(p) {
-        if (!activeListId) { alert('Maak eerst een lijst aan.'); return; }
-        const existing = findExistingByProductId(p.id);
-        if (existing) {
-          const next = clamp(currentQty(existing) + 1, 0, 99);
-          await db.doc(`households/${householdId}/lists/${activeListId}/items/${existing.id}`).set({
-            qty: next,
-            amount: String(next),
-            unit: 'st',
-            checked: false,
-            nameSnapshot: p.name || existing.nameSnapshot || '',
-            categorySnapshot: p.category || existing.categorySnapshot || 'Overig',
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-            updatedBy: currentUser?.uid || '',
-            updatedByName: currentUser?.displayName || '',
-            updatedByPhotoURL: currentUser?.photoURL || '',
-          }, { merge: true });
-          return;
+    arr = [...arr].sort((a,b) => {
+      if (cyclesFirst) {
+        const aOn = cycleEnabled(a.cycle);
+        const bOn = cycleEnabled(b.cycle);
+        if (aOn !== bOn) return aOn ? -1 : 1;
+        if (aOn && bOn) {
+          const dr = cycleRank(a.cycle) - cycleRank(b.cycle);
+          if (dr !== 0) return dr;
         }
-        const id = genId('li');
-        await db.doc(`households/${householdId}/lists/${activeListId}/items/${id}`).set({
-          id,
-          productId: p.id,
-          nameSnapshot: p.name || '',
-          categorySnapshot: p.category || 'Overig',
-          qty: 1,
-          amount: '1',
-          unit: 'st',
-          checked: false,
-          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-          createdBy: currentUser?.uid || '',
-          createdByName: currentUser?.displayName || '',
-          createdByPhotoURL: currentUser?.photoURL || '',
-          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-          updatedBy: currentUser?.uid || '',
-          updatedByName: currentUser?.displayName || '',
-          updatedByPhotoURL: currentUser?.photoURL || '',
-          source: 'product',
-        });
       }
+      return (a.name||'').localeCompare(b.name||'', 'nl');
+    });
+    return arr;
+  }, [products, query, cyclesFirst, cyclesOnly, cycleFlags]);
 
+  const eligibleCycleIds = useMemo(() => {
+    const ids = [];
+    (filtered || []).forEach(p => {
+      if (cycleEnabled(p.cycle)) ids.push(p.id);
+    });
+    return ids;
+  }, [filtered, cycleFlags]);
 
-      return (
-        <div className="pb-24">
-          <div className="mb-3">
-            <div className="flex gap-2">
-              <input value={query} onChange={(e)=>setQuery(e.target.value)}
-                placeholder="Zoek of maak product…"
-                className="flex-1 px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm" />
-              <Button onClick={createProduct} className="bg-emerald-600 text-white w-12 px-0">+</Button>
-            </div>
+  const allEligibleSelected = useMemo(() => {
+    if (!eligibleCycleIds.length) return false;
+    for (const id of eligibleCycleIds) if (!selectedIds.has(id)) return false;
+    return true;
+  }, [eligibleCycleIds, selectedIds]);
+
+  async function createProduct() {
+    const name = query.trim();
+    if (!name || !householdId) return;
+    const exists = (products||[]).some(p => (p.name||'').toLowerCase() === name.toLowerCase());
+    if (exists) { alert('Dit product bestaat al (op naam).'); return; }
+
+    const id = genId('p');
+    const product = {
+      id,
+      schemaVersion: 2,
+      name,
+      category: 'Overig',
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedBy: currentUser?.uid || '',
+      updatedByName: currentUser?.displayName || '',
+      updatedByPhotoURL: currentUser?.photoURL || '',
+      cycle: '',
+    };
+    await db.doc(`households/${householdId}/products/${id}`).set(product);
+    setQuery('');
+  }
+
+  function startEdit(p) {
+    setEditingId(p.id);
+    setEditName(p.name || '');
+    setEditCategory(p.category || 'Overig');
+  }
+
+  async function saveEdit() {
+    if (!householdId || !editingId) return;
+    const name = editName.trim();
+    if (!name) return;
+    await db.doc(`households/${householdId}/products/${editingId}`).set({
+      name,
+      category: editCategory || 'Overig',
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedBy: currentUser?.uid || '',
+      updatedByName: currentUser?.displayName || '',
+      updatedByPhotoURL: currentUser?.photoURL || '',
+    }, { merge: true });
+    setEditingId(null);
+  }
+
+  async function cycleProduct(p) {
+    if (!householdId) return;
+    const cur = (p.cycle || '');
+    const next = cur === '' ? 'W' : (cur === 'W' ? '2W' : (cur === '2W' ? '3W' : ''));
+    await db.doc(`households/${householdId}/products/${p.id}`).update({ cycle: next });
+  }
+
+  async function deleteProduct(p) {
+    if (!householdId) return;
+    if (!confirm(`Verwijder "${p.name}"?`)) return;
+    await db.doc(`households/${householdId}/products/${p.id}`).delete();
+    // also remove from selection
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      next.delete(p.id);
+      return next;
+    });
+  }
+
+  function currentQty(it) {
+    if (!it) return 0;
+    const q = (it.qty != null) ? Number(it.qty) : NaN;
+    if (!isNaN(q)) return clamp(q, 0, 99);
+    const unit = String(it.unit || 'st').toLowerCase();
+    const amt = parseFloat(String(it.amount ?? '0').replace(',','.'));
+    if (!isNaN(amt) && DISCRETE_UNITS.includes(unit)) return clamp(Math.round(amt), 0, 99);
+    return 0;
+  }
+
+  function findExistingByProductId(productId) {
+    if (!productId) return null;
+    const arr = (items || []);
+    return arr.find(x => x.productId === productId && !x.checked) || arr.find(x => x.productId === productId) || null;
+  }
+
+  async function decItemFromProduct(p) {
+    if (!activeListId) { alert('Maak eerst een lijst aan.'); return; }
+    const existing = findExistingByProductId(p.id);
+    if (!existing) return;
+    const next = clamp(currentQty(existing) - 1, 0, 99);
+    const ref = db.doc(`households/${householdId}/lists/${activeListId}/items/${existing.id}`);
+    if (next <= 0) { await ref.delete(); return; }
+    await ref.set({
+      qty: next,
+      amount: String(next),
+      unit: 'st',
+      checked: false,
+      nameSnapshot: p.name || existing.nameSnapshot || '',
+      categorySnapshot: p.category || existing.categorySnapshot || 'Overig',
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedBy: currentUser?.uid || '',
+      updatedByName: currentUser?.displayName || '',
+      updatedByPhotoURL: currentUser?.photoURL || '',
+    }, { merge: true });
+  }
+
+  async function addItemFromProduct(p) {
+    if (!activeListId) { alert('Maak eerst een lijst aan.'); return; }
+    const existing = findExistingByProductId(p.id);
+    if (existing) {
+      const next = clamp(currentQty(existing) + 1, 0, 99);
+      await db.doc(`households/${householdId}/lists/${activeListId}/items/${existing.id}`).set({
+        qty: next,
+        amount: String(next),
+        unit: 'st',
+        checked: false,
+        nameSnapshot: p.name || existing.nameSnapshot || '',
+        categorySnapshot: p.category || existing.categorySnapshot || 'Overig',
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        updatedBy: currentUser?.uid || '',
+        updatedByName: currentUser?.displayName || '',
+        updatedByPhotoURL: currentUser?.photoURL || '',
+      }, { merge: true });
+      return;
+    }
+    const id = genId('li');
+    await db.doc(`households/${householdId}/lists/${activeListId}/items/${id}`).set({
+      id,
+      productId: p.id,
+      nameSnapshot: p.name || '',
+      categorySnapshot: p.category || 'Overig',
+      qty: 1,
+      amount: '1',
+      unit: 'st',
+      checked: false,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      createdBy: currentUser?.uid || '',
+      createdByName: currentUser?.displayName || '',
+      createdByPhotoURL: currentUser?.photoURL || '',
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedBy: currentUser?.uid || '',
+      updatedByName: currentUser?.displayName || '',
+      updatedByPhotoURL: currentUser?.photoURL || '',
+      source: 'product',
+    });
+  }
+
+  function toggleSelected(productId) {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(productId)) next.delete(productId);
+      else next.add(productId);
+      return next;
+    });
+  }
+
+  function toggleSelectCycles() {
+    if (allEligibleSelected) {
+      setSelectedIds(new Set());
+      return;
+    }
+    const nextSel = new Set();
+    eligibleCycleIds.forEach(id => nextSel.add(id));
+    setSelectedIds(nextSel);
+  }
+      return nextOn;
+    });
+  }
+
+  async function addSelection() {
+    if (!activeListId) { alert('Maak eerst een lijst aan.'); return; }
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    const byId = new Map((products||[]).map(p => [p.id, p]));
+    for (const id of ids) {
+      const p = byId.get(id);
+      if (p) await addItemFromProduct(p);
+    }
+    // Clear selection after adding
+    setSelectedIds(new Set());
+  }
+
+  const selectedCount = selectedIds.size;
+
+  return (
+    <div className="pb-24">
+      <div className="mb-3 space-y-2">
+        <div className="flex gap-2">
+          <input value={query} onChange={(e)=>setQuery(e.target.value)}
+            placeholder="Zoek of maak product…"
+            className="flex-1 px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm" />
+          <Button onClick={createProduct} className="bg-emerald-600 text-white w-12 px-0">+</Button>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => setCyclesFirst(v => !v)}
+            className={"px-3 py-2 rounded-xl text-xs font-bold border " + (cyclesFirst ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-slate-700 border-slate-200")}
+            title="Zet de gekozen cycli (W/2W/3W) bovenaan"
+          >
+            {cyclesFirst ? "Cycli bovenaan" : "A-Z bovenaan"}
+          </button>
+
+          <button
+            onClick={() => setCyclesOnly(v => !v)}
+            className={"px-3 py-2 rounded-xl text-xs font-bold border " + (cyclesOnly ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-slate-700 border-slate-200")}
+            title="Toon alleen producten met de gekozen cycli"
+          >
+            {cyclesOnly ? "Alleen cycli" : "Alles tonen"}
+          </button>
+
+          <div className="flex items-center gap-1">
+            {['W','2W','3W'].map(c => (
+              <button
+                key={c}
+                onClick={() => setCycleFlags(prev => ({ ...prev, [c]: !prev[c] }))}
+                className={"px-3 py-2 rounded-xl text-xs font-bold border " + (cycleFlags[c] ? "bg-slate-900 text-white border-slate-900" : "bg-white text-slate-700 border-slate-200")}
+                title={cycleFlags[c] ? `Categorie ${c} staat aan` : `Categorie ${c} staat uit`}
+              >
+                {c}
+              </button>
+            ))}
           </div>
 
-          <Card>
-            <div className="divide-y divide-slate-100">
-              {filtered.length === 0 ? (
-                <div className="p-6 text-center text-slate-400">
-                  <div className="text-4xl mb-1">📋</div>
-                  <div className="text-sm">Geen producten</div>
-                </div>
-              ) : filtered.map(p => (
-                <div key={p.id} className="p-3 flex items-center gap-2">
-                  <div className="flex-1 min-w-0">
-                    <div className="font-semibold text-sm truncate">{p.name}</div>
-                    <div className="text-xs text-slate-400 truncate">{p.category || 'Overig'}</div>
-                  </div>
-                  {currentQty(findExistingByProductId(p.id)) <= 0 ? (
-                    <button onClick={()=>addItemFromProduct(p)} title="Toevoegen aan lijst" className="w-9 h-9 rounded-xl bg-emerald-600 text-white text-sm">＋</button>
-                  ) : (
-                    <div className="flex items-center gap-1">
-                      <button onClick={()=>decItemFromProduct(p)} title="Minder" className="w-9 h-9 rounded-xl bg-slate-200 text-slate-700 text-sm">−</button>
-                      <div className="w-8 text-center text-sm font-bold text-slate-700 tabular-nums">{currentQty(findExistingByProductId(p.id))}</div>
-                      <button onClick={()=>addItemFromProduct(p)} title="Meer" className="w-9 h-9 rounded-xl bg-emerald-600 text-white text-sm">＋</button>
-                    </div>
-                  )}
-                  <button onClick={()=>cycleProduct(p)} title="Herhaal" className="px-2 h-9 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold">{p.cycle || "—"}</button>
-                  <button onClick={()=>startEdit(p)} className="w-9 h-9 rounded-xl bg-slate-100 text-slate-600 text-sm">✏️</button>
-                  <button onClick={()=>deleteProduct(p)} className="w-9 h-9 rounded-xl bg-slate-100 text-slate-600 text-sm">🗑️</button>
-                </div>
-              ))}
-            </div>
-          </Card>
+          <button
+            onClick={toggleSelectCycles}
+            className={"px-3 py-2 rounded-xl text-xs font-bold border " + (allEligibleSelected ? "bg-slate-900 text-white border-slate-900" : "bg-white text-slate-700 border-slate-200")}
+            title="Selecteer (of deselecteer) alle producten in de gekozen cycli"
+          >
+            {allEligibleSelected ? "Cycli geselecteerd" : "Selecteer cycli"}
+          </button>
 
-          {editingId && (
-            <Modal title="Product bewerken" onClose={()=>setEditingId(null)}>
-              <div className="space-y-3">
-                <div>
-                  <div className="text-xs font-semibold text-slate-500 mb-1">Naam</div>
-                  <input value={editName} onChange={(e)=>setEditName(e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white" />
-                </div>
-                <div>
-                  <div className="text-xs font-semibold text-slate-500 mb-1">Categorie</div>
-                  <select value={editCategory} onChange={(e)=>setEditCategory(e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-sm">
-                    {CATEGORY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                </div>
-                <div className="flex gap-2">
-                  <Button onClick={()=>setEditingId(null)} className="bg-slate-100 text-slate-700 flex-1">Annuleren</Button>
-                  <Button onClick={saveEdit} className="bg-emerald-600 text-white flex-1">Opslaan</Button>
-                </div>
-              </div>
-            </Modal>
+          {selectedCount > 0 && (
+            <button
+              onClick={() => { setSelectCycles(false); setSelectedIds(new Set()); }}
+              className="px-3 py-2 rounded-xl text-xs font-bold border border-slate-200 bg-white text-slate-700"
+              title="Selectie wissen"
+            >
+              Selectie wissen ({selectedCount})
+            </button>
           )}
         </div>
-      );
-    }
+      </div>
+
+      <Card>
+        <div className="divide-y divide-slate-100">
+          {filtered.length === 0 ? (
+            <div className="p-6 text-center text-slate-400">
+              <div className="text-4xl mb-1">📋</div>
+              <div className="text-sm">Geen producten</div>
+            </div>
+          ) : filtered.map(p => {
+            const existing = findExistingByProductId(p.id);
+            const qty = currentQty(existing);
+            const isSelected = selectedIds.has(p.id);
+
+            return (
+              <div key={p.id} className="p-3 flex items-center gap-2">
+                <button
+                  onClick={() => toggleSelected(p.id)}
+                  className={
+                    "w-6 h-6 rounded-lg border flex items-center justify-center text-xs shrink-0 " +
+                    (isSelected ? "bg-emerald-600 border-emerald-600 text-white" : "bg-white border-slate-300 text-slate-400")
+                  }
+                  title={isSelected ? "Deselecteren" : "Selecteren"}
+                >
+                  {isSelected ? "✓" : ""}
+                </button>
+
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold text-sm truncate">{p.name}</div>
+                  <div className="text-xs text-slate-400 truncate">{p.category || 'Overig'}</div>
+                </div>
+
+                {qty <= 0 ? (
+                  <button onClick={()=>addItemFromProduct(p)} title="Toevoegen aan lijst" className="w-9 h-9 rounded-xl bg-emerald-600 text-white text-sm">＋</button>
+                ) : (
+                  <div className="flex items-center gap-1">
+                    <button onClick={()=>decItemFromProduct(p)} title="Minder" className="w-9 h-9 rounded-xl bg-slate-200 text-slate-700 text-sm">−</button>
+                    <div className="w-8 text-center text-sm font-bold text-slate-700 tabular-nums">{qty}</div>
+                    <button onClick={()=>addItemFromProduct(p)} title="Meer" className="w-9 h-9 rounded-xl bg-emerald-600 text-white text-sm">＋</button>
+                  </div>
+                )}
+
+                <button onClick={()=>cycleProduct(p)} title="Herhaal" className="px-2 h-9 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold">{p.cycle || "—"}</button>
+                <button onClick={()=>startEdit(p)} className="w-9 h-9 rounded-xl bg-slate-100 text-slate-600 text-sm">✏️</button>
+                <button onClick={()=>deleteProduct(p)} className="w-9 h-9 rounded-xl bg-slate-100 text-slate-600 text-sm">🗑️</button>
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+
+      {selectedCount > 0 && (
+        <div className="fixed left-0 right-0 bottom-0 pb-6 px-4 z-40">
+          <div className="max-w-xl mx-auto">
+            <div className="bg-white border border-slate-200 rounded-2xl shadow-lg px-3 py-3 flex items-center gap-2">
+              <div className="flex-1 text-sm text-slate-700">
+                Selectie: <span className="font-bold">{selectedCount}</span>
+              </div>
+              <Button onClick={addSelection} className="bg-emerald-600 text-white">Selectie toevoegen</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editingId && (
+        <Modal title="Product bewerken" onClose={()=>setEditingId(null)}>
+          <div className="space-y-3">
+            <div>
+              <div className="text-xs font-semibold text-slate-500 mb-1">Naam</div>
+              <input value={editName} onChange={(e)=>setEditName(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white" />
+            </div>
+            <div>
+              <div className="text-xs font-semibold text-slate-500 mb-1">Categorie</div>
+              <select value={editCategory} onChange={(e)=>setEditCategory(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-sm">
+                {CATEGORY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={()=>setEditingId(null)} className="bg-slate-100 text-slate-700 flex-1">Annuleren</Button>
+              <Button onClick={saveEdit} className="bg-emerald-600 text-white flex-1">Opslaan</Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
 
     // ---------------- List tab ----------------
     function ListTab({ householdId, activeListId, products, items, currentUser }) {
@@ -1876,7 +2137,8 @@ function ensurePickState(recipe) {
             <Header
               user={user}
               householdInfo={householdInfo}
-              memberCount={members.length || 0}
+              householdId={householdId}
+              members={members}
               syncing={syncing}
               onCopyCode={handleCopyCode}
               onSignOut={()=> setShowSignOut(true)}
