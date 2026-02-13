@@ -1591,19 +1591,28 @@ async function addItemFromProduct(p) {
                       <SwipeRow key={it.id} item={it} onSwipeRight={(x)=>toggle(x)} onSwipeLeft={storeMode ? ((x)=>toggle(x)) : ((x)=>remove(x))}>
 
                       <div
-                        className={"relative flex items-center bg-white border border-slate-200 rounded-xl " + (storeMode ? "px-4 py-3" : "px-3 py-2")}
+                        className={"relative flex items-center bg-white border border-slate-200 rounded-xl " + (storeMode ? "px-4 py-3 pr-12" : "px-3 py-2")}
                         onClick={() => { if (storeMode) { toggle(it); } else { setOpenItemId(openItemId === it.id ? null : it.id); } }}
                       >
                         <div className={"flex-1 min-w-0 pr-2 " + (storeMode ? "text-base" : "text-sm") + " " + (it.checked ? "line-through text-slate-400" : "text-slate-800")}>
                           {it._name}
                         </div>
-
-                        <SmallAvatar
-                          url={it.updatedByPhotoURL || it.createdByPhotoURL || ''}
-                          name={(it.updatedByName || it.createdByName || '').trim()}
-                          size={20}
-                        />
-
+                        {storeMode ? (
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none transform-gpu"
+                               style={{ WebkitTransform: "translateZ(0)", transform: "translateZ(0)" }}>
+                            <SmallAvatar
+                              url={it.updatedByPhotoURL || it.createdByPhotoURL || ''}
+                              name={(it.updatedByName || it.createdByName || '').trim()}
+                              size={20}
+                            />
+                          </div>
+                        ) : (
+                          <SmallAvatar
+                            url={it.updatedByPhotoURL || it.createdByPhotoURL || ''}
+                            name={(it.updatedByName || it.createdByName || '').trim()}
+                            size={20}
+                          />
+                        )}
                         {!storeMode && (
                         <div
                           className={
