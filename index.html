@@ -876,9 +876,6 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
     eligibleCycleIds.forEach(id => nextSel.add(id));
     setSelectedIds(nextSel);
   }
-      return nextOn;
-    });
-  }
 
   async function addSelection() {
     if (!activeListId) { alert('Maak eerst een lijst aan.'); return; }
