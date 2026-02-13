@@ -1041,6 +1041,44 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
       const [newCategory, setNewCategory] = useState('Overig');
       const [showSuggestions, setShowSuggestions] = useState(false);
 
+      // Undo (alleen voor verwijderen)
+      const [undoState, setUndoState] = useState(null); // { payload, label }
+      const undoTimerRef = useRef(null);
+
+      function clearUndoTimer() {
+        if (undoTimerRef.current) {
+          clearTimeout(undoTimerRef.current);
+          undoTimerRef.current = null;
+        }
+      }
+
+      function scheduleUndoClear() {
+        clearUndoTimer();
+        undoTimerRef.current = setTimeout(() => {
+          setUndoState(null);
+          undoTimerRef.current = null;
+        }, 5000);
+      }
+
+      async function undoDelete() {
+        if (!undoState || !householdId || !activeListId) return;
+        const payload = undoState.payload;
+        setUndoState(null);
+        clearUndoTimer();
+        try {
+          await db.doc(`households/${householdId}/lists/${activeListId}/items/${payload.id}`).set({
+            ...payload,
+            // mark as last edited by the person who undid the delete
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            updatedBy: (currentUser && currentUser.uid) ? currentUser.uid : '',
+            updatedByName: (currentUser && currentUser.displayName) ? currentUser.displayName : '',
+            updatedByPhotoURL: (currentUser && currentUser.photoURL) ? currentUser.photoURL : '',
+          }, { merge: true });
+        } catch (e) {
+          console.error("Undo delete failed:", e);
+        }
+      }
+
       const suggestions = useMemo(() => {
         const q = newText.trim().toLowerCase();
         if (q.length < 2) return [];
@@ -1164,7 +1202,21 @@ async function addItemFromProduct(p) {
 
       async function remove(item) {
         if (!householdId || !activeListId) return;
-        await db.doc(`households/${householdId}/lists/${activeListId}/items/${item.id}`).delete();
+
+        // Prepare payload for undo (strip computed fields)
+        const payload = { ...item };
+        delete payload._name; delete payload._cat; delete payload._qty;
+
+        const label = (payload.nameSnapshot || '').trim() || 'Item';
+
+        try {
+          await db.doc(`households/${householdId}/lists/${activeListId}/items/${item.id}`).delete();
+          // show undo
+          setUndoState({ payload, label: `${label} verwijderd` });
+          scheduleUndoClear();
+        } catch (e) {
+          console.error("Delete failed:", e);
+        }
       }
 
 
@@ -1301,6 +1353,30 @@ async function addItemFromProduct(p) {
               ))}
             </div>
           </Card>
+
+          {undoState && (
+            <div className="fixed left-0 right-0 bottom-0 pb-6 px-4 z-50">
+              <div className="max-w-xl mx-auto">
+                <div className="bg-slate-900 text-white rounded-2xl shadow-lg px-4 py-3 flex items-center gap-3">
+                  <div className="flex-1 text-sm truncate">{undoState.label}</div>
+                  <button
+                    onClick={undoDelete}
+                    className="text-sm font-bold underline decoration-2 underline-offset-4"
+                  >
+                    Ongedaan maken
+                  </button>
+                  <button
+                    onClick={() => { setUndoState(null); clearUndoTimer(); }}
+                    className="text-sm opacity-70 hover:opacity-100"
+                    title="Sluiten"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
         </div>
       );
     }
