@@ -1239,6 +1239,93 @@ async function addItemFromProduct(p) {
         await setQty(item, next);
       }
 
+      // --- Swipe (alleen in de winkel / lijst) ---
+      function SwipeRow({ item, children, onSwipeRight, onSwipeLeft }) {
+        const [dx, setDx] = useState(0);
+        const startRef = useRef({ x: 0, y: 0, active: false, locked: false, horiz: false });
+
+        function isFromControl(target) {
+          try {
+            return !!target.closest('button, input, select, textarea, a, label');
+          } catch (e) {
+            return false;
+          }
+        }
+
+        function onTouchStart(e) {
+          if (isFromControl(e.target)) return;
+          const t = e.touches && e.touches[0];
+          if (!t) return;
+          startRef.current = { x: t.clientX, y: t.clientY, active: true, locked: false, horiz: false };
+          setDx(0);
+        }
+
+        function onTouchMove(e) {
+          const st = startRef.current;
+          if (!st.active) return;
+          const t = e.touches && e.touches[0];
+          if (!t) return;
+          const ndx = t.clientX - st.x;
+          const ndy = t.clientY - st.y;
+
+          // lock direction after a small threshold
+          if (!st.locked) {
+            const ax = Math.abs(ndx);
+            const ay = Math.abs(ndy);
+            if (ax < 8 && ay < 8) return;
+            st.locked = true;
+            st.horiz = ax > ay * 1.2;
+            startRef.current = st;
+          }
+
+          if (!st.horiz) return;
+
+          // prevent page from treating it as scroll when we are clearly swiping horizontally
+          e.preventDefault();
+
+          // clamp swipe distance so it doesn't fly off
+          const clamped = clamp(ndx, -120, 120);
+          setDx(clamped);
+        }
+
+        function onTouchEnd() {
+          const st = startRef.current;
+          if (!st.active) { setDx(0); return; }
+          st.active = false;
+          startRef.current = st;
+
+          const threshold = 70;
+          if (dx >= threshold) {
+            setDx(0);
+            onSwipeRight?.(item);
+            return;
+          }
+          if (dx <= -threshold) {
+            setDx(0);
+            onSwipeLeft?.(item);
+            return;
+          }
+          setDx(0);
+        }
+
+        return (
+          <div className="relative touch-pan-y">
+            <div
+              className="transition-transform duration-150"
+              style={{ transform: dx ? `translateX(${dx}px)` : 'translateX(0px)' }}
+              onTouchStart={onTouchStart}
+              onTouchMove={onTouchMove}
+              onTouchEnd={onTouchEnd}
+              onTouchCancel={onTouchEnd}
+            >
+              {children}
+            </div>
+          </div>
+        );
+      }
+
+
+
       const byCategory = useMemo(() => {
         const productById = new Map((products || []).map(p => [p.id, p]));
         const map = {};
@@ -1307,7 +1394,8 @@ async function addItemFromProduct(p) {
                   </div>
                   <div className="space-y-1">
                     {group.items.map(it => (
-                      <div key={it.id} className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-2">
+                      <SwipeRow key={it.id} item={it} onSwipeRight={(x)=>toggle(x)} onSwipeLeft={(x)=>remove(x)}>
+                      <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-2">
                         <button onClick={()=>toggle(it)} className={
                           "w-6 h-6 rounded-lg border flex items-center justify-center text-xs " +
                           (it.checked ? "bg-emerald-600 border-emerald-600 text-white" : "bg-white border-slate-300 text-slate-400")
@@ -1347,6 +1435,7 @@ async function addItemFromProduct(p) {
                         </div>
                         <button onClick={()=>remove(it)} className="w-8 h-8 rounded-xl bg-slate-100 text-slate-600 text-sm">🗑️</button>
                       </div>
+                    </SwipeRow>
                     ))}
                   </div>
                 </div>
