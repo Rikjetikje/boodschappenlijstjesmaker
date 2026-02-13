@@ -613,7 +613,7 @@ const { useEffect, useMemo, useRef, useState } = React;
                 <HouseholdNameLine />
 
                 <div className="inline-flex items-center -space-x-2" aria-label="Leden">
-                  {show.map((m, idx) => <Avatar m={m} i={idx} />)}
+                  {show.map((m, idx) => <Avatar key={(m && (m.uid || m.id)) || idx} m={m} i={idx} />)}
                   {extra > 0 && (
                     <div
                       className="w-5 h-5 rounded-full ring-2 ring-white bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-600"
@@ -662,7 +662,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
   // - 'cycle': within the “cycle section” sort by W/2W/3W, then name
   // - 'az': name A–Z
   // - 'category': category, then name
-  const [sortMode, setSortMode] = useState('cycle');
+  const [sortMode, setSortMode] = useState('az');
 
   function normCycle(c) {
     return String(c || '').toUpperCase().trim();
@@ -697,13 +697,8 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
       if (dc !== 0) return dc;
       return cmpAZ(a,b);
     };
-    const cmpCycle = (a,b) => {
-      const dr = cycleRank(a.cycle) - cycleRank(b.cycle);
-      if (dr !== 0) return dr;
-      return cmpAZ(a,b);
-    };
 
-    const innerCmp = (sortMode === 'category') ? cmpCategory : (sortMode === 'az' ? cmpAZ : cmpCycle);
+    const innerCmp = (sortMode === 'category') ? cmpCategory : cmpAZ;
 
     // Always put the chosen cycles on top (when any chip is active)
     const anyCycleActive = !!(cycleFlags.W || cycleFlags['2W'] || cycleFlags['3W']);
@@ -933,15 +928,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
             ))}
           </div>
 
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => setSortMode('cycle')}
-              className={"px-3 py-2 rounded-xl text-xs font-bold border " + (sortMode === 'cycle' ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-slate-700 border-slate-200")}
-              title="Sorteer op cyclus (W/2W/3W), daarna op naam"
-            >
-              Cycli
-            </button>
-            <button
+          <div className="flex items-center gap-1"><button
               onClick={() => setSortMode('az')}
               className={"px-3 py-2 rounded-xl text-xs font-bold border " + (sortMode === 'az' ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-slate-700 border-slate-200")}
               title="Sorteer alfabetisch"
