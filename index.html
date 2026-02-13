@@ -642,17 +642,17 @@ const { useEffect, useMemo, useRef, useState } = React;
                 onClick={() => setStoreMode?.(!storeMode)}
                 className={
                   "inline-flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-xs font-bold border " +
-                  (storeMode ? "bg-slate-900 text-white border-slate-900" : "bg-white text-slate-700 border-slate-200")
+                  (storeMode ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-slate-700 border-slate-200")
                 }
                 title={storeMode ? "Winkelstand uit" : "Winkelstand aan"}
               >
-                <span aria-hidden="true">{storeMode ? "🛒" : "🧾"}</span>
+                <span aria-hidden="true">🛒</span>
                 <span className="hidden sm:inline">{storeMode ? "Winkel" : "Normaal"}</span>
               </button>
-              {syncing ? <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" title="Synchroniseren"></span>
-                        : <span className="w-2 h-2 rounded-full bg-emerald-400" title="Gesynchroniseerd"></span>}
-              <button onClick={onSignOut} className="flex items-center gap-2">
-                {user.photoURL ? <img src={user.photoURL} className="w-7 h-7 rounded-full" /> : <div className="w-7 h-7 rounded-full bg-slate-200"></div>}
+              {!storeMode && (syncing ? <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" title="Synchroniseren"></span>
+                        : <span className="w-2 h-2 rounded-full bg-emerald-400" title="Gesynchroniseerd"></span>)}
+              <button onClick={onSignOut} className="flex items-center gap-2 transform-gpu" style={{ WebkitTransform: "translateZ(0)", transform: "translateZ(0)" }}>
+                {user.photoURL ? <img src={user.photoURL} className="w-7 h-7 rounded-full transform-gpu" /> : <div className="w-7 h-7 rounded-full bg-slate-200 transform-gpu"></div>}
               </button>
             </div>
           </div>
@@ -1647,14 +1647,6 @@ async function addItemFromProduct(p) {
                           >🗑️</button>
                         )}
                         </div>
-                        )}
-
-                        {storeMode && (
-                          <div className={"ml-2 w-6 h-6 rounded-lg border flex items-center justify-center text-xs font-bold " + (it.checked ? "bg-emerald-600 border-emerald-600 text-white" : "bg-white border-slate-300 text-slate-400")}
-                            title={it.checked ? "Afgevinkt" : "Niet afgevinkt"}
-                          >
-                            {it.checked ? "✓" : ""}
-                          </div>
                         )}
                       </div>
 
