@@ -1476,7 +1476,7 @@ async function addItemFromProduct(p) {
               <div className="relative w-full sm:flex-1">
                 <input
                   ref={addInputRef}
-                  type="search"
+                  type="text"
                   inputMode="search"
                   value={newText}
                   onChange={(e)=>{ setNewText(e.target.value); setShowSuggestions(true); }}
@@ -1485,14 +1485,14 @@ async function addItemFromProduct(p) {
                   onKeyDown={(e)=>{ if (e.key === 'Enter') { e.preventDefault(); addFreeText(); }
                     if (e.key === 'Escape') { e.preventDefault(); setStickyAdd(false); } }}
                   placeholder="Zoek product of typ iets nieuws…"
-                  className="w-full pr-12 px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm"
+                  className="w-full pr-10 px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm"
                 />
                 {newText && newText.length > 0 && (
                   <button
                     type="button"
                     onMouseDown={(e)=>e.preventDefault()}
                     onClick={() => { setNewText(''); setShowSuggestions(false); setTimeout(()=>addInputRef.current?.focus(), 0); }}
-                    className="absolute right-1 top-1/2 -translate-y-1/2 w-10 h-10 rounded-xl bg-slate-100 text-slate-600 text-lg flex items-center justify-center"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-xl leading-none hover:text-slate-600"
                     title="Leegmaken"
                     aria-label="Leegmaken"
                   >
