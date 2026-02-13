@@ -1035,11 +1035,30 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
 }
 
 
-    // ---------------- List tab ----------------
+    
+      const SmallAvatar = React.memo(function SmallAvatar({ url, name, size = 24 }) {
+        const nm = (name || '').trim();
+        const initial = (nm ? nm[0] : '?').toUpperCase();
+        const px = Math.max(16, Math.min(32, Number(size)||24));
+        const style = { width: px + 'px', height: px + 'px' };
+        return (
+          <div
+            style={style}
+            className="rounded-full overflow-hidden bg-slate-200 flex items-center justify-center text-[11px] font-bold text-slate-600 shrink-0"
+            title={nm ? `Laatst aangepast door ${nm}` : 'Laatst aangepast (onbekend)'}
+          >
+            {url ? <img src={url} alt={nm || 'avatar'} className="w-full h-full object-cover" /> : initial}
+          </div>
+        );
+      });
+
+// ---------------- List tab ----------------
     function ListTab({ householdId, activeListId, products, items, currentUser }) {
       const [newText, setNewText] = useState('');
       const [newCategory, setNewCategory] = useState('Overig');
       const [showSuggestions, setShowSuggestions] = useState(false);
+      const [openItemId, setOpenItemId] = useState(null);
+
 
       // Undo (alleen voor verwijderen)
       const [undoState, setUndoState] = useState(null); // { payload, label }
@@ -1239,10 +1258,12 @@ async function addItemFromProduct(p) {
         await setQty(item, next);
       }
 
-      // --- Swipe (alleen in de winkel / lijst) ---
+            // --- Swipe (alleen in de winkel / lijst) ---
       function SwipeRow({ item, children, onSwipeRight, onSwipeLeft }) {
-        const [dx, setDx] = useState(0);
+        const rowRef = useRef(null);
         const startRef = useRef({ x: 0, y: 0, active: false, locked: false, horiz: false });
+        const dxRef = useRef(0);
+        const rafRef = useRef(null);
 
         function isFromControl(target) {
           try {
@@ -1252,12 +1273,28 @@ async function addItemFromProduct(p) {
           }
         }
 
+        function applyDx(dx, withTransition) {
+          const el = rowRef.current;
+          if (!el) return;
+          el.style.transition = withTransition ? 'transform 150ms ease' : 'none';
+          el.style.transform = `translateX(${dx}px)`;
+        }
+
+        function scheduleApply() {
+          if (rafRef.current) return;
+          rafRef.current = requestAnimationFrame(() => {
+            rafRef.current = null;
+            applyDx(dxRef.current, false);
+          });
+        }
+
         function onTouchStart(e) {
           if (isFromControl(e.target)) return;
           const t = e.touches && e.touches[0];
           if (!t) return;
           startRef.current = { x: t.clientX, y: t.clientY, active: true, locked: false, horiz: false };
-          setDx(0);
+          dxRef.current = 0;
+          applyDx(0, false);
         }
 
         function onTouchMove(e) {
@@ -1265,6 +1302,7 @@ async function addItemFromProduct(p) {
           if (!st.active) return;
           const t = e.touches && e.touches[0];
           if (!t) return;
+
           const ndx = t.clientX - st.x;
           const ndy = t.clientY - st.y;
 
@@ -1280,46 +1318,41 @@ async function addItemFromProduct(p) {
 
           if (!st.horiz) return;
 
-          // prevent page from treating it as scroll when we are clearly swiping horizontally
-          e.preventDefault();
+          // prevent scroll while swiping horizontally
+          if (e.cancelable) e.preventDefault();
 
-          // clamp swipe distance so it doesn't fly off
-          const clamped = clamp(ndx, -120, 120);
-          setDx(clamped);
+          // clamp swipe distance
+          const clamped = Math.max(-120, Math.min(120, ndx));
+          dxRef.current = clamped;
+          scheduleApply();
         }
 
         function onTouchEnd() {
           const st = startRef.current;
-          if (!st.active) { setDx(0); return; }
+          if (!st.active) return;
           st.active = false;
           startRef.current = st;
 
-          const threshold = 70;
-          if (dx >= threshold) {
-            setDx(0);
-            onSwipeRight?.(item);
-            return;
-          }
-          if (dx <= -threshold) {
-            setDx(0);
-            onSwipeLeft?.(item);
-            return;
-          }
-          setDx(0);
+          const dx = dxRef.current;
+          const TH = 60;
+
+          // snap back
+          applyDx(0, true);
+          setTimeout(() => applyDx(0, false), 170);
+
+          if (dx > TH && onSwipeRight) onSwipeRight(item);
+          if (dx < -TH && onSwipeLeft) onSwipeLeft(item);
         }
 
         return (
-          <div className="relative touch-pan-y">
-            <div
-              className="transition-transform duration-150"
-              style={{ transform: dx ? `translateX(${dx}px)` : 'translateX(0px)' }}
-              onTouchStart={onTouchStart}
-              onTouchMove={onTouchMove}
-              onTouchEnd={onTouchEnd}
-              onTouchCancel={onTouchEnd}
-            >
-              {children}
-            </div>
+          <div
+            ref={rowRef}
+            onTouchStart={onTouchStart}
+            onTouchMove={onTouchMove}
+            onTouchEnd={onTouchEnd}
+            className="touch-pan-y"
+          >
+            {children}
           </div>
         );
       }
@@ -1395,46 +1428,62 @@ async function addItemFromProduct(p) {
                   <div className="space-y-1">
                     {group.items.map(it => (
                       <SwipeRow key={it.id} item={it} onSwipeRight={(x)=>toggle(x)} onSwipeLeft={(x)=>remove(x)}>
-                      <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-2">
-                        <button onClick={()=>toggle(it)} className={
-                          "w-6 h-6 rounded-lg border flex items-center justify-center text-xs " +
-                          (it.checked ? "bg-emerald-600 border-emerald-600 text-white" : "bg-white border-slate-300 text-slate-400")
-                        }>
-                          {it.checked ? "✓" : ""}
-                        </button>
-                        <div className={"flex-1 min-w-0 text-sm " + (it.checked ? "line-through text-slate-400" : "text-slate-800")}>
+
+                      <div
+                        className="relative flex items-center bg-white border border-slate-200 rounded-xl px-3 py-2"
+                        onClick={() => setOpenItemId(openItemId === it.id ? null : it.id)}
+                      >
+                        <div className={"flex-1 min-w-0 text-sm pr-2 " + (it.checked ? "line-through text-slate-400" : "text-slate-800")}>
                           {it._name}
                         </div>
-                        <div className="flex items-center gap-1 ml-2">
-                          <button
-                            onClick={()=>incQty(it, -1)}
-                            disabled={it._qty <= 0}
-                            className={"w-8 h-8 rounded-xl border text-sm " + (it._qty <= 0 ? "bg-slate-50 border-slate-200 text-slate-300" : "bg-white border-slate-200 text-slate-700")}
-                            title="Minder"
-                          >−</button>
-                          <div className="w-8 text-center text-sm tabular-nums text-slate-700">{it._qty}</div>
-                          <button
-                            onClick={()=>incQty(it, +1)}
-                            disabled={it._qty >= 99}
-                            className={"w-8 h-8 rounded-xl border text-sm " + (it._qty >= 99 ? "bg-slate-50 border-slate-200 text-slate-300" : "bg-white border-slate-200 text-slate-700")}
-                            title="Meer"
-                          >+</button>
-                        </div>
-                        <div className="w-8 h-8 rounded-full overflow-hidden bg-slate-200 flex items-center justify-center text-[11px] font-bold text-slate-600 shrink-0"
-                          title={(() => {
-                            const nm = (it.updatedByName || it.createdByName || '').trim();
-                            return nm ? `Laatst aangepast door ${nm}` : 'Laatst aangepast (onbekend)';
-                          })()}
+
+                        <SmallAvatar
+                          url={it.updatedByPhotoURL || it.createdByPhotoURL || ''}
+                          name={(it.updatedByName || it.createdByName || '').trim()}
+                          size={20}
+                        />
+
+                        <div
+                          className={
+                            "flex items-center gap-1 ml-2 transition-all duration-150 " +
+                            (openItemId === it.id ? "opacity-100 translate-x-0" : "opacity-0 translate-x-3 pointer-events-none w-0 overflow-hidden")
+                          }
                         >
-                          {(() => {
-                            const url = it.updatedByPhotoURL || it.createdByPhotoURL || '';
-                            const nm = (it.updatedByName || it.createdByName || '').trim();
-                            const initial = (nm ? nm[0] : '?').toUpperCase();
-                            return url ? <img src={url} alt={nm || 'avatar'} className="w-full h-full object-cover" /> : initial;
-                          })()}
+                          <button
+                            onClick={(e)=>{ e.stopPropagation(); toggle(it); }}
+                            className={
+                              "w-7 h-7 rounded-lg border flex items-center justify-center text-xs " +
+                              (it.checked ? "bg-emerald-600 border-emerald-600 text-white" : "bg-white border-slate-300 text-slate-400")
+                            }
+                            title="Afvinken"
+                          >
+                            {it.checked ? "✓" : ""}
+                          </button>
+
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={(e)=>{ e.stopPropagation(); incQty(it, -1); }}
+                              disabled={it._qty <= 0}
+                              className={"w-7 h-7 rounded-xl border text-sm " + (it._qty <= 0 ? "bg-slate-50 border-slate-200 text-slate-300" : "bg-white border-slate-200 text-slate-700")}
+                              title="Minder"
+                            >−</button>
+                            <div className="w-7 text-center text-sm tabular-nums text-slate-700">{it._qty}</div>
+                            <button
+                              onClick={(e)=>{ e.stopPropagation(); incQty(it, +1); }}
+                              disabled={it._qty >= 99}
+                              className={"w-7 h-7 rounded-xl border text-sm " + (it._qty >= 99 ? "bg-slate-50 border-slate-200 text-slate-300" : "bg-white border-slate-200 text-slate-700")}
+                              title="Meer"
+                            >+</button>
+                          </div>
+
+                          <button
+                            onClick={(e)=>{ e.stopPropagation(); remove(it); }}
+                            className="w-7 h-7 rounded-xl bg-slate-100 text-slate-600 text-sm"
+                            title="Verwijderen"
+                          >🗑️</button>
                         </div>
-                        <button onClick={()=>remove(it)} className="w-8 h-8 rounded-xl bg-slate-100 text-slate-600 text-sm">🗑️</button>
                       </div>
+
                     </SwipeRow>
                     ))}
                   </div>
