@@ -529,7 +529,7 @@ const { useEffect, useMemo, useRef, useState } = React;
     }
 
     // ---------------- Header ----------------
-    function Header({ user, householdId, householdInfo, members, syncing, onCopyCode, onSignOut }) {
+    function Header({ user, householdId, householdInfo, members, syncing, storeMode, setStoreMode, onCopyCode, onSignOut }) {
       const [editingName, setEditingName] = useState(false);
       const [draftName, setDraftName] = useState(householdInfo?.name || '');
 
@@ -617,8 +617,9 @@ const { useEffect, useMemo, useRef, useState } = React;
               <h1 className="text-xl font-black text-slate-900 leading-tight">Boodschappenlijstjemaker</h1>
 
               <div className="flex items-center gap-3 flex-wrap">
-                <HouseholdNameLine />
+                {!storeMode && <HouseholdNameLine />}
 
+                {!storeMode && (
                 <div className="inline-flex items-center -space-x-2" aria-label="Leden">
                   {show.map((m, idx) => <Avatar key={(m && (m.uid || m.id)) || idx} m={m} i={idx} />)}
                   {extra > 0 && (
@@ -631,10 +632,23 @@ const { useEffect, useMemo, useRef, useState } = React;
                     </div>
                   )}
                 </div>
+              )}
               </div>
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => setStoreMode?.(!storeMode)}
+                className={
+                  "inline-flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-xs font-bold border " +
+                  (storeMode ? "bg-slate-900 text-white border-slate-900" : "bg-white text-slate-700 border-slate-200")
+                }
+                title={storeMode ? "Winkelstand uit" : "Winkelstand aan"}
+              >
+                <span aria-hidden="true">{storeMode ? "🛒" : "🧾"}</span>
+                <span className="hidden sm:inline">{storeMode ? "Winkel" : "Normaal"}</span>
+              </button>
               {syncing ? <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" title="Synchroniseren"></span>
                         : <span className="w-2 h-2 rounded-full bg-emerald-400" title="Gesynchroniseerd"></span>}
               <button onClick={onSignOut} className="flex items-center gap-2">
@@ -643,7 +657,7 @@ const { useEffect, useMemo, useRef, useState } = React;
             </div>
           </div>
 
-          {householdInfo?.code && (
+          {!storeMode && householdInfo?.code && (
             <div className="mt-2 flex items-center gap-2">
               <span className="text-xs text-slate-500">Code:</span>
               <span className="font-mono font-bold text-sm tracking-wider text-emerald-700">{householdInfo.code}</span>
@@ -1060,7 +1074,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
       });
 
 // ---------------- List tab ----------------
-    function ListTab({ householdId, activeListId, products, items, currentUser }) {
+    function ListTab({ householdId, activeListId, products, items, currentUser, storeMode }) {
       const [newText, setNewText] = useState('');
       const [newCategory, setNewCategory] = useState('Overig');
       const [showSuggestions, setShowSuggestions] = useState(false);
@@ -1071,6 +1085,28 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
       const [stickyAdd, setStickyAdd] = useState(false);
       const [vvh, setVvh] = useState(() => (window.visualViewport ? window.visualViewport.height : window.innerHeight));
       const suggestionsRef = useRef(null);
+
+      const STORE_CATEGORY_ORDER = [
+        'Groente & fruit',
+        'Brood & beleg',
+        'Zuivel & eieren',
+        'Vlees/vis/vega',
+        'Vers / koeling',
+        'Pasta/rijst/maaltijdpakketten',
+        'Conserven',
+        'Ontbijt & snacks',
+        'Dranken',
+        'Diepvries',
+        'Huishoud',
+        'Drogisterij',
+        'Overig'
+      ];
+
+      function storeCatRank(cat) {
+        const c = String(cat || 'Overig').trim();
+        const idx = STORE_CATEGORY_ORDER.findIndex(x => x.toLowerCase() === c.toLowerCase());
+        return idx === -1 ? 999 : idx;
+      }
 
 
       function scrollAddBoxIntoView(alignTop = true) {
@@ -1550,7 +1586,7 @@ async function addItemFromProduct(p) {
                   </div>
                   <div className="space-y-1">
                     {group.items.map(it => (
-                      <SwipeRow key={it.id} item={it} onSwipeRight={(x)=>toggle(x)} onSwipeLeft={(x)=>remove(x)}>
+                      <SwipeRow key={it.id} item={it} onSwipeRight={(x)=>toggle(x)} onSwipeLeft={storeMode ? null : ((x)=>remove(x))}>
 
                       <div
                         className="relative flex items-center bg-white border border-slate-200 rounded-xl px-3 py-2"
@@ -1600,11 +1636,13 @@ async function addItemFromProduct(p) {
                             >+</button>
                           </div>
 
+                          {!storeMode && (
                           <button
                             onClick={(e)=>{ e.stopPropagation(); remove(it); }}
                             className="w-7 h-7 rounded-xl bg-slate-100 text-slate-600 text-sm"
                             title="Verwijderen"
                           >🗑️</button>
+                        )}
                         </div>
                       </div>
 
@@ -2279,7 +2317,12 @@ function ensurePickState(recipe) {
       const activeListId = profile?.activeListId || null;
 
       const [householdInfo, setHouseholdInfo] = useState(null);
-      const [tab, setTab] = useState('list'); // list | products | recipes
+      const [tab, setTab] = useState('list');
+      const [storeMode, setStoreMode] = useState(false); // list | products | recipes
+
+      useEffect(() => {
+        if (storeMode && tab !== 'list') setTab('list');
+      }, [storeMode, tab]);
       const [showSignOut, setShowSignOut] = useState(false);
 
       // Load household info (name + code)
@@ -2470,10 +2513,13 @@ function ensurePickState(recipe) {
               householdId={householdId}
               members={members}
               syncing={syncing}
+              storeMode={storeMode}
+              setStoreMode={setStoreMode}
               onCopyCode={handleCopyCode}
               onSignOut={()=> setShowSignOut(true)}
             />
 
+            {!storeMode && (
             <ListsMenu
               lists={lists}
               activeListId={activeListId}
@@ -2481,7 +2527,9 @@ function ensurePickState(recipe) {
               onCreate={handleCreateList}
               onDelete={handleDeleteList}
             />
+            )}
 
+            {!storeMode && (
             <div className="flex gap-2 mb-3">
               <Button onClick={()=>setTab('list')}
                 className={tab==='list' ? 'bg-emerald-600 text-white flex-1' : 'bg-white border border-slate-200 text-slate-700 flex-1'}>
@@ -2496,6 +2544,7 @@ function ensurePickState(recipe) {
                 🍲 Recepten
               </Button>
             </div>
+            )}
 
             {tab === 'list' ? (
               <ListTab
@@ -2504,6 +2553,7 @@ function ensurePickState(recipe) {
                 products={products}
                 items={items}
                 currentUser={user}
+                storeMode={storeMode}
               />
             ) : tab === 'products' ? (
               <ProductsTab
