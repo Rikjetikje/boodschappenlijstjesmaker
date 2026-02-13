@@ -40,9 +40,7 @@
     }
   </style>
 
-  <script>window.APP_BUILD = "fixed10-qty"; console.log("APP_BUILD", window.APP_BUILD);</script>
-
-  <script>window.APP_BUILD="fixed12-qty"; console.log("APP_BUILD", window.APP_BUILD);</script>
+  <script>window.APP_BUILD = "mobile-magnet-lockfix3b-20260213154931"; console.log("APP_BUILD", window.APP_BUILD);</script>
 </head>
 
 <body class="bg-slate-50">
@@ -2504,11 +2502,7 @@ function ensurePickState(recipe) {
   </script>
 
   <script>
-    // Cache-busting for GitHub Pages: always get the newest index.html
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("./service-worker.js").catch(() => {});
-    }
+    // Service worker disabled (dev)
   </script>
-
 </body>
 </html>
