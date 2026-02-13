@@ -1069,16 +1069,52 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
       const [openItemId, setOpenItemId] = useState(null);
       const addInputRef = useRef(null);
 
-      function scrollAddBoxIntoView() {
+      // Mobile UX: "magnet" add bar to top on focus (especially iOS keyboard)
+      const [stickyAdd, setStickyAdd] = useState(false);
+      const [vvh, setVvh] = useState(() => (window.visualViewport ? window.visualViewport.height : window.innerHeight));
+
+
+      function scrollAddBoxIntoView(alignTop = true) {
         const el = addInputRef.current;
         if (!el) return;
+
         const r = el.getBoundingClientRect();
-        const target = window.scrollY + r.top - 12;
-        window.requestAnimationFrame(() => {
-          window.scrollTo({ top: Math.max(0, target), behavior: 'smooth' });
-        });
+        const topPad = 8; // small breathing space
+        // Aim to place the input at the very top of the layout viewport.
+        const target = window.scrollY + r.top - (alignTop ? topPad : 12);
+
+        // iOS: keyboard opens AFTER focus; do a couple of passes.
+        const doScroll = () => {
+          const rr = el.getBoundingClientRect();
+          const t = window.scrollY + rr.top - (alignTop ? topPad : 12);
+          window.scrollTo({ top: Math.max(0, t), behavior: 'smooth' });
+        };
+
+        window.requestAnimationFrame(doScroll);
+        setTimeout(doScroll, 50);
+        setTimeout(doScroll, 180);
       }
 
+
+      useEffect(() => {
+        // Track viewport height (iOS keyboard shrinks visual viewport)
+        const vv = window.visualViewport;
+        if (!vv) return;
+        const handler = () => setVvh(vv.height);
+        vv.addEventListener('resize', handler);
+        vv.addEventListener('scroll', handler);
+        handler();
+        return () => {
+          vv.removeEventListener('resize', handler);
+          vv.removeEventListener('scroll', handler);
+        };
+      }, []);
+
+      useEffect(() => {
+        // When the add bar is "magnetized", keep it pinned after keyboard transitions.
+        if (!stickyAdd) return;
+        scrollAddBoxIntoView(true);
+      }, [stickyAdd, vvh]);
 
 
       // Undo (alleen voor verwijderen)
@@ -1397,15 +1433,15 @@ async function addItemFromProduct(p) {
 
       return (
         <div className="pb-24">
-          <div className="mb-3 relative">
+          <div className={"mb-3 relative " + (stickyAdd ? "sticky top-0 z-40 bg-slate-50 pt-2 pb-2 -mx-3 px-3 shadow-sm" : "")}>
             <div className="flex flex-col sm:flex-row gap-2">
               <div className="relative w-full sm:flex-1">
                 <input
                   ref={addInputRef}
                   value={newText}
                   onChange={(e)=>{ setNewText(e.target.value); setShowSuggestions(true); }}
-                  onFocus={()=>{ scrollAddBoxIntoView(); if (newText.trim().length>=2) setShowSuggestions(true); }}
-                  onBlur={()=> setTimeout(()=>setShowSuggestions(false), 150)}
+                  onFocus={()=>{ setStickyAdd(true); scrollAddBoxIntoView(true); if (newText.trim().length>=2) setShowSuggestions(true); }}
+                  onBlur={()=> { setTimeout(()=>setShowSuggestions(false), 150); setTimeout(()=>setStickyAdd(false), 200); }}
                   onKeyDown={(e)=>{ if (e.key === 'Enter') { e.preventDefault(); addFreeText(); } }}
                   placeholder="Zoek product of typ iets nieuws…"
                   className="w-full pr-12 px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm"
@@ -1429,7 +1465,10 @@ async function addItemFromProduct(p) {
             </div>
 
             {showSuggestions && suggestions.length > 0 && (
-              <div className="absolute left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-30 overflow-hidden max-h-60 overflow-auto">
+              <div
+                className="absolute left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-30 overflow-hidden overflow-auto"
+                style={{ maxHeight: (stickyAdd ? Math.max(180, (vvh||window.innerHeight) - 160) : 240) + "px" }}
+              >
                 {suggestions.map(s => (
                   <button key={s.id} onMouseDown={(e)=>e.preventDefault()}
                     onClick={()=>{ addItemFromProduct(s); setNewText(''); setShowSuggestions(false); }}
