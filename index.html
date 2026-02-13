@@ -1588,7 +1588,7 @@ async function addItemFromProduct(p) {
                   </div>
                   <div className="space-y-1">
                     {group.items.map(it => (
-                      <SwipeRow key={it.id} item={it} onSwipeRight={(x)=>toggle(x)} onSwipeLeft={storeMode ? null : ((x)=>remove(x))}>
+                      <SwipeRow key={it.id} item={it} onSwipeRight={(x)=>toggle(x)} onSwipeLeft={storeMode ? ((x)=>toggle(x)) : ((x)=>remove(x))}>
 
                       <div
                         className={"relative flex items-center bg-white border border-slate-200 rounded-xl " + (storeMode ? "px-4 py-3" : "px-3 py-2")}
