@@ -655,12 +655,14 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
   const [editName, setEditName] = useState('');
   const [editCategory, setEditCategory] = useState('Overig');
 
-  // Sorting / filtering for frequently-needed products (W / 2W / 3W)
-  const [cyclesFirst, setCyclesFirst] = useState(true);
-  const [cyclesOnly, setCyclesOnly] = useState(false);
+  // Cycle chips (W / 2W / 3W): clicking a chip puts those products on top AND selects them.
+  const [cycleFlags, setCycleFlags] = useState(() => ({ W: false, '2W': false, '3W': false }));
 
-  // Cycle filter chips (W / 2W / 3W)
-  const [cycleFlags, setCycleFlags] = useState(() => ({ W: true, '2W': true, '3W': true }));
+  // Sorting inside the Products tab
+  // - 'cycle': within the “cycle section” sort by W/2W/3W, then name
+  // - 'az': name A–Z
+  // - 'category': category, then name
+  const [sortMode, setSortMode] = useState('cycle');
 
   function normCycle(c) {
     return String(c || '').toUpperCase().trim();
@@ -687,36 +689,37 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
     let arr = products || [];
     if (q) arr = arr.filter(p => (p.name||'').toLowerCase().includes(q));
 
-    if (cyclesOnly) arr = arr.filter(p => cycleEnabled(p.cycle));
+    const cmpAZ = (a,b) => (a.name||'').localeCompare(b.name||'', 'nl');
+    const cmpCategory = (a,b) => {
+      const ca = (a.category || 'Overig');
+      const cb = (b.category || 'Overig');
+      const dc = ca.localeCompare(cb, 'nl');
+      if (dc !== 0) return dc;
+      return cmpAZ(a,b);
+    };
+    const cmpCycle = (a,b) => {
+      const dr = cycleRank(a.cycle) - cycleRank(b.cycle);
+      if (dr !== 0) return dr;
+      return cmpAZ(a,b);
+    };
+
+    const innerCmp = (sortMode === 'category') ? cmpCategory : (sortMode === 'az' ? cmpAZ : cmpCycle);
+
+    // Always put the chosen cycles on top (when any chip is active)
+    const anyCycleActive = !!(cycleFlags.W || cycleFlags['2W'] || cycleFlags['3W']);
 
     arr = [...arr].sort((a,b) => {
-      if (cyclesFirst) {
+      if (anyCycleActive) {
         const aOn = cycleEnabled(a.cycle);
         const bOn = cycleEnabled(b.cycle);
         if (aOn !== bOn) return aOn ? -1 : 1;
-        if (aOn && bOn) {
-          const dr = cycleRank(a.cycle) - cycleRank(b.cycle);
-          if (dr !== 0) return dr;
-        }
       }
-      return (a.name||'').localeCompare(b.name||'', 'nl');
+      return innerCmp(a,b);
     });
+
     return arr;
-  }, [products, query, cyclesFirst, cyclesOnly, cycleFlags]);
+  }, [products, query, cycleFlags, sortMode]);
 
-  const eligibleCycleIds = useMemo(() => {
-    const ids = [];
-    (filtered || []).forEach(p => {
-      if (cycleEnabled(p.cycle)) ids.push(p.id);
-    });
-    return ids;
-  }, [filtered, cycleFlags]);
-
-  const allEligibleSelected = useMemo(() => {
-    if (!eligibleCycleIds.length) return false;
-    for (const id of eligibleCycleIds) if (!selectedIds.has(id)) return false;
-    return true;
-  }, [eligibleCycleIds, selectedIds]);
 
   async function createProduct() {
     const name = query.trim();
@@ -867,15 +870,29 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
     });
   }
 
-  function toggleSelectCycles() {
-    if (allEligibleSelected) {
-      setSelectedIds(new Set());
-      return;
-    }
-    const nextSel = new Set();
-    eligibleCycleIds.forEach(id => nextSel.add(id));
-    setSelectedIds(nextSel);
+  function toggleCycleChip(cycle) {
+    const c = String(cycle).toUpperCase();
+    // Toggle chip flag
+    setCycleFlags(prev => {
+      const nextOn = !prev[c];
+      const next = { ...prev, [c]: nextOn };
+
+      // Auto-select / deselect products in this cycle when toggling
+      setSelectedIds(selPrev => {
+        const selNext = new Set(selPrev);
+        (products || []).forEach(p => {
+          if (normCycle(p.cycle) === c) {
+            if (nextOn) selNext.add(p.id);
+            else selNext.delete(p.id);
+          }
+        });
+        return selNext;
+      });
+
+      return next;
+    });
   }
+
 
   async function addSelection() {
     if (!activeListId) { alert('Maak eerst een lijst aan.'); return; }
@@ -902,54 +919,44 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
           <Button onClick={createProduct} className="bg-emerald-600 text-white w-12 px-0">+</Button>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <button
-            onClick={() => setCyclesFirst(v => !v)}
-            className={"px-3 py-2 rounded-xl text-xs font-bold border " + (cyclesFirst ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-slate-700 border-slate-200")}
-            title="Zet de gekozen cycli (W/2W/3W) bovenaan"
-          >
-            {cyclesFirst ? "Cycli bovenaan" : "A-Z bovenaan"}
-          </button>
-
-          <button
-            onClick={() => setCyclesOnly(v => !v)}
-            className={"px-3 py-2 rounded-xl text-xs font-bold border " + (cyclesOnly ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-slate-700 border-slate-200")}
-            title="Toon alleen producten met de gekozen cycli"
-          >
-            {cyclesOnly ? "Alleen cycli" : "Alles tonen"}
-          </button>
-
+        <div className="flex flex-wrap gap-2 items-center">
           <div className="flex items-center gap-1">
             {['W','2W','3W'].map(c => (
               <button
                 key={c}
-                onClick={() => setCycleFlags(prev => ({ ...prev, [c]: !prev[c] }))}
+                onClick={() => toggleCycleChip(c)}
                 className={"px-3 py-2 rounded-xl text-xs font-bold border " + (cycleFlags[c] ? "bg-slate-900 text-white border-slate-900" : "bg-white text-slate-700 border-slate-200")}
-                title={cycleFlags[c] ? `Categorie ${c} staat aan` : `Categorie ${c} staat uit`}
+                title={cycleFlags[c] ? `Cyclus ${c}: geselecteerd` : `Cyclus ${c}: niet geselecteerd`}
               >
                 {c}
               </button>
             ))}
           </div>
 
-          <button
-            onClick={toggleSelectCycles}
-            className={"px-3 py-2 rounded-xl text-xs font-bold border " + (allEligibleSelected ? "bg-slate-900 text-white border-slate-900" : "bg-white text-slate-700 border-slate-200")}
-            title="Selecteer (of deselecteer) alle producten in de gekozen cycli"
-          >
-            {allEligibleSelected ? "Cycli geselecteerd" : "Selecteer cycli"}
-          </button>
-
-          {selectedCount > 0 && (
+          <div className="flex items-center gap-1">
             <button
-              onClick={() => { setSelectCycles(false); setSelectedIds(new Set()); }}
-              className="px-3 py-2 rounded-xl text-xs font-bold border border-slate-200 bg-white text-slate-700"
-              title="Selectie wissen"
+              onClick={() => setSortMode('cycle')}
+              className={"px-3 py-2 rounded-xl text-xs font-bold border " + (sortMode === 'cycle' ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-slate-700 border-slate-200")}
+              title="Sorteer op cyclus (W/2W/3W), daarna op naam"
             >
-              Selectie wissen ({selectedCount})
+              Cycli
             </button>
-          )}
-        </div>
+            <button
+              onClick={() => setSortMode('az')}
+              className={"px-3 py-2 rounded-xl text-xs font-bold border " + (sortMode === 'az' ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-slate-700 border-slate-200")}
+              title="Sorteer alfabetisch"
+            >
+              A–Z
+            </button>
+            <button
+              onClick={() => setSortMode('category')}
+              className={"px-3 py-2 rounded-xl text-xs font-bold border " + (sortMode === 'category' ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-slate-700 border-slate-200")}
+              title="Sorteer op categorie, daarna op naam"
+            >
+              Categorie
+            </button>
+          </div>
+        </div></div>
       </div>
 
       <Card>
