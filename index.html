@@ -1,0 +1,2460 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <link rel="icon" href="./favicon.ico">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Boodschappenlijstjemaker — fixed10 — fixed12</title>
+
+  <!-- Tailwind (CDN) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- React 18 -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+
+  <!-- Babel (JSX in-browser) -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- Firebase v8 (compat style) -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+
+  <style>
+
+    /* iOS Safari: prevent auto-zoom on form fields (requires >=16px computed font-size) */
+    @supports (-webkit-touch-callout: none) {
+      input, select, textarea {
+        font-size: 16px !important;
+      }
+    }
+
+
+    /* Better tap targets on mobile */
+    button, input, select { -webkit-tap-highlight-color: transparent; }
+    .wysiwyg { min-height: 160px; }
+    .wysiwyg:empty:before {
+      content: attr(data-placeholder);
+      color: #94a3b8;
+    }
+  </style>
+
+  <script>window.APP_BUILD = "fixed10-qty"; console.log("APP_BUILD", window.APP_BUILD);</script>
+
+  <script>window.APP_BUILD="fixed12-qty"; console.log("APP_BUILD", window.APP_BUILD);</script>
+</head>
+
+<body class="bg-slate-50">
+  <div id="root"></div>
+
+  <script>
+  // Global helper (outside Babel wrapper) so any transformed chunk can access it.
+  function formatNum(n) {
+    if (!isFinite(n)) return '';
+    const rounded = Math.round(n * 100) / 100;
+    const isInt = Math.abs(rounded - Math.round(rounded)) < 1e-9;
+    const s = isInt ? String(Math.round(rounded)) : String(rounded);
+    return s.replace('.', ',');
+  }
+</script>
+
+
+  <script>
+    // Globals needed across Babel-transformed chunks
+    var DISCRETE_UNITS = ['st','stuk','bl','blik','zak','pak','pot','fles','tube','bol','rol','doos','ei','teen','stronk','bos','krop','blikje','beker','sachet','sachets','cup','portie'];
+  </script>
+
+<script type="text/babel">console.log("APP_BUILD products-plusminus-v4 + recipes-qty-v2");
+const { useEffect, useMemo, useRef, useState } = React;
+
+    // ---------------- Firebase ----------------
+    const firebaseConfig = {
+      apiKey: "AIzaSyAVhQohz3ueJ_DNaY0HNOVcC-BkPSNFcfQ",
+      authDomain: "boodschappenlijstjesmaker.firebaseapp.com",
+      projectId: "boodschappenlijstjesmaker",
+      storageBucket: "boodschappenlijstjesmaker.firebasestorage.app",
+      messagingSenderId: "624229728215",
+      appId: "1:624229728215:web:4f89657e1ddf044a4fd592",
+    };
+
+    const firebaseApp = firebase.initializeApp(firebaseConfig);
+    const auth = firebaseApp.auth();
+    const db = firebaseApp.firestore();
+
+    db.enablePersistence({ synchronizeTabs: true }).catch((err) => {
+      if (err.code === 'failed-precondition') {
+        console.warn('Firestore persistence: multiple tabs open, only one can enable persistence.');
+      } else if (err.code === 'unimplemented') {
+        console.warn('Firestore persistence: browser does not support it.');
+      }
+    });
+
+    // ---------------- Utils ----------------
+    function genId(prefix='') {
+      return (prefix ? prefix + '_' : '') + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    }
+
+
+      function itemIdForProduct(productId) {
+        return productId ? (`li_${productId}`) : genId('li');
+      }
+
+
+    function clamp(n, a, b){ return Math.max(a, Math.min(b, n)); }
+
+    function formatNum(n) {
+      if (!isFinite(n)) return '';
+      const rounded = Math.round(n * 100) / 100;
+      const isInt = Math.abs(rounded - Math.round(rounded)) < 1e-9;
+      const s = isInt ? String(Math.round(rounded)) : String(rounded);
+      return s.replace('.', ',');
+    }
+
+    // Expose for safety (in case Babel wraps scopes)
+    window.formatNum = formatNum;
+
+
+    function titleFromLegacyDocId(docId) {
+      // best-effort: "aardappelen_kruimig_3_kg" -> "aardappelen kruimig 3 kg"
+      try {
+        return String(docId || '').replace(/_/g,' ').trim();
+      } catch(e) {
+        return '';
+      }
+    }
+
+
+    const CATEGORY_OPTIONS = [
+      'Aardappelen, groente en fruit',
+      'Verse maaltijden en gemak',
+      'Vlees, vis en vega',
+      'Brood en gebak',
+      'Vleeswaren, kaas en tapas',
+      'Zuivel, eieren, boter',
+      'Vega en plantaardig',
+      'Conserven, soepen, sauzen, oliën',
+      'Wereldkeukens, kruiden, pasta en rijst',
+      'Ontbijt, broodbeleg en bakproducten',
+      'Koek, snoep, chocolade en chips',
+      'Koffie en thee',
+      'Frisdrank en sappen',
+      'Bier en wijn',
+      'Diepvries',
+      'Drogisterij',
+      'Huishouden',
+      'Non-food en servicebalie',
+      'Overig',
+    ];
+
+    // 6-letter code
+    function makeCode() {
+      const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+      let out = "";
+      for (let i=0;i<6;i++) out += chars[Math.floor(Math.random()*chars.length)];
+      return out;
+    }
+
+    // ---------------- Auth hook ----------------
+    function useAuth() {
+      const [user, setUser] = useState(null);
+      const [loading, setLoading] = useState(true);
+
+      useEffect(() => {
+        const unsub = auth.onAuthStateChanged(u => {
+          setUser(u);
+          setLoading(false);
+        });
+        return () => unsub();
+      }, []);
+
+      return { user, loading };
+    }
+
+    // ---------------- User/Household hook ----------------
+    function useUserProfile(user) {
+      const [profile, setProfile] = useState(null);
+      const [loading, setLoading] = useState(!!user);
+
+      useEffect(() => {
+        if (!user) { setProfile(null); setLoading(false); return; }
+        setLoading(true);
+        const ref = db.doc(`users/${user.uid}`);
+        const unsub = ref.onSnapshot(snap => {
+          setProfile(snap.exists ? snap.data() : null);
+          setLoading(false);
+        }, err => {
+          console.error("Profile listener error:", err);
+          setLoading(false);
+        });
+        return () => unsub();
+      }, [user]);
+
+      async function setActiveListId(listId) {
+        if (!user) return;
+        try { await db.doc(`users/${user.uid}`).set({ activeListId: listId }, { merge: true }); }
+        catch(e) { console.warn("setActiveListId failed:", e); }
+      }
+
+      return { profile, loading, setActiveListId };
+    }
+
+    function useHouseholdData(user, householdId, activeListId, setActiveListId) {
+      const [members, setMembers] = useState([]);
+      const [lists, setLists] = useState([]);
+      const [products, setProducts] = useState([]);
+      const [items, setItems] = useState([]);
+      const [recipes, setRecipes] = useState([]);
+      const [syncing, setSyncing] = useState(false);
+
+      useEffect(() => {
+        if (!user || !householdId) {
+          setMembers([]); setLists([]); setProducts([]); setItems([]); setRecipes([]);
+          return;
+        }
+        const hid = householdId;
+        const unsubs = [];
+
+        setSyncing(true);
+
+        unsubs.push(
+          db.collection(`households/${hid}/members`).onSnapshot(snap => {
+            setMembers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+          }, err => console.error("Members listener error:", err))
+        );
+
+        unsubs.push(
+          db.collection(`households/${hid}/lists_meta`).onSnapshot(snap => {
+            const ls = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+              .sort((a,b) => (a.createdAt?.seconds||0) - (b.createdAt?.seconds||0));
+            setLists(ls);
+          }, err => console.error("Lists_meta listener error:", err))
+        );
+
+        unsubs.push(
+          db.collection(`households/${hid}/products`).onSnapshot(snap => {
+            const psAll = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            // Only show v2 products (stable IDs) to avoid duplicates with legacy docs.
+            const ps = psAll.filter(p => p.schemaVersion === 2 || (typeof p.id === 'string' && p.id.startsWith('p_')));
+            setProducts(ps);
+            setSyncing(false);
+          }, err => { console.error("Products listener error:", err); setSyncing(false); })
+        );
+
+        unsubs.push(
+          db.collection(`households/${hid}/recipes`).onSnapshot(snap => {
+            const rs = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+              .sort((a,b) => (a.updatedAt?.seconds||0) < (b.updatedAt?.seconds||0) ? 1 : -1);
+            setRecipes(rs);
+          }, err => console.error("Recipes listener error:", err))
+        );
+
+        return () => unsubs.forEach(fn => fn());
+      }, [user, householdId]);
+
+      useEffect(() => {
+        if (!user || !householdId || !activeListId) { setItems([]); return; }
+        const hid = householdId;
+        const ref = db.collection(`households/${hid}/lists/${activeListId}/items`);
+        const unsub = ref.onSnapshot(snap => {
+          setItems(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        }, err => console.error("List items listener error:", err));
+        return () => unsub();
+      }, [user, householdId, activeListId]);
+
+      // Auto-select first list if none
+      useEffect(() => {
+        if (!householdId) return;
+        if (lists.length > 0 && !activeListId) setActiveListId(lists[0].id);
+      }, [lists, householdId, activeListId, setActiveListId]);
+
+      return { members, lists, products, items, recipes, syncing };
+    }
+
+    // ---------------- UI bits ----------------
+    function Button({ children, className='', ...props }) {
+      return (
+        <button
+          className={
+            "px-4 py-2.5 rounded-xl font-semibold text-sm " +
+            "active:scale-[0.99] transition " +
+            "disabled:opacity-60 disabled:active:scale-100 " +
+            className
+          }
+          {...props}
+        >
+          {children}
+        </button>
+      );
+    }
+
+    function Card({ children }) {
+      return <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">{children}</div>;
+    }
+
+    function Modal({ title, onClose, children }) {
+      const ref = useRef(null);
+      useEffect(() => {
+        const h = (e) => { if (e.key === 'Escape') onClose?.(); };
+        document.addEventListener('keydown', h);
+        return () => document.removeEventListener('keydown', h);
+      }, [onClose]);
+
+      return (
+        <div ref={ref} className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50"
+          onMouseDown={(e) => { if (e.target === ref.current) onClose?.(); }}>
+          <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-2xl max-h-[85vh] flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+              <div className="font-bold text-base">{title || ''}</div>
+              <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 text-sm">✕</button>
+            </div>
+            <div className="flex-1 overflow-auto p-4">{children}</div>
+          </div>
+        </div>
+      );
+    }
+
+    // ---------------- WYSIWYG ----------------
+    function WysiwygEditor({ valueHtml, onChangeHtml }) {
+      const ref = useRef(null);
+
+      useEffect(() => {
+        if (!ref.current) return;
+        // Only set if different (avoid caret jumps while typing)
+        if (ref.current.innerHTML !== (valueHtml || '')) {
+          ref.current.innerHTML = valueHtml || '';
+        }
+      }, [valueHtml]);
+
+      function exec(cmd, arg=null) {
+        ref.current?.focus();
+        try { document.execCommand(cmd, false, arg); } catch(e) {}
+        onChangeHtml?.(ref.current?.innerHTML || '');
+      }
+
+      function handleLink() {
+        const url = prompt('Link URL (https://...)');
+        if (!url) return;
+        exec('createLink', url);
+      }
+
+      return (
+        <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white">
+          <div className="flex flex-wrap gap-1 p-2 border-b border-slate-100 bg-slate-50">
+            <button className="px-2 py-1 rounded-lg bg-white border border-slate-200 text-xs" onMouseDown={(e)=>e.preventDefault()} onClick={()=>exec('bold')}>B</button>
+            <button className="px-2 py-1 rounded-lg bg-white border border-slate-200 text-xs italic" onMouseDown={(e)=>e.preventDefault()} onClick={()=>exec('italic')}>I</button>
+            <button className="px-2 py-1 rounded-lg bg-white border border-slate-200 text-xs underline" onMouseDown={(e)=>e.preventDefault()} onClick={()=>exec('underline')}>U</button>
+            <span className="w-px h-6 bg-slate-200 mx-1"></span>
+            <button className="px-2 py-1 rounded-lg bg-white border border-slate-200 text-xs" onMouseDown={(e)=>e.preventDefault()} onClick={()=>exec('insertUnorderedList')}>• lijst</button>
+            <button className="px-2 py-1 rounded-lg bg-white border border-slate-200 text-xs" onMouseDown={(e)=>e.preventDefault()} onClick={()=>exec('insertOrderedList')}>1. lijst</button>
+            <span className="w-px h-6 bg-slate-200 mx-1"></span>
+            <button className="px-2 py-1 rounded-lg bg-white border border-slate-200 text-xs" onMouseDown={(e)=>e.preventDefault()} onClick={handleLink}>link</button>
+            <button className="px-2 py-1 rounded-lg bg-white border border-slate-200 text-xs" onMouseDown={(e)=>e.preventDefault()} onClick={()=>exec('removeFormat')}>clear</button>
+          </div>
+
+          <div
+            ref={ref}
+            className="wysiwyg px-3 py-2 text-sm outline-none"
+            contentEditable
+            data-placeholder="Schrijf hier de bereiding…"
+            onInput={() => onChangeHtml?.(ref.current?.innerHTML || '')}
+          />
+        </div>
+      );
+    }
+
+    // ---------------- Household setup ----------------
+    function SetupScreen({ user }) {
+      const [mode, setMode] = useState('join'); // join | create
+      const [busy, setBusy] = useState(false);
+      const [error, setError] = useState('');
+      const [code, setCode] = useState('');
+      const [householdName, setHouseholdName] = useState('Ons huishouden');
+
+      async function createHousehold() {
+        setError('');
+        setBusy(true);
+        try {
+          const householdId = genId('h');
+          let inviteCode = makeCode();
+
+          // ensure code uniqueness (best-effort)
+          for (let i=0;i<5;i++) {
+            const s = await db.doc(`invite_codes/${inviteCode}`).get();
+            if (!s.exists) break;
+            inviteCode = makeCode();
+          }
+
+          await db.doc(`households/${householdId}/meta/info`).set({
+            name: householdName.trim() || 'Ons huishouden',
+            code: inviteCode,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            createdBy: user.uid,
+          });
+
+          await db.doc(`invite_codes/${inviteCode}`).set({
+            householdId,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+          });
+
+          // member first
+          await db.doc(`households/${householdId}/members/${user.uid}`).set({
+            displayName: user.displayName || '',
+            photoURL: user.photoURL || '',
+            joinedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          });
+
+          // default list
+          const listId = genId('l');
+          await db.doc(`households/${householdId}/lists_meta/${listId}`).set({
+            name: 'Boodschappen',
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            createdBy: user.uid,
+          });
+
+          await db.doc(`users/${user.uid}`).set({
+            householdId,
+            activeListId: listId,
+            displayName: user.displayName || '',
+            photoURL: user.photoURL || '',
+            email: user.email || '',
+          }, { merge: true });
+        } catch (e) {
+          console.error("Create household error:", e);
+          setError(e?.message || 'Er ging iets mis bij het aanmaken.');
+        }
+        setBusy(false);
+      }
+
+      async function joinHousehold() {
+        setError('');
+        setBusy(true);
+        try {
+          const joinCode = code.trim().toUpperCase();
+          if (joinCode.length !== 6) { setError('Code moet 6 tekens zijn.'); setBusy(false); return; }
+          const codeSnap = await db.doc(`invite_codes/${joinCode}`).get();
+          if (!codeSnap.exists) { setError('Code niet gevonden.'); setBusy(false); return; }
+          const { householdId } = codeSnap.data();
+
+          // 1) member eerst
+          await db.doc(`households/${householdId}/members/${user.uid}`).set({
+            displayName: user.displayName || '',
+            photoURL: user.photoURL || '',
+            joinedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          }, { merge: true });
+
+          // 2) daarna: kies eerste lijst
+          let activeListId = null;
+          const listsSnap = await db.collection(`households/${householdId}/lists_meta`).orderBy('createdAt','asc').limit(1).get();
+          if (!listsSnap.empty) activeListId = listsSnap.docs[0].id;
+
+          if (!activeListId) {
+            activeListId = genId('l');
+            await db.doc(`households/${householdId}/lists_meta/${activeListId}`).set({
+              name: 'Boodschappen',
+              createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+              createdBy: user.uid,
+            });
+          }
+
+          await db.doc(`users/${user.uid}`).set({
+            householdId,
+            activeListId,
+            displayName: user.displayName || '',
+            photoURL: user.photoURL || '',
+            email: user.email || '',
+          }, { merge: true });
+        } catch (e) {
+          console.error("Join household error:", e);
+          setError(e?.message || 'Er ging iets mis bij het deelnemen.');
+        }
+        setBusy(false);
+      }
+
+      return (
+        <div className="max-w-xl mx-auto px-4 pt-6 pb-24">
+          <div className="flex items-center justify-between mb-4">
+            <h1 className="text-xl font-black text-slate-900">Boodschappenlijstjemaker</h1>
+            <div className="flex items-center gap-2">
+              <img src={user.photoURL || ''} className="w-8 h-8 rounded-full bg-slate-200" />
+              <button onClick={() => auth.signOut()} className="text-xs text-slate-500 underline">uitloggen</button>
+            </div>
+          </div>
+
+          <Card>
+            <div className="p-4">
+              <div className="text-sm font-semibold text-slate-700 mb-2">Kies wat je wil doen</div>
+              <div className="flex gap-2 mb-4">
+                <Button onClick={() => setMode('join')}
+                  className={mode==='join' ? 'bg-emerald-600 text-white flex-1' : 'bg-white border border-slate-200 text-slate-700 flex-1'}>
+                  Deelnemen
+                </Button>
+                <Button onClick={() => setMode('create')}
+                  className={mode==='create' ? 'bg-emerald-600 text-white flex-1' : 'bg-white border border-slate-200 text-slate-700 flex-1'}>
+                  Nieuw huishouden
+                </Button>
+              </div>
+
+              {mode === 'join' ? (
+                <div className="space-y-3">
+                  <div>
+                    <div className="text-xs font-semibold text-slate-500 mb-1">Huishoud-code</div>
+                    <input value={code} onChange={(e)=>setCode(e.target.value.toUpperCase())}
+                      placeholder="bijv. PXKCRE"
+                      className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white font-mono tracking-wider" />
+                    <div className="text-[11px] text-slate-400 mt-1">6 tekens (letters/cijfers).</div>
+                  </div>
+                  {error && <div className="text-sm text-rose-600">{error}</div>}
+                  <Button onClick={joinHousehold} disabled={busy}
+                    className={"w-full " + (busy ? 'bg-slate-200 text-slate-500' : 'bg-emerald-600 text-white')}>
+                    {busy ? 'Bezig…' : 'Deelnemen'}
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div>
+                    <div className="text-xs font-semibold text-slate-500 mb-1">Naam van je huishouden</div>
+                    <input value={householdName} onChange={(e)=>setHouseholdName(e.target.value)}
+                      className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white" />
+                  </div>
+                  {error && <div className="text-sm text-rose-600">{error}</div>}
+                  <Button onClick={createHousehold} disabled={busy}
+                    className={"w-full " + (busy ? 'bg-slate-200 text-slate-500' : 'bg-emerald-600 text-white')}>
+                    {busy ? 'Bezig…' : 'Aanmaken'}
+                  </Button>
+                </div>
+              )}
+            </div>
+          </Card>
+        </div>
+      );
+    }
+
+    // ---------------- Header ----------------
+    function Header({ user, householdId, householdInfo, members, syncing, onCopyCode, onSignOut }) {
+      const [editingName, setEditingName] = useState(false);
+      const [draftName, setDraftName] = useState(householdInfo?.name || '');
+
+      useEffect(() => {
+        setDraftName(householdInfo?.name || '');
+      }, [householdInfo?.name, householdId]);
+
+      async function saveName() {
+        const next = (draftName || '').trim();
+        setEditingName(false);
+        if (!householdId) return;
+        if (!next) return;
+        try {
+          await db.doc(`households/${householdId}/meta/info`).set({ name: next }, { merge: true });
+        } catch (e) {
+          console.error('Household name update failed', e);
+        }
+      }
+
+      function HouseholdNameLine() {
+        const name = householdInfo?.name || '';
+        if (!editingName) {
+          return (
+            <button
+              onClick={() => setEditingName(true)}
+              className="text-left text-xs text-slate-500 mt-0.5 inline-flex items-center gap-2"
+              title="Huishoudnaam wijzigen"
+            >
+              <span>🏠</span>
+              <span className="truncate max-w-[14rem]">{name || "Mijn huishouden"}</span>
+              <span className="text-[10px] text-slate-400">✏️</span>
+            </button>
+          );
+        }
+        return (
+          <div className="mt-0.5 inline-flex items-center gap-2">
+            <span className="text-xs text-slate-500">🏠</span>
+            <input
+              value={draftName}
+              onChange={(e) => setDraftName(e.target.value)}
+              onBlur={saveName}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') { e.preventDefault(); saveName(); }
+                if (e.key === 'Escape') { e.preventDefault(); setEditingName(false); setDraftName(householdInfo?.name || ''); }
+              }}
+              autoFocus
+              placeholder="Huishoudnaam"
+              className="text-xs px-2 py-1 rounded-lg border border-slate-200 bg-white w-48"
+            />
+            <button
+              onClick={saveName}
+              className="text-[11px] px-2 py-1 rounded-lg bg-emerald-600 text-white"
+            >
+              Ok
+            </button>
+          </div>
+        );
+      }
+
+      function Avatar({ m, i }) {
+        const url = m?.photoURL || '';
+        const name = m?.name || m?.displayName || 'Lid';
+        const initial = (name.trim()[0] || '?').toUpperCase();
+        return (
+          <div
+            key={m?.uid || i}
+            className="w-5 h-5 rounded-full ring-2 ring-white bg-slate-200 overflow-hidden flex items-center justify-center text-[10px] font-bold text-slate-600"
+            style={{ zIndex: 50 - i }}
+            title={name}
+          >
+            {url ? <img src={url} className="w-full h-full object-cover" /> : initial}
+          </div>
+        );
+      }
+
+      const membersSorted = (members || []).slice().sort((a,b) => (a?.name||'').localeCompare(b?.name||''));
+      const maxShow = 10;
+      const show = membersSorted.slice(0, maxShow);
+      const extra = Math.max(0, membersSorted.length - show.length);
+
+      return (
+        <header className="mb-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h1 className="text-xl font-black text-slate-900 leading-tight">Boodschappenlijstjemaker</h1>
+
+              <div className="flex items-center gap-3 flex-wrap">
+                <HouseholdNameLine />
+
+                <div className="inline-flex items-center -space-x-2" aria-label="Leden">
+                  {show.map((m, idx) => <Avatar key={(m && (m.uid || m.id)) || idx} m={m} i={idx} />)}
+                  {extra > 0 && (
+                    <div
+                      className="w-5 h-5 rounded-full ring-2 ring-white bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-600"
+                      style={{ zIndex: 0 }}
+                      title={`${extra} meer`}
+                    >
+                      +{extra}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              {syncing ? <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" title="Synchroniseren"></span>
+                        : <span className="w-2 h-2 rounded-full bg-emerald-400" title="Gesynchroniseerd"></span>}
+              <button onClick={onSignOut} className="flex items-center gap-2">
+                {user.photoURL ? <img src={user.photoURL} className="w-7 h-7 rounded-full" /> : <div className="w-7 h-7 rounded-full bg-slate-200"></div>}
+              </button>
+            </div>
+          </div>
+
+          {householdInfo?.code && (
+            <div className="mt-2 flex items-center gap-2">
+              <span className="text-xs text-slate-500">Code:</span>
+              <span className="font-mono font-bold text-sm tracking-wider text-emerald-700">{householdInfo.code}</span>
+              <button onClick={onCopyCode} className="text-[10px] px-2 py-1 bg-slate-100 rounded-lg text-slate-600">Kopieer</button>
+            </div>
+          )}
+        </header>
+      );
+    }
+
+    // ---------------- Products tab ----------------
+    
+function ProductsTab({ householdId, products, items, currentUser, activeListId }) {
+  const [query, setQuery] = useState('');
+  const [editingId, setEditingId] = useState(null);
+  const [editName, setEditName] = useState('');
+  const [editCategory, setEditCategory] = useState('Overig');
+
+  // Cycle chips (W / 2W / 3W): clicking a chip puts those products on top AND selects them.
+  const [cycleFlags, setCycleFlags] = useState(() => ({ W: false, '2W': false, '3W': false }));
+
+  // Sorting inside the Products tab
+  // - 'cycle': within the “cycle section” sort by W/2W/3W, then name
+  // - 'az': name A–Z
+  // - 'category': category, then name
+  const [sortMode, setSortMode] = useState('az');
+
+  function normCycle(c) {
+    return String(c || '').toUpperCase().trim();
+  }
+
+  function cycleEnabled(c) {
+    const nc = normCycle(c);
+    return nc === 'W' || nc === '2W' || nc === '3W' ? !!cycleFlags[nc] : false;
+  }
+
+  // Selection for quick add
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+
+  function cycleRank(cycle) {
+    const c = String(cycle || '').toUpperCase();
+    if (c === 'W') return 0;
+    if (c === '2W') return 1;
+    if (c === '3W') return 2;
+    return 3; // none last
+  }
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    let arr = products || [];
+    if (q) arr = arr.filter(p => (p.name||'').toLowerCase().includes(q));
+
+    const cmpAZ = (a,b) => (a.name||'').localeCompare(b.name||'', 'nl');
+    const cmpCategory = (a,b) => {
+      const ca = (a.category || 'Overig');
+      const cb = (b.category || 'Overig');
+      const dc = ca.localeCompare(cb, 'nl');
+      if (dc !== 0) return dc;
+      return cmpAZ(a,b);
+    };
+
+    const innerCmp = (sortMode === 'category') ? cmpCategory : cmpAZ;
+
+    // Always put the chosen cycles on top (when any chip is active)
+    const anyCycleActive = !!(cycleFlags.W || cycleFlags['2W'] || cycleFlags['3W']);
+
+    arr = [...arr].sort((a,b) => {
+      if (anyCycleActive) {
+        const aOn = cycleEnabled(a.cycle);
+        const bOn = cycleEnabled(b.cycle);
+        if (aOn !== bOn) return aOn ? -1 : 1;
+      }
+      return innerCmp(a,b);
+    });
+
+    return arr;
+  }, [products, query, cycleFlags, sortMode]);
+
+
+  async function createProduct() {
+    const name = query.trim();
+    if (!name || !householdId) return;
+    const exists = (products||[]).some(p => (p.name||'').toLowerCase() === name.toLowerCase());
+    if (exists) { alert('Dit product bestaat al (op naam).'); return; }
+
+    const id = genId('p');
+    const product = {
+      id,
+      schemaVersion: 2,
+      name,
+      category: 'Overig',
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedBy: currentUser?.uid || '',
+      updatedByName: currentUser?.displayName || '',
+      updatedByPhotoURL: currentUser?.photoURL || '',
+      cycle: '',
+    };
+    await db.doc(`households/${householdId}/products/${id}`).set(product);
+    setQuery('');
+  }
+
+  function startEdit(p) {
+    setEditingId(p.id);
+    setEditName(p.name || '');
+    setEditCategory(p.category || 'Overig');
+  }
+
+  async function saveEdit() {
+    if (!householdId || !editingId) return;
+    const name = editName.trim();
+    if (!name) return;
+    await db.doc(`households/${householdId}/products/${editingId}`).set({
+      name,
+      category: editCategory || 'Overig',
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedBy: currentUser?.uid || '',
+      updatedByName: currentUser?.displayName || '',
+      updatedByPhotoURL: currentUser?.photoURL || '',
+    }, { merge: true });
+    setEditingId(null);
+  }
+
+  async function cycleProduct(p) {
+    if (!householdId) return;
+    const cur = (p.cycle || '');
+    const next = cur === '' ? 'W' : (cur === 'W' ? '2W' : (cur === '2W' ? '3W' : ''));
+    await db.doc(`households/${householdId}/products/${p.id}`).update({ cycle: next });
+  }
+
+  async function deleteProduct(p) {
+    if (!householdId) return;
+    if (!confirm(`Verwijder "${p.name}"?`)) return;
+    await db.doc(`households/${householdId}/products/${p.id}`).delete();
+    // also remove from selection
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      next.delete(p.id);
+      return next;
+    });
+  }
+
+  function currentQty(it) {
+    if (!it) return 0;
+    const q = (it.qty != null) ? Number(it.qty) : NaN;
+    if (!isNaN(q)) return clamp(q, 0, 99);
+    const unit = String(it.unit || 'st').toLowerCase();
+    const amt = parseFloat(String(it.amount ?? '0').replace(',','.'));
+    if (!isNaN(amt) && DISCRETE_UNITS.includes(unit)) return clamp(Math.round(amt), 0, 99);
+    return 0;
+  }
+
+  function findExistingByProductId(productId) {
+    if (!productId) return null;
+    const arr = (items || []);
+    return arr.find(x => x.productId === productId && !x.checked) || arr.find(x => x.productId === productId) || null;
+  }
+
+  async function decItemFromProduct(p) {
+    if (!activeListId) { alert('Maak eerst een lijst aan.'); return; }
+    const existing = findExistingByProductId(p.id);
+    if (!existing) return;
+    const next = clamp(currentQty(existing) - 1, 0, 99);
+    const ref = db.doc(`households/${householdId}/lists/${activeListId}/items/${existing.id}`);
+    if (next <= 0) { await ref.delete(); return; }
+    await ref.set({
+      qty: next,
+      amount: String(next),
+      unit: 'st',
+      checked: false,
+      nameSnapshot: p.name || existing.nameSnapshot || '',
+      categorySnapshot: p.category || existing.categorySnapshot || 'Overig',
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedBy: currentUser?.uid || '',
+      updatedByName: currentUser?.displayName || '',
+      updatedByPhotoURL: currentUser?.photoURL || '',
+    }, { merge: true });
+  }
+
+  async function addItemFromProduct(p) {
+    if (!activeListId) { alert('Maak eerst een lijst aan.'); return; }
+    const existing = findExistingByProductId(p.id);
+    if (existing) {
+      const next = clamp(currentQty(existing) + 1, 0, 99);
+      await db.doc(`households/${householdId}/lists/${activeListId}/items/${existing.id}`).set({
+        qty: next,
+        amount: String(next),
+        unit: 'st',
+        checked: false,
+        nameSnapshot: p.name || existing.nameSnapshot || '',
+        categorySnapshot: p.category || existing.categorySnapshot || 'Overig',
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        updatedBy: currentUser?.uid || '',
+        updatedByName: currentUser?.displayName || '',
+        updatedByPhotoURL: currentUser?.photoURL || '',
+      }, { merge: true });
+      return;
+    }
+    const id = genId('li');
+    await db.doc(`households/${householdId}/lists/${activeListId}/items/${id}`).set({
+      id,
+      productId: p.id,
+      nameSnapshot: p.name || '',
+      categorySnapshot: p.category || 'Overig',
+      qty: 1,
+      amount: '1',
+      unit: 'st',
+      checked: false,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      createdBy: currentUser?.uid || '',
+      createdByName: currentUser?.displayName || '',
+      createdByPhotoURL: currentUser?.photoURL || '',
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedBy: currentUser?.uid || '',
+      updatedByName: currentUser?.displayName || '',
+      updatedByPhotoURL: currentUser?.photoURL || '',
+      source: 'product',
+    });
+  }
+
+  function toggleSelected(productId) {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(productId)) next.delete(productId);
+      else next.add(productId);
+      return next;
+    });
+  }
+
+  function toggleCycleChip(cycle) {
+    const c = String(cycle).toUpperCase();
+    // Toggle chip flag
+    setCycleFlags(prev => {
+      const nextOn = !prev[c];
+      const next = { ...prev, [c]: nextOn };
+
+      // Auto-select / deselect products in this cycle when toggling
+      setSelectedIds(selPrev => {
+        const selNext = new Set(selPrev);
+        (products || []).forEach(p => {
+          if (normCycle(p.cycle) === c) {
+            if (nextOn) selNext.add(p.id);
+            else selNext.delete(p.id);
+          }
+        });
+        return selNext;
+      });
+
+      return next;
+    });
+  }
+
+
+  async function addSelection() {
+    if (!activeListId) { alert('Maak eerst een lijst aan.'); return; }
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    const byId = new Map((products||[]).map(p => [p.id, p]));
+    for (const id of ids) {
+      const p = byId.get(id);
+      if (p) await addItemFromProduct(p);
+    }
+    // Clear selection after adding
+    setSelectedIds(new Set());
+  }
+
+  const selectedCount = selectedIds.size;
+
+  return (
+    <div className="pb-24">
+      <div className="mb-3 space-y-2">
+        <div className="flex flex-col sm:flex-row gap-2">
+          <input value={query} onChange={(e)=>setQuery(e.target.value)}
+            placeholder="Zoek of maak product…"
+            className="w-full sm:flex-1 px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm" />
+          <Button onClick={createProduct} className="bg-emerald-600 text-white w-full sm:w-12 px-0">+</Button>
+        </div>
+
+        <div className="flex flex-wrap gap-2 items-center">
+          <div className="flex items-center gap-1">
+            {['W','2W','3W'].map(c => (
+              <button
+                key={c}
+                onClick={() => toggleCycleChip(c)}
+                className={"px-3 py-2 rounded-xl text-xs font-bold border " + (cycleFlags[c] ? "bg-slate-900 text-white border-slate-900" : "bg-white text-slate-700 border-slate-200")}
+                title={cycleFlags[c] ? `Cyclus ${c}: geselecteerd` : `Cyclus ${c}: niet geselecteerd`}
+              >
+                {c}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-1"><button
+              onClick={() => setSortMode('az')}
+              className={"px-3 py-2 rounded-xl text-xs font-bold border " + (sortMode === 'az' ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-slate-700 border-slate-200")}
+              title="Sorteer alfabetisch"
+            >
+              A–Z
+            </button>
+            <button
+              onClick={() => setSortMode('category')}
+              className={"px-3 py-2 rounded-xl text-xs font-bold border " + (sortMode === 'category' ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-slate-700 border-slate-200")}
+              title="Sorteer op categorie, daarna op naam"
+            >
+              Categorie
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <Card>
+        <div className="divide-y divide-slate-100">
+          {filtered.length === 0 ? (
+            <div className="p-6 text-center text-slate-400">
+              <div className="text-4xl mb-1">📋</div>
+              <div className="text-sm">Geen producten</div>
+            </div>
+          ) : filtered.map(p => {
+            const existing = findExistingByProductId(p.id);
+            const qty = currentQty(existing);
+            const isSelected = selectedIds.has(p.id);
+
+            return (
+              <div key={p.id} className="p-3 flex items-center gap-2">
+                <button
+                  onClick={() => toggleSelected(p.id)}
+                  className={
+                    "w-6 h-6 rounded-lg border flex items-center justify-center text-xs shrink-0 " +
+                    (isSelected ? "bg-emerald-600 border-emerald-600 text-white" : "bg-white border-slate-300 text-slate-400")
+                  }
+                  title={isSelected ? "Deselecteren" : "Selecteren"}
+                >
+                  {isSelected ? "✓" : ""}
+                </button>
+
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold text-sm truncate">{p.name}</div>
+                  <div className="text-xs text-slate-400 truncate">{p.category || 'Overig'}</div>
+                </div>
+
+                {qty <= 0 ? (
+                  <button onClick={()=>addItemFromProduct(p)} title="Toevoegen aan lijst" className="w-9 h-9 rounded-xl bg-emerald-600 text-white text-sm">＋</button>
+                ) : (
+                  <div className="flex items-center gap-1">
+                    <button onClick={()=>decItemFromProduct(p)} title="Minder" className="w-9 h-9 rounded-xl bg-slate-200 text-slate-700 text-sm">−</button>
+                    <div className="w-8 text-center text-sm font-bold text-slate-700 tabular-nums">{qty}</div>
+                    <button onClick={()=>addItemFromProduct(p)} title="Meer" className="w-9 h-9 rounded-xl bg-emerald-600 text-white text-sm">＋</button>
+                  </div>
+                )}
+
+                <button onClick={()=>cycleProduct(p)} title="Herhaal" className="px-2 h-9 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold">{p.cycle || "—"}</button>
+                <button onClick={()=>startEdit(p)} className="w-9 h-9 rounded-xl bg-slate-100 text-slate-600 text-sm">✏️</button>
+                <button onClick={()=>deleteProduct(p)} className="w-9 h-9 rounded-xl bg-slate-100 text-slate-600 text-sm">🗑️</button>
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+
+      {selectedCount > 0 && (
+        <div className="fixed left-0 right-0 bottom-0 pb-6 px-4 z-40">
+          <div className="max-w-xl mx-auto">
+            <div className="bg-white border border-slate-200 rounded-2xl shadow-lg px-3 py-3 flex items-center gap-2">
+              <div className="flex-1 text-sm text-slate-700">
+                Selectie: <span className="font-bold">{selectedCount}</span>
+              </div>
+              <Button onClick={addSelection} className="bg-emerald-600 text-white">Selectie toevoegen</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editingId && (
+        <Modal title="Product bewerken" onClose={()=>setEditingId(null)}>
+          <div className="space-y-3">
+            <div>
+              <div className="text-xs font-semibold text-slate-500 mb-1">Naam</div>
+              <input value={editName} onChange={(e)=>setEditName(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white" />
+            </div>
+            <div>
+              <div className="text-xs font-semibold text-slate-500 mb-1">Categorie</div>
+              <select value={editCategory} onChange={(e)=>setEditCategory(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-sm">
+                {CATEGORY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Button onClick={()=>setEditingId(null)} className="bg-slate-100 text-slate-700 flex-1">Annuleren</Button>
+              <Button onClick={saveEdit} className="bg-emerald-600 text-white flex-1">Opslaan</Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+
+    
+      const SmallAvatar = React.memo(function SmallAvatar({ url, name, size = 24 }) {
+        const nm = (name || '').trim();
+        const initial = (nm ? nm[0] : '?').toUpperCase();
+        const px = Math.max(16, Math.min(32, Number(size)||24));
+        const style = { width: px + 'px', height: px + 'px' };
+        return (
+          <div
+            style={style}
+            className="rounded-full overflow-hidden bg-slate-200 flex items-center justify-center text-[11px] font-bold text-slate-600 shrink-0"
+            title={nm ? `Laatst aangepast door ${nm}` : 'Laatst aangepast (onbekend)'}
+          >
+            {url ? <img src={url} alt={nm || 'avatar'} className="w-full h-full object-cover" /> : initial}
+          </div>
+        );
+      });
+
+// ---------------- List tab ----------------
+    function ListTab({ householdId, activeListId, products, items, currentUser }) {
+      const [newText, setNewText] = useState('');
+      const [newCategory, setNewCategory] = useState('Overig');
+      const [showSuggestions, setShowSuggestions] = useState(false);
+      const [openItemId, setOpenItemId] = useState(null);
+      const addInputRef = useRef(null);
+
+      function scrollAddBoxIntoView() {
+        const el = addInputRef.current;
+        if (!el) return;
+        const r = el.getBoundingClientRect();
+        const target = window.scrollY + r.top - 12;
+        window.requestAnimationFrame(() => {
+          window.scrollTo({ top: Math.max(0, target), behavior: 'smooth' });
+        });
+      }
+
+
+
+      // Undo (alleen voor verwijderen)
+      const [undoState, setUndoState] = useState(null); // { payload, label }
+      const undoTimerRef = useRef(null);
+
+      function clearUndoTimer() {
+        if (undoTimerRef.current) {
+          clearTimeout(undoTimerRef.current);
+          undoTimerRef.current = null;
+        }
+      }
+
+      function scheduleUndoClear() {
+        clearUndoTimer();
+        undoTimerRef.current = setTimeout(() => {
+          setUndoState(null);
+          undoTimerRef.current = null;
+        }, 5000);
+      }
+
+      async function undoDelete() {
+        if (!undoState || !householdId || !activeListId) return;
+        const payload = undoState.payload;
+        setUndoState(null);
+        clearUndoTimer();
+        try {
+          await db.doc(`households/${householdId}/lists/${activeListId}/items/${payload.id}`).set({
+            ...payload,
+            // mark as last edited by the person who undid the delete
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            updatedBy: (currentUser && currentUser.uid) ? currentUser.uid : '',
+            updatedByName: (currentUser && currentUser.displayName) ? currentUser.displayName : '',
+            updatedByPhotoURL: (currentUser && currentUser.photoURL) ? currentUser.photoURL : '',
+          }, { merge: true });
+        } catch (e) {
+          console.error("Undo delete failed:", e);
+        }
+      }
+
+      const suggestions = useMemo(() => {
+        const q = newText.trim().toLowerCase();
+        if (q.length < 2) return [];
+        return (products || [])
+          .filter(p => (p.name||'').toLowerCase().includes(q))
+          .sort((a,b) => (a.name||'').localeCompare(b.name||'', 'nl'))
+          .slice(0, 12);
+      }, [products, newText]);
+
+      useEffect(() => {
+        const q = newText.trim().toLowerCase();
+        if (!q) return;
+        const p = (products || []).find(x => (x.name||'').toLowerCase() === q);
+        if (p) setNewCategory(p.category || 'Overig');
+      }, [newText, products]);
+
+      async function addItemDoc(doc) {
+        if (!householdId || !activeListId) return;
+        await db.doc(`households/${householdId}/lists/${activeListId}/items/${doc.id}`).set(doc);
+      }
+
+
+
+      function currentQty(it) {
+        const q = (it && it.qty != null) ? Number(it.qty) : NaN;
+        if (!isNaN(q)) return clamp(q, 0, 99);
+        // Backward compat: if unit is discrete and amount is an int, use that
+        const unit = String(it?.unit || 'st').toLowerCase();
+        const amt = parseFloat(String(it?.amount ?? '1').replace(',','.'));
+        if (!isNaN(amt) && DISCRETE_UNITS.includes(unit)) return clamp(Math.round(amt), 0, 99);
+        return 1;
+      }
+
+      function findExistingByProductId(productId) {
+        if (!productId) return null;
+        const arr = (items || []);
+        // Prefer unchecked item, else any
+        return arr.find(x => x.productId === productId && !x.checked) || arr.find(x => x.productId === productId) || null;
+      }
+
+      async function upsertListItemFromProduct(productDoc, qtyInc = 1) {
+        if (!householdId || !activeListId) { alert('Maak eerst een lijst aan.'); return; }
+        const inc = clamp(Number(qtyInc)||1, 0, 99);
+        const id = itemIdForProduct(productDoc.id);
+        const ref = db.doc(`households/${householdId}/lists/${activeListId}/items/${id}`);
+
+        // Atomic merge: increment qty for same product
+        await ref.set({
+          id,
+          productId: productDoc.id,
+          nameSnapshot: productDoc.name || '',
+          categorySnapshot: productDoc.category || 'Overig',
+          qty: firebase.firestore.FieldValue.increment(inc),
+          checked: false,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          updatedBy: (currentUser && currentUser.uid) ? currentUser.uid : '',
+          updatedByName: (currentUser && currentUser.displayName) ? currentUser.displayName : '',
+          updatedByPhotoURL: (currentUser && currentUser.photoURL) ? currentUser.photoURL : '',
+          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+          createdBy: (currentUser && currentUser.uid) ? currentUser.uid : '',
+          createdByName: (currentUser && currentUser.displayName) ? currentUser.displayName : '',
+          createdByPhotoURL: (currentUser && currentUser.photoURL) ? currentUser.photoURL : '',
+          source: 'product',
+        }, { merge: true });
+
+        // Clamp to 0..99 (increment can exceed if user spams)
+        const snap = await ref.get();
+        const q = Number(snap.data()?.qty);
+        if (!isNaN(q) && (q < 0 || q > 99)) {
+          await ref.set({ qty: clamp(q, 0, 99) }, { merge: true });
+        }
+      }
+
+async function addItemFromProduct(p) {
+        await upsertListItemFromProduct(p, 1);
+      }
+
+      async function addFreeText() {
+        const text = newText.trim();
+        if (!text) return;
+
+        // If the text matches an existing product (exact), just add it
+        const existing = (products || []).find(x => (x.name||'').toLowerCase() === text.toLowerCase());
+        if (existing) {
+          await addItemFromProduct(existing);
+        } else {
+          // Create a new product so it shows up in the product list, then add it
+          if (!householdId) { alert('Geen huishouden gevonden.'); return; }
+
+          const productId = genId('p');
+          const category = newCategory || 'Overig';
+          const productDoc = {
+            id: productId,
+            schemaVersion: 2,
+            name: text,
+            category,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            updatedBy: currentUser?.uid || '',
+            updatedByName: currentUser?.displayName || '',
+            updatedByPhotoURL: currentUser?.photoURL || '',
+          };
+
+          await db.doc(`households/${householdId}/products/${productId}`).set(productDoc);
+          await addItemFromProduct(productDoc);
+        }
+
+        setNewText('');
+        setShowSuggestions(false);
+      }
+
+      async function toggle(item) {
+        if (!householdId || !activeListId) return;
+        await db.doc(`households/${householdId}/lists/${activeListId}/items/${item.id}`).set({
+          checked: !item.checked,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          updatedBy: (currentUser && currentUser.uid) ? currentUser.uid : '',
+          updatedByName: (currentUser && currentUser.displayName) ? currentUser.displayName : '',
+          updatedByPhotoURL: (currentUser && currentUser.photoURL) ? currentUser.photoURL : '',
+        }, { merge: true });
+      }
+
+      async function remove(item) {
+        if (!householdId || !activeListId) return;
+
+        // Prepare payload for undo (strip computed fields)
+        const payload = { ...item };
+        delete payload._name; delete payload._cat; delete payload._qty;
+
+        const label = (payload.nameSnapshot || '').trim() || 'Item';
+
+        try {
+          await db.doc(`households/${householdId}/lists/${activeListId}/items/${item.id}`).delete();
+          // show undo
+          setUndoState({ payload, label: `${label} verwijderd` });
+          scheduleUndoClear();
+        } catch (e) {
+          console.error("Delete failed:", e);
+        }
+      }
+
+
+      async function setQty(item, nextQty) {
+        if (!householdId || !activeListId) return;
+        const q = clamp(Number(nextQty)||0, 0, 99);
+        await db.doc(`households/${householdId}/lists/${activeListId}/items/${item.id}`).set({
+          qty: q,
+          checked: (q===0) ? true : false,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          updatedBy: (currentUser && currentUser.uid) ? currentUser.uid : '',
+          updatedByName: (currentUser && currentUser.displayName) ? currentUser.displayName : '',
+          updatedByPhotoURL: (currentUser && currentUser.photoURL) ? currentUser.photoURL : '',
+        }, { merge: true });
+      }
+
+      async function incQty(item, delta) {
+        const cur = currentQty(item);
+        const next = clamp(cur + (Number(delta)||0), 0, 99);
+        await setQty(item, next);
+      }
+
+            // --- Swipe (alleen in de winkel / lijst) ---
+      function SwipeRow({ item, children, onSwipeRight, onSwipeLeft }) {
+        const rowRef = useRef(null);
+        const startRef = useRef({ x: 0, y: 0, active: false, locked: false, horiz: false });
+        const dxRef = useRef(0);
+        const rafRef = useRef(null);
+
+        function isFromControl(target) {
+          try {
+            return !!target.closest('button, input, select, textarea, a, label');
+          } catch (e) {
+            return false;
+          }
+        }
+
+        function applyDx(dx, withTransition) {
+          const el = rowRef.current;
+          if (!el) return;
+          el.style.transition = withTransition ? 'transform 150ms ease' : 'none';
+          el.style.transform = `translateX(${dx}px)`;
+        }
+
+        function scheduleApply() {
+          if (rafRef.current) return;
+          rafRef.current = requestAnimationFrame(() => {
+            rafRef.current = null;
+            applyDx(dxRef.current, false);
+          });
+        }
+
+        function onTouchStart(e) {
+          if (isFromControl(e.target)) return;
+          const t = e.touches && e.touches[0];
+          if (!t) return;
+          startRef.current = { x: t.clientX, y: t.clientY, active: true, locked: false, horiz: false };
+          dxRef.current = 0;
+          applyDx(0, false);
+        }
+
+        function onTouchMove(e) {
+          const st = startRef.current;
+          if (!st.active) return;
+          const t = e.touches && e.touches[0];
+          if (!t) return;
+
+          const ndx = t.clientX - st.x;
+          const ndy = t.clientY - st.y;
+
+          // lock direction after a small threshold
+          if (!st.locked) {
+            const ax = Math.abs(ndx);
+            const ay = Math.abs(ndy);
+            if (ax < 8 && ay < 8) return;
+            st.locked = true;
+            st.horiz = ax > ay * 1.2;
+            startRef.current = st;
+          }
+
+          if (!st.horiz) return;
+
+          // prevent scroll while swiping horizontally
+          if (e.cancelable) e.preventDefault();
+
+          // clamp swipe distance
+          const clamped = Math.max(-120, Math.min(120, ndx));
+          dxRef.current = clamped;
+          scheduleApply();
+        }
+
+        function onTouchEnd() {
+          const st = startRef.current;
+          if (!st.active) return;
+          st.active = false;
+          startRef.current = st;
+
+          const dx = dxRef.current;
+          const TH = 60;
+
+          // snap back
+          applyDx(0, true);
+          setTimeout(() => applyDx(0, false), 170);
+
+          if (dx > TH && onSwipeRight) onSwipeRight(item);
+          if (dx < -TH && onSwipeLeft) onSwipeLeft(item);
+        }
+
+        return (
+          <div
+            ref={rowRef}
+            onTouchStart={onTouchStart}
+            onTouchMove={onTouchMove}
+            onTouchEnd={onTouchEnd}
+            className="touch-pan-y"
+          >
+            {children}
+          </div>
+        );
+      }
+
+
+
+      const byCategory = useMemo(() => {
+        const productById = new Map((products || []).map(p => [p.id, p]));
+        const map = {};
+        (items || []).forEach(it => {
+          const p = it.productId ? productById.get(it.productId) : null;
+          const name = (p?.name) || it.nameSnapshot || '';
+          const cat = (p?.category) || it.categorySnapshot || 'Overig';
+          const key = cat || 'Overig';
+          if (!map[key]) map[key] = [];
+          map[key].push({ ...it, _name: name, _cat: cat, _qty: currentQty(it) });
+        });
+        const cats = Object.keys(map).sort((a,b) => CATEGORY_OPTIONS.indexOf(a) - CATEGORY_OPTIONS.indexOf(b));
+        return cats.map(c => ({ category: c, items: map[c].sort((a,b)=> (a._name||'').localeCompare(b._name||'', 'nl')) }));
+      }, [items, products]);
+
+      return (
+        <div className="pb-24">
+          <div className="mb-3 relative">
+            <div className="flex flex-col sm:flex-row gap-2">
+              <div className="relative w-full sm:flex-1">
+                <input
+                  ref={addInputRef}
+                  value={newText}
+                  onChange={(e)=>{ setNewText(e.target.value); setShowSuggestions(true); }}
+                  onFocus={()=>{ scrollAddBoxIntoView(); if (newText.trim().length>=2) setShowSuggestions(true); }}
+                  onBlur={()=> setTimeout(()=>setShowSuggestions(false), 150)}
+                  onKeyDown={(e)=>{ if (e.key === 'Enter') { e.preventDefault(); addFreeText(); } }}
+                  placeholder="Zoek product of typ iets nieuws…"
+                  className="w-full pr-12 px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm"
+                />
+                <button
+                  onClick={addFreeText}
+                  className="absolute right-1 top-1/2 -translate-y-1/2 w-10 h-10 rounded-xl bg-emerald-600 text-white font-bold"
+                  title="Toevoegen"
+                  type="button"
+                >+</button>
+              </div>
+
+              <select
+                value={newCategory || 'Overig'}
+                onChange={(e)=>setNewCategory(e.target.value)}
+                className="w-full sm:w-56 px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm"
+                title="Categorie (voor nieuwe producten)"
+              >
+                {CATEGORY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div></div>
+
+            {showSuggestions && suggestions.length > 0 && (
+              <div className="absolute left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-30 overflow-hidden max-h-60 overflow-auto">
+                {suggestions.map(s => (
+                  <button key={s.id} onMouseDown={(e)=>e.preventDefault()}
+                    onClick={()=>{ addItemFromProduct(s); setNewText(''); setShowSuggestions(false); }}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 flex items-center gap-2 border-b border-slate-100 last:border-b-0">
+                    <span className="flex-1 truncate">{s.name}</span>
+                    <span className="text-[11px] text-slate-400 shrink-0">{(s.category||'Overig').split(',')[0]}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <Card>
+            <div className="p-3 border-b border-slate-100 text-xs text-slate-500">
+</div>
+            <div className="p-3 space-y-3">
+              {byCategory.length === 0 ? (
+                <div className="text-center py-10 text-slate-400">
+                  <div className="text-4xl mb-1">🛒</div>
+                  <div className="text-sm">Je lijst is leeg</div>
+                </div>
+              ) : byCategory.map(group => (
+                <div key={group.category}>
+                  <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide px-1 mb-1">
+                    {group.category}
+                  </div>
+                  <div className="space-y-1">
+                    {group.items.map(it => (
+                      <SwipeRow key={it.id} item={it} onSwipeRight={(x)=>toggle(x)} onSwipeLeft={(x)=>remove(x)}>
+
+                      <div
+                        className="relative flex items-center bg-white border border-slate-200 rounded-xl px-3 py-2"
+                        onClick={() => setOpenItemId(openItemId === it.id ? null : it.id)}
+                      >
+                        <div className={"flex-1 min-w-0 text-sm pr-2 " + (it.checked ? "line-through text-slate-400" : "text-slate-800")}>
+                          {it._name}
+                        </div>
+
+                        <SmallAvatar
+                          url={it.updatedByPhotoURL || it.createdByPhotoURL || ''}
+                          name={(it.updatedByName || it.createdByName || '').trim()}
+                          size={20}
+                        />
+
+                        <div
+                          className={
+                            "flex items-center gap-1 ml-2 transition-all duration-150 " +
+                            (openItemId === it.id ? "opacity-100 translate-x-0" : "opacity-0 translate-x-3 pointer-events-none w-0 overflow-hidden") +
+                            " md:opacity-100 md:translate-x-0 md:pointer-events-auto md:w-auto md:overflow-visible"
+                          }
+                        >
+                          <button
+                            onClick={(e)=>{ e.stopPropagation(); toggle(it); }}
+                            className={
+                              "w-7 h-7 rounded-lg border flex items-center justify-center text-xs " +
+                              (it.checked ? "bg-emerald-600 border-emerald-600 text-white" : "bg-white border-slate-300 text-slate-400")
+                            }
+                            title="Afvinken"
+                          >
+                            {it.checked ? "✓" : ""}
+                          </button>
+
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={(e)=>{ e.stopPropagation(); incQty(it, -1); }}
+                              disabled={it._qty <= 0}
+                              className={"w-7 h-7 rounded-xl border text-sm " + (it._qty <= 0 ? "bg-slate-50 border-slate-200 text-slate-300" : "bg-white border-slate-200 text-slate-700")}
+                              title="Minder"
+                            >−</button>
+                            <div className="w-7 text-center text-sm tabular-nums text-slate-700">{it._qty}</div>
+                            <button
+                              onClick={(e)=>{ e.stopPropagation(); incQty(it, +1); }}
+                              disabled={it._qty >= 99}
+                              className={"w-7 h-7 rounded-xl border text-sm " + (it._qty >= 99 ? "bg-slate-50 border-slate-200 text-slate-300" : "bg-white border-slate-200 text-slate-700")}
+                              title="Meer"
+                            >+</button>
+                          </div>
+
+                          <button
+                            onClick={(e)=>{ e.stopPropagation(); remove(it); }}
+                            className="w-7 h-7 rounded-xl bg-slate-100 text-slate-600 text-sm"
+                            title="Verwijderen"
+                          >🗑️</button>
+                        </div>
+                      </div>
+
+                    </SwipeRow>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          {undoState && (
+            <div className="fixed left-0 right-0 bottom-0 pb-6 px-4 z-50">
+              <div className="max-w-xl mx-auto">
+                <div className="bg-slate-900 text-white rounded-2xl shadow-lg px-4 py-3 flex items-center gap-3">
+                  <div className="flex-1 text-sm truncate">{undoState.label}</div>
+                  <button
+                    onClick={undoDelete}
+                    className="text-sm font-bold underline decoration-2 underline-offset-4"
+                  >
+                    Ongedaan maken
+                  </button>
+                  <button
+                    onClick={() => { setUndoState(null); clearUndoTimer(); }}
+                    className="text-sm opacity-70 hover:opacity-100"
+                    title="Sluiten"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+        </div>
+      );
+    }
+
+    // ---------------- Recipes tab ----------------
+    function RecipesTab({ householdId, recipes, products, items, activeListId, currentUser }) {
+      const [query, setQuery] = useState('');
+      const [openId, setOpenId] = useState(null); // recipe id in modal
+      const [draft, setDraft] = useState(null);   // editable recipe
+      const [quickServings, setQuickServings] = useState(5);
+      const [expandedId, setExpandedId] = useState(null);
+      const [pickMap, setPickMap] = useState({});
+const filtered = useMemo(() => {
+        const q = query.trim().toLowerCase();
+        let rs = recipes || [];
+        if (q) rs = rs.filter(r => (r.name||'').toLowerCase().includes(q));
+        rs = [...rs].sort((a,b) => (a.name||'').localeCompare(b.name||'', 'nl'));
+        return rs;
+      }, [recipes, query]);
+
+      function newRecipe() {
+        const id = genId('r');
+        const baseServings = 5;
+        const rec = {
+          id,
+          name: 'Nieuw recept',
+          baseServings,
+          ingredients: [],
+          preparationHtml: '',
+          createdAt: null,
+          createdBy: currentUser?.uid || '',
+          updatedAt: null,
+          updatedBy: currentUser?.uid || '',
+            updatedByName: currentUser?.displayName || '',
+            updatedByPhotoURL: currentUser?.photoURL || '',
+        };
+        setOpenId(id);
+        setDraft(rec);
+}
+
+      function editRecipe(r) {
+        setOpenId(r.id);
+        setDraft(JSON.parse(JSON.stringify(r)));
+}
+
+      async function saveRecipe() {
+        if (!householdId || !draft) return;
+        const id = draft.id || genId('r');
+        const baseServings = clamp(parseInt(draft.baseServings || 5, 10) || 4, 1, 99);
+        const payload = {
+          ...draft,
+          id,
+          name: (draft.name || '').trim() || 'Recept',
+          baseServings,
+          ingredients: Array.isArray(draft.ingredients) ? draft.ingredients : [],
+          preparationHtml: draft.preparationHtml || '',
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          updatedBy: currentUser?.uid || '',
+            updatedByName: currentUser?.displayName || '',
+            updatedByPhotoURL: currentUser?.photoURL || '',
+        };
+        // if new, set createdAt
+        const ref = db.doc(`households/${householdId}/recipes/${id}`);
+        const snap = await ref.get();
+        if (!snap.exists) {
+          payload.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+          payload.createdBy = currentUser?.uid || '';
+        }
+        await ref.set(payload, { merge: true });
+        setOpenId(null);
+        setDraft(null);
+      }
+
+      async function deleteRecipe(r) {
+        if (!householdId) return;
+        if (!confirm(`Recept verwijderen: "${r.name}"?`)) return;
+        await db.doc(`households/${householdId}/recipes/${r.id}`).delete();
+      }
+
+      function addIngredientRow() {
+        setDraft(d => ({
+          ...d,
+          ingredients: [...(d.ingredients||[]), {
+            _id: genId('ing'),
+            productId: null,
+            nameSnapshot: '',
+            categorySnapshot: 'Overig',
+            amount: '',
+            unit: 'st',
+            
+          }]
+        }));
+      }
+
+      function updateIng(idx, patch) {
+        setDraft(d => {
+          const arr = [...(d.ingredients||[])];
+          arr[idx] = { ...arr[idx], ...patch };
+          return { ...d, ingredients: arr };
+        });
+      }
+
+      function removeIng(idx) {
+        setDraft(d => {
+          const arr = [...(d.ingredients||[])];
+          arr.splice(idx, 1);
+          return { ...d, ingredients: arr };
+        });
+      }
+
+      function findProductById(pid) {
+        return (products||[]).find(p => p.id === pid) || null;
+      }
+
+      function resolveIngDisplay(ing) {
+        const p = ing.productId ? findProductById(ing.productId) : null;
+        const name = (p?.name) || ing.nameSnapshot || '';
+        const cat = (p?.category) || ing.categorySnapshot || 'Overig';
+        return { name, cat };
+      }
+
+      const DISCRETE_UNITS = ['st','stuk','bl','blik','zak','pak','pot','fles','tube','bol','krop','teen','tenen','knol','bus'];
+
+      function scaleAmountText(amountText, unitText, base, target) {
+        const a = String(amountText || '').trim();
+        if (!a) return '';
+        const num = parseFloat(a.replace(',', '.'));
+        if (!isFinite(num)) return amountText; // keep free text
+        const factor = (target || base) / (base || 1);
+        let out = num * factor;
+        const unit = String(unitText || '').trim().toLowerCase();
+        const isDiscrete = DISCRETE_UNITS.includes(unit);
+        if (isDiscrete) {
+          out = Math.ceil(out - 1e-9);
+        } else {
+          // Keep nice rounding
+          out = Math.round(out * 100) / 100;
+        }
+        // Format: avoid trailing .0
+        const asInt = Math.round(out);
+        const pretty = (Math.abs(out - asInt) < 1e-9) ? String(asInt) : String(out);
+        return pretty.replace('.', ',');
+      }
+
+      function scaledAmount(ing, base, target) {
+        const amount = (ing.amount ?? ing.qty ?? ing.quantity ?? ing.amountText ?? '');
+        const unit = (ing.unit ?? ing.unitText ?? '');
+        return scaleAmountText(amount, unit, base, target);
+      }
+
+      
+      function applyMultToAmountText(amountText, mult) {
+        const m = Number(mult || 1);
+        if (!amountText) return '';
+        if (!m || m === 1) return String(amountText);
+        // Try multiplying first number in the string
+        const s = String(amountText);
+        const match = s.match(/(-?\d+(?:[\.,]\d+)?)/);
+        if (match) {
+          const raw = match[1].replace(',', '.');
+          const num = parseFloat(raw);
+          if (!isNaN(num)) {
+            const scaled = num * m;
+            return s.replace(match[1], formatNum(scaled));
+          }
+        }
+        return s + ` ×${m}`;
+      }
+
+async function addRecipeToList(r, targetServings, pickState) {
+        if (!householdId || !activeListId) { alert('Geen actieve lijst gevonden.'); return; }
+        // Ingrediënten in recepten zijn al ingevoerd voor de opgegeven basisporties; we schalen hier (nog) niet.
+        const base = r.baseServings || r.servings || r.persons || 5;
+        const target = base;
+
+        const productById = new Map((products||[]).map(p => [p.id, p]));
+        const productByName = new Map((products||[]).map(p => [(p.name||'').toLowerCase(), p]));
+        const createdProductsByName = new Map();
+
+        // Existing list items by productId (prefer unchecked)
+        const existingByProductId = new Map();
+        (items || []).forEach(it => {
+          if (!it.productId) return;
+          const cur = existingByProductId.get(it.productId);
+          if (!cur) { existingByProductId.set(it.productId, it); return; }
+          if (cur.checked && !it.checked) existingByProductId.set(it.productId, it);
+        });
+
+        const itemQty = (it) => {
+          const q = (it && it.qty != null) ? Number(it.qty) : NaN;
+          if (!isNaN(q)) return clamp(q, 0, 99);
+          const unit = String(it?.unit || 'st').toLowerCase();
+          const amt = parseFloat(String(it?.amount ?? '1').replace(',','.'));
+          if (!isNaN(amt) && DISCRETE_UNITS.includes(unit)) return clamp(Math.round(amt), 0, 99);
+          return 1;
+        };
+
+        const batch = db.batch();
+        const ings = (r.ingredients || []);
+
+        ings.forEach((ing, idx) => {
+          const key = ing._id || String(idx);
+          const include = pickState?.picks ? (pickState.picks[key] !== false) : true;
+          if (!include) return;
+          const mult = 1;
+          const p = ing.productId ? productById.get(ing.productId) : null;
+          const name = (p?.name) || ing.nameSnapshot || '';
+          if (!name) return;
+          const cat = (p?.category) || ing.categorySnapshot || 'Overig';
+
+          // Ensure this ingredient exists as a product so it appears in the product list
+          let ensuredProductId = (p?.id) || ing.productId || null;
+          let ensuredProduct = p;
+          if (!ensuredProductId) {
+            const keyName = String(name).toLowerCase();
+            const already = productByName.get(keyName) || createdProductsByName.get(keyName);
+            if (already) {
+              ensuredProductId = already.id;
+              ensuredProduct = already;
+            } else {
+              ensuredProductId = genId('p');
+              ensuredProduct = {
+                id: ensuredProductId,
+                schemaVersion: 2,
+                name,
+                category: cat,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                updatedBy: currentUser?.uid || '',
+            updatedByName: currentUser?.displayName || '',
+            updatedByPhotoURL: currentUser?.photoURL || '',
+              };
+              batch.set(db.doc(`households/${householdId}/products/${ensuredProductId}`), ensuredProduct, { merge: true });
+              createdProductsByName.set(keyName, ensuredProduct);
+            }
+          }
+
+          // Calculate amount (string) and determine how much to increment the counter
+          let unit = (ing.unit ?? ing.unitText ?? 'st');
+          if (String(unit).toLowerCase()==='g') unit = 'gr';
+
+          // Quantity overrides from the picker (defaults to recipe quantity)
+          const overrideQty = (pickState?.qtys && pickState.qtys[key] != null) ? Number(pickState.qtys[key]) : null;
+
+          let amountStr = (ing.amount ?? ing.qty ?? ing.quantity ?? '');
+          let qtyInc = 1;
+
+          if (overrideQty != null && isFinite(overrideQty)) {
+            // Treat as discrete counter (product-based ingredient)
+            qtyInc = clamp(Math.round(overrideQty), 0, 99);
+            amountStr = String(qtyInc);
+          } else {
+            // Fallback: parse from stored amount
+            const num = parseFloat(String(amountStr).replace(',','.'));
+            if (isFinite(num)) {
+              if (DISCRETE_UNITS.includes(String(unit||'').toLowerCase())) {
+                qtyInc = clamp(Math.ceil(num), 0, 99);
+              }
+              amountStr = formatNum(num);
+            } else {
+              amountStr = String(amountStr || '');
+            }
+          }
+          const id = itemIdForProduct(ensuredProductId);
+          batch.set(db.doc(`households/${householdId}/lists/${activeListId}/items/${id}`), {
+            id,
+            productId: ensuredProductId,
+            nameSnapshot: name,
+            categorySnapshot: (ensuredProduct?.category) || cat,
+            qty: firebase.firestore.FieldValue.increment(qtyInc || 1),
+            amount: amountStr,
+            unit,
+            checked: false,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            createdBy: currentUser?.uid || '',
+            source: `recipe:${r.id}`,
+          });
+
+          existingByProductId.set(ensuredProductId, { id, productId: ensuredProductId, qty: clamp(qtyInc||1,0,99), checked: false, amount: amountStr, unit });
+        });
+
+        await batch.commit();
+        alert('Toegevoegd aan je lijst.');
+      }
+      const productSuggestions = (text) => {
+        const q = (text||'').trim().toLowerCase();
+        if (q.length < 2) return [];
+        return (products||[]).filter(p => (p.name||'').toLowerCase().includes(q))
+          .sort((a,b)=>(a.name||'').localeCompare(b.name||'', 'nl'))
+          .slice(0, 8);
+      };
+
+      
+      function parseDefaultQty(ing) {
+        const unit = String(ing?.unit || 'st').toLowerCase();
+        const amtStr = String(ing?.amount ?? '').trim();
+        const num = parseFloat(amtStr.replace(',', '.'));
+        if (DISCRETE_UNITS.includes(unit)) {
+          if (!isNaN(num)) return clamp(Math.round(num), 0, 99);
+          return 1;
+        }
+        return 1;
+      }
+
+function ensurePickState(recipe) {
+        setPickMap(prev => {
+          if (prev[recipe.id]) return prev;
+          const picks = {};
+          const qtys = {};
+          (recipe.ingredients || []).forEach((ing, i) => {
+            const key = ing._id || String(i);
+            const def = parseDefaultQty(ing);
+            qtys[key] = def;
+            picks[key] = def > 0;
+          });
+          return { ...prev, [recipe.id]: { picks, qtys } };
+        });
+      }
+
+
+      function setQty(recipeId, key, nextQty, defaultQty) {
+        const q = clamp(parseInt(nextQty || 0, 10) || 0, 0, 99);
+        setPickMap(prev => {
+          const st = prev[recipeId];
+          if (!st) return prev;
+          const curPicks = st.picks || {};
+          const curQtys = st.qtys || {};
+          const shouldPick = q > 0;
+          return {
+            ...prev,
+            [recipeId]: {
+              ...st,
+              picks: { ...curPicks, [key]: shouldPick },
+              qtys: { ...curQtys, [key]: q },
+            }
+          };
+        });
+      }
+
+      function togglePick(recipeId, key, defaultQty) {
+        const def = clamp(parseInt(defaultQty || 1, 10) || 1, 0, 99);
+        setPickMap(prev => {
+          const st = prev[recipeId];
+          if (!st) return prev;
+          const curOn = st.picks?.[key] !== false;
+          const nextOn = !curOn;
+          const curQty = (st.qtys && st.qtys[key] != null) ? Number(st.qtys[key]) : def;
+          const nextQty = nextOn ? (curQty > 0 ? curQty : def) : 0;
+          return {
+            ...prev,
+            [recipeId]: {
+              ...st,
+              picks: { ...(st.picks||{}), [key]: nextOn },
+              qtys: { ...(st.qtys||{}), [key]: clamp(parseInt(nextQty||0,10)||0,0,99) },
+            }
+          };
+        });
+      }
+
+
+      
+      
+      return (
+        <div className="pb-24">
+          <div className="mb-3 flex gap-2">
+            <input value={query} onChange={(e)=>setQuery(e.target.value)}
+              placeholder="Zoek recept…"
+              className="w-full sm:flex-1 px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm" />
+            <Button onClick={newRecipe} className="bg-emerald-600 text-white px-3">+ Recept</Button>
+          </div>
+
+          <Card>
+            <div className="divide-y divide-slate-100">
+              {filtered.length === 0 ? (
+                <div className="p-6 text-center text-slate-400">
+                  <div className="text-4xl mb-1">🍲</div>
+                  <div className="text-sm">Nog geen recepten</div>
+                </div>
+              ) : filtered.map(r => {
+                const isOpen = expandedId === r.id;
+                const st = pickMap[r.id];
+                return (
+                  <div key={r.id} className="border-b border-slate-100 last:border-b-0">
+                    <div className="p-3 flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          if (!isOpen) ensurePickState(r);
+                          setExpandedId(isOpen ? null : r.id);
+                        }}
+                        className="flex-1 text-left min-w-0"
+                      >
+                        <div className="font-semibold text-sm truncate">{r.name || 'Recept'}</div>
+                        <div className="text-xs text-slate-400 truncate">
+                          {(r.ingredients||[]).length} ingrediënten · basis {r.baseServings || 5} pers.
+                        </div>
+                      </button>
+
+                      <button onClick={() => { if (!isOpen) ensurePickState(r); setExpandedId(isOpen ? null : r.id); }} title="Openen/sluiten" className="w-9 h-9 rounded-xl bg-slate-100 text-slate-700 text-sm">{isOpen ? "▴" : "▾"}</button>
+
+                      <button onClick={()=>editRecipe(r)} title="Bewerken" className="w-9 h-9 rounded-xl bg-slate-100 text-slate-600 text-sm">✏️</button>
+                      <button onClick={()=>deleteRecipe(r)} title="Verwijderen" className="w-9 h-9 rounded-xl bg-slate-100 text-slate-600 text-sm">🗑️</button>
+                    </div>
+
+                    {isOpen && st && (
+                      <div className="px-3 pb-4">
+                        <div className="text-xs text-slate-500 mb-2">Dit recept is voor <span className="font-bold text-slate-700">{r.baseServings || r.servings || r.persons || 5}</span> personen.</div>
+
+                        <div className="space-y-1">
+                          {(r.ingredients||[]).map((ing, idx) => {
+                            const key = ing._id || String(idx);
+                            const disp = resolveIngDisplay(ing);
+                            const defaultQty = parseDefaultQty(ing);
+                            const checked = st.picks?.[key] !== false;
+                                                        return (
+                              <div key={key} className="flex items-center gap-2 py-2 border-b border-slate-100 last:border-b-0">
+                                <button onClick={()=>togglePick(r.id, key)} className={
+                                  "w-6 h-6 rounded-lg border flex items-center justify-center text-xs " +
+                                  (checked ? "bg-emerald-600 border-emerald-600 text-white" : "bg-white border-slate-300 text-slate-400")
+                                }>
+                                  {checked ? "✓" : ""}
+                                </button>
+
+                                <div className={"flex-1 min-w-0 text-sm font-semibold truncate " + (checked ? "text-slate-800" : "text-slate-400 line-through")}>
+                                  {disp.name || "(onbekend)"}
+                                </div>
+
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <button
+                                    onClick={() => setQty(r.id, key, (Number(st.qtys?.[key] ?? defaultQty) || 0) - 1, defaultQty)}
+                                    className={"w-7 h-7 rounded-lg text-sm flex items-center justify-center " + ((Number(st.qtys?.[key] ?? defaultQty) || 0) <= 0 ? "bg-slate-100 text-slate-300" : "bg-slate-100 text-slate-700")}
+                                    title="Minder"
+                                  >−</button>
+                                  <div className={"w-10 text-center text-sm tabular-nums " + (checked ? "text-slate-800" : "text-slate-400")}>
+                                    {Number(st.qtys?.[key] ?? defaultQty) || 0}
+                                  </div>
+                                  <button
+                                    onClick={() => setQty(r.id, key, (Number(st.qtys?.[key] ?? defaultQty) || 0) + 1, defaultQty)}
+                                    className="w-7 h-7 rounded-lg bg-slate-100 text-slate-700 text-sm flex items-center justify-center"
+                                    title="Meer"
+                                  >+</button>
+                                  <button
+                                    onClick={() => setQty(r.id, key, defaultQty, defaultQty)}
+                                    disabled={(Number(st.qtys?.[key] ?? defaultQty) || 0) === defaultQty}
+                                    style={{ visibility: ((Number(st.qtys?.[key] ?? defaultQty) || 0) !== defaultQty) ? 'visible' : 'hidden' }}
+                                    className="w-7 h-7 rounded-lg bg-slate-100 text-slate-700 text-sm flex items-center justify-center disabled:opacity-50"
+                                    title="Terug naar recept"
+                                  >↺</button>
+                                </div>
+                              </div>
+                            );
+                          })}
+
+                          <Button
+                            onClick={() => addRecipeToList(r, null, st)}
+                            className="w-full bg-slate-900 text-white"
+                          >
+                            Voeg geselecteerde ingrediënten toe
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+
+          {openId && draft && (
+            <Modal title="Recept" onClose={()=>{ setOpenId(null); setDraft(null); }}>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div className="space-y-3">
+                  <div>
+                    <div className="text-xs font-semibold text-slate-500 mb-1">Naam</div>
+                    <input value={draft.name || ''} onChange={(e)=>setDraft(d=>({ ...d, name: e.target.value }))}
+                      className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white" />
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <div className="flex-1">
+                      <div className="text-xs font-semibold text-slate-500 mb-1">Dit recept is voor</div>
+                      <input type="number" min="1" max="99" value={draft.baseServings || 5}
+                        onChange={(e)=>{ const v = parseInt(e.target.value||'5',10)||4; setDraft(d=>({ ...d, baseServings: v }));
+}}
+                        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white" />
+                    </div>
+                    </div>
+
+                  
+
+                  <div className="pt-2 border-t border-slate-100">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="text-sm font-bold text-slate-800">Ingrediënten</div>
+                      
+                    </div>
+
+                    <div className="space-y-2">
+                      {(draft.ingredients||[]).length === 0 ? (
+                        <div className="text-sm text-slate-400">Nog geen ingrediënten.</div>
+                      ) : (draft.ingredients||[]).map((ing, idx) => {
+                        const disp = resolveIngDisplay(ing);
+                        const sugg = productSuggestions(ing.nameSnapshot || disp.name);
+                        return (
+                          <div key={ing._id || idx} className="p-3 bg-white border border-slate-200 rounded-2xl">
+                            <div className="flex flex-col sm:flex-row gap-2">
+                              <div className="flex-1 relative">
+                                <div className="text-[11px] font-semibold text-slate-500 mb-1">Product</div>
+                                <input
+                                  value={disp.name}
+                                  onChange={(e)=>updateIng(idx, { productId: null, nameSnapshot: e.target.value })}
+                                  placeholder="bijv. Paprika"
+                                  className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-sm"
+                                />
+                                {(String(ing.productId || '')==='' && (ing.nameSnapshot||'').trim().length>=2 && sugg.length>0) && (
+                                  <div className="absolute left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-30 overflow-hidden">
+                                    {sugg.map(p => (
+                                      <button key={p.id} onMouseDown={(e)=>e.preventDefault()}
+                                        onClick={() => updateIng(idx, {
+                                          productId: p.id,
+                                          nameSnapshot: p.name || '',
+                                          categorySnapshot: p.category || 'Overig',
+                                        })}
+                                        className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 flex items-center gap-2 border-b border-slate-100 last:border-b-0">
+                                        <span className="flex-1 truncate">{p.name}</span>
+                                        <span className="text-[11px] text-slate-400 shrink-0">{(p.category||'Overig').split(',')[0]}</span>
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                                {String(ing.productId || '') ? (
+                                  <div className="text-[11px] text-slate-400 mt-1">{disp.cat}</div>
+                                ) : (
+                                  <select
+                                    value={ing.categorySnapshot || 'Overig'}
+                                    onChange={(e)=>updateIng(idx, { categorySnapshot: e.target.value })}
+                                    className="mt-1 w-full px-2 py-1 rounded-lg border border-slate-200 bg-white text-[12px]"
+                                    title="Categorie"
+                                  >
+                                    {CATEGORY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+                                  </select>
+                                )}
+                              </div>
+                              <button onClick={()=>removeIng(idx)} className="w-10 h-10 mt-5 rounded-xl bg-slate-100 text-slate-600">🗑️</button>
+                            </div>
+
+                            <div className="mt-2 grid grid-cols-2 gap-2">
+                              <div>
+                                <div className="text-[11px] font-semibold text-slate-500 mb-1">Hoeveelheid</div>
+                                <input
+                                  value={ing.amount || ''}
+                                  onChange={(e)=>updateIng(idx, { amount: e.target.value })}
+                                  placeholder="bijv. 2"
+                                  className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-sm"
+                                />
+                              </div>
+</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+                <div className="sticky bottom-0 -mx-4 px-4 py-3 bg-white/95 backdrop-blur border-t border-slate-100 mt-4">
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <Button onClick={addIngredientRow} className="bg-white border border-slate-200 text-slate-700 flex-1">+ ingrediënt</Button>
+                    <Button onClick={saveRecipe} className="bg-emerald-600 text-white flex-1">Opslaan</Button>
+                  </div>
+                </div>
+
+
+                <div className="space-y-2">
+                  <div className="text-sm font-bold text-slate-800">Bereiding</div>
+                  <WysiwygEditor
+                    valueHtml={draft.preparationHtml || ''}
+                    onChangeHtml={(html)=>setDraft(d=>({ ...d, preparationHtml: html }))}
+                  />
+                  <div className="text-[11px] text-slate-400">Tip: plakken vanuit Notities/website werkt prima.</div>
+                </div>
+              </div>
+            </Modal>
+          )}
+        </div>
+      );
+    }
+
+    // ---------------- Lists menu ----------------
+    function ListsMenu({ lists, activeListId, onPick, onCreate, onDelete }) {
+      const [open, setOpen] = useState(false);
+      const [newName, setNewName] = useState('');
+
+      const activeName = (lists || []).find(l => l.id === activeListId)?.name || '—';
+
+      return (
+        <>
+          <div className="flex items-center justify-between mb-3">
+            <button onClick={()=>setOpen(true)} className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-semibold text-slate-700">
+              📋 {activeName} <span className="text-[10px] text-slate-400">▼</span>
+            </button>
+          </div>
+
+          {open && (
+            <Modal title="Lijsten" onClose={()=>setOpen(false)}>
+              <div className="space-y-2">
+                {(lists||[]).map(l => (
+                  <div key={l.id} className="flex items-center gap-2">
+                    <button onClick={()=>{ onPick(l.id); setOpen(false); }}
+                      className={"flex-1 px-3 py-2.5 rounded-xl text-left border " +
+                        (l.id===activeListId ? "bg-emerald-50 border-emerald-200" : "bg-white border-slate-200")}>
+                      <div className="font-semibold text-sm text-slate-800">{l.name}</div>
+                      <div className="text-[11px] text-slate-400">{l.id===activeListId ? "actief" : ""}</div>
+                    </button>
+                    <button onClick={()=>onDelete(l.id)} className="w-10 h-10 rounded-xl bg-slate-100 text-slate-600">🗑️</button>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-4 pt-4 border-t border-slate-100 space-y-2">
+                <div className="text-xs font-semibold text-slate-500">Nieuwe lijst</div>
+                <input value={newName} onChange={(e)=>setNewName(e.target.value)}
+                  placeholder="bijv. Albert Heijn"
+                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-sm" />
+                <Button onClick={()=>{ onCreate(newName); setNewName(''); setOpen(false); }}
+                  className="w-full bg-emerald-600 text-white">
+                  + Maak lijst
+                </Button>
+              </div>
+            </Modal>
+          )}
+        </>
+      );
+    }
+
+    // ---------------- Main App ----------------
+    function App() {
+      const { user, loading } = useAuth();
+      const { profile, loading: profileLoading, setActiveListId } = useUserProfile(user);
+
+      const householdId = profile?.householdId || null;
+      const activeListId = profile?.activeListId || null;
+
+      const [householdInfo, setHouseholdInfo] = useState(null);
+      const [tab, setTab] = useState('list'); // list | products | recipes
+      const [showSignOut, setShowSignOut] = useState(false);
+
+      // Load household info (name + code)
+      useEffect(() => {
+        if (!user || !householdId) { setHouseholdInfo(null); return; }
+        const ref = db.doc(`households/${householdId}/meta/info`);
+        const unsub = ref.onSnapshot(snap => {
+          setHouseholdInfo(snap.exists ? snap.data() : null);
+        }, err => console.error("Household info error:", err));
+        return () => unsub();
+      }, [user, householdId]);
+
+      // ---- One-time migration: legacy products -> schemaVersion 2 products (keeps old docs intact) ----
+      useEffect(() => {
+        if (!user || !householdId) return;
+
+        let cancelled = false;
+
+        async function migrateProductsV2IfNeeded() {
+          try {
+            const migRef = db.doc(`households/${householdId}/meta/migrations`);
+            const migSnap = await migRef.get();
+            const mig = migSnap.exists ? migSnap.data() : null;
+            if (mig?.productsV2Done) return;
+
+            // Read all products docs
+            const legacySnap = await db.collection(`households/${householdId}/products`).get();
+            if (legacySnap.empty) {
+              await migRef.set({
+                productsV2Done: true,
+                productsV2DoneAt: firebase.firestore.FieldValue.serverTimestamp(),
+                productsV2Stats: { legacyFound: 0, migrated: 0, skipped: 0 }
+              }, { merge: true });
+              return;
+            }
+
+            const legacyDocs = legacySnap.docs
+              .map(d => ({ id: d.id, data: d.data() || {} }))
+              .filter(x => !(x.data && (x.data.schemaVersion === 2 || (typeof x.data.id === 'string' && x.data.id.startsWith('p_')))));
+
+            let migrated = 0;
+            let skipped = 0;
+
+            // Chunk batches (max 450 writes to be safe: new product docs + final meta write)
+            const chunks = [];
+            for (let i = 0; i < legacyDocs.length; i += 200) chunks.push(legacyDocs.slice(i, i+200));
+
+            const mapping = {};
+            for (const chunk of chunks) {
+              if (cancelled) return;
+              const batch = db.batch();
+
+              for (const ld of chunk) {
+                const oldId = ld.id;
+                const d = ld.data || {};
+
+                // If a v2 product already exists for this legacy doc (by legacyDocId), skip.
+                // (Best effort: query is extra; to keep it cheap we rely on meta mapping on reruns.)
+                if (mapping[oldId]) { skipped++; continue; }
+
+                const newId = genId('p');
+
+                const name = (d.name && String(d.name).trim()) ? String(d.name).trim() : titleFromLegacyDocId(oldId);
+                const category = (d.category && String(d.category).trim()) ? String(d.category).trim() : 'Overig';
+
+                const newDoc = {
+                  id: newId,
+                  schemaVersion: 2,
+                  legacyDocId: oldId,
+                  name,
+                  category,
+                  // preserve known fields if present
+                  count: d.count ?? 0,
+                  lastBought: d.lastBought ?? null,
+                  dates: Array.isArray(d.dates) ? d.dates : [],
+                  lastAmount: d.lastAmount ?? '',
+                  lastUnit: d.lastUnit ?? '',
+                  updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                  updatedBy: user.uid,
+                  migratedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                };
+
+                batch.set(db.doc(`households/${householdId}/products/${newId}`), newDoc, { merge: true });
+                mapping[oldId] = newId;
+                migrated++;
+              }
+
+              await batch.commit();
+            }
+
+            if (cancelled) return;
+
+            await migRef.set({
+              productsV2Done: true,
+              productsV2DoneAt: firebase.firestore.FieldValue.serverTimestamp(),
+              productsV2Stats: {
+                legacyFound: legacyDocs.length,
+                migrated,
+                skipped
+              },
+              productsV2Map: mapping
+            }, { merge: true });
+
+          } catch (e) {
+            console.error("Migration products v2 failed:", e);
+            // Don't mark as done; user can retry by reloading.
+          }
+        }
+
+        migrateProductsV2IfNeeded();
+        return () => { cancelled = true; };
+      }, [user, householdId]);
+
+      const { members, lists, products, items, recipes, syncing } = useHouseholdData(user, householdId, activeListId, setActiveListId);
+
+      async function handleCreateList(name) {
+        if (!householdId || !user) return;
+        const listId = genId('l');
+        await db.doc(`households/${householdId}/lists_meta/${listId}`).set({
+          name: (name || '').trim() || 'Nieuwe lijst',
+          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+          createdBy: user.uid,
+        });
+        setActiveListId(listId);
+      }
+
+      async function handleDeleteList(listId) {
+        if (!householdId) return;
+        if (!confirm('Lijst verwijderen? Items in die lijst worden ook verwijderd.')) return;
+
+        await db.doc(`households/${householdId}/lists_meta/${listId}`).delete();
+
+        const snap = await db.collection(`households/${householdId}/lists/${listId}/items`).get();
+        if (!snap.empty) {
+          const batch = db.batch();
+          snap.docs.forEach(d => batch.delete(d.ref));
+          await batch.commit();
+        }
+
+        if (activeListId === listId) {
+          const remaining = (lists || []).filter(l => l.id !== listId);
+          if (remaining.length > 0) setActiveListId(remaining[0].id);
+          else setActiveListId(null);
+        }
+      }
+
+      function handleSignIn() {
+        const provider = new firebase.auth.GoogleAuthProvider();
+        auth.signInWithPopup(provider).catch(e => console.error('Sign in error:', e));
+      }
+
+      function handleCopyCode() {
+        if (householdInfo?.code) navigator.clipboard.writeText(householdInfo.code).catch(()=>{});
+      }
+
+      if (loading || (user && profileLoading)) {
+        return (
+          <div className="min-h-screen flex items-center justify-center text-slate-500">
+            Laden…
+          </div>
+        );
+      }
+
+      if (!user) {
+        return (
+          <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100">
+            <div className="max-w-xl mx-auto px-4 pt-10 pb-20">
+              <h1 className="text-2xl font-black text-slate-900 mb-2">Boodschappenlijstjemaker</h1>
+              <p className="text-slate-600 text-sm mb-6">Log in met Google om samen te werken.</p>
+              <Button onClick={handleSignIn} className="bg-emerald-600 text-white w-full">
+                Inloggen met Google
+              </Button>
+            </div>
+          </div>
+        );
+      }
+
+      if (!householdId) {
+        return <SetupScreen user={user} />;
+      }
+
+      return (
+        <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100 pb-24">
+          <div className="max-w-xl mx-auto px-3 pt-4">
+            <Header
+              user={user}
+              householdInfo={householdInfo}
+              householdId={householdId}
+              members={members}
+              syncing={syncing}
+              onCopyCode={handleCopyCode}
+              onSignOut={()=> setShowSignOut(true)}
+            />
+
+            <ListsMenu
+              lists={lists}
+              activeListId={activeListId}
+              onPick={(id)=>setActiveListId(id)}
+              onCreate={handleCreateList}
+              onDelete={handleDeleteList}
+            />
+
+            <div className="flex gap-2 mb-3">
+              <Button onClick={()=>setTab('list')}
+                className={tab==='list' ? 'bg-emerald-600 text-white flex-1' : 'bg-white border border-slate-200 text-slate-700 flex-1'}>
+                🛒 Lijst
+              </Button>
+              <Button onClick={()=>setTab('products')}
+                className={tab==='products' ? 'bg-emerald-600 text-white flex-1' : 'bg-white border border-slate-200 text-slate-700 flex-1'}>
+                📋 Producten
+              </Button>
+              <Button onClick={()=>setTab('recipes')}
+                className={tab==='recipes' ? 'bg-emerald-600 text-white flex-1' : 'bg-white border border-slate-200 text-slate-700 flex-1'}>
+                🍲 Recepten
+              </Button>
+            </div>
+
+            {tab === 'list' ? (
+              <ListTab
+                householdId={householdId}
+                activeListId={activeListId}
+                products={products}
+                items={items}
+                currentUser={user}
+              />
+            ) : tab === 'products' ? (
+              <ProductsTab
+                householdId={householdId}
+                products={products}
+                items={items}
+                currentUser={user}
+                activeListId={activeListId}
+                items={items}
+              />
+) : (
+              <RecipesTab
+                householdId={householdId}
+                recipes={recipes}
+                products={products}
+                items={items}
+                activeListId={activeListId}
+                currentUser={user}
+              />
+            )}
+          </div>
+
+          {showSignOut && (
+            <Modal title="Uitloggen" onClose={()=>setShowSignOut(false)}>
+              <div className="text-sm text-slate-700 mb-4">Wil je uitloggen?</div>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <Button className="bg-slate-100 text-slate-700 flex-1" onClick={()=>setShowSignOut(false)}>Annuleren</Button>
+                <Button className="bg-rose-600 text-white flex-1" onClick={()=>auth.signOut()}>Uitloggen</Button>
+              </div>
+            </Modal>
+          )}
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+
+  <script>
+    // Cache-busting for GitHub Pages: always get the newest index.html
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("./service-worker.js").catch(() => {});
+    }
+  </script>
+
+</body>
+</html>
