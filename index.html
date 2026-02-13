@@ -953,6 +953,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
             </button>
           </div>
         </div>
+      </div>
 
       <Card>
         <div className="divide-y divide-slate-100">
@@ -1041,6 +1042,25 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
     </div>
   );
 }
+
+
+    
+      const SmallAvatar = React.memo(function SmallAvatar({ url, name, size = 24 }) {
+        const nm = (name || '').trim();
+        const initial = (nm ? nm[0] : '?').toUpperCase();
+        const px = Math.max(16, Math.min(32, Number(size)||24));
+        const style = { width: px + 'px', height: px + 'px' };
+        return (
+          <div
+            style={style}
+            className="rounded-full overflow-hidden bg-slate-200 flex items-center justify-center text-[11px] font-bold text-slate-600 shrink-0"
+            title={nm ? `Laatst aangepast door ${nm}` : 'Laatst aangepast (onbekend)'}
+          >
+            {url ? <img src={url} alt={nm || 'avatar'} className="w-full h-full object-cover" /> : initial}
+          </div>
+        );
+      });
+
 // ---------------- List tab ----------------
     function ListTab({ householdId, activeListId, products, items, currentUser }) {
       const [newText, setNewText] = useState('');
@@ -1048,17 +1068,15 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
       const [showSuggestions, setShowSuggestions] = useState(false);
       const [openItemId, setOpenItemId] = useState(null);
       const addInputRef = useRef(null);
-      const isTouch = useMemo(() => typeof window !== 'undefined' && ('ontouchstart' in window || (navigator && navigator.maxTouchPoints > 0)), []);
 
       function scrollAddBoxIntoView() {
         const el = addInputRef.current;
         if (!el) return;
-        // iOS keyboard: move the input towards the top to keep suggestions visible
+        // iOS keyboard: move input towards top to keep suggestions visible
         const r = el.getBoundingClientRect();
         const targetY = window.scrollY + r.top - 12;
-        // Only scroll when we're already relatively low on the screen
-        if (r.top > 140) {
-          window.scrollTo({ top: Math.max(0, targetY), behavior: 'smooth' });
+        if (Math.abs(window.scrollY - targetY) > 8) {
+          window.scrollTo({ top: targetY, behavior: 'smooth' });
         }
       }
 
@@ -1383,12 +1401,16 @@ async function addItemFromProduct(p) {
           <div className="mb-3 relative">
             <div className="flex flex-col sm:flex-row gap-2">
               <div className="relative w-full sm:flex-1">
-                <input ref={addInputRef} value={newText} onChange={(e)=>{ setNewText(e.target.value); setShowSuggestions(true); }}
+                <input
+                  ref={addInputRef}
+                  value={newText}
+                  onChange={(e)=>{ setNewText(e.target.value); setShowSuggestions(true); }}
                   onFocus={()=>{ scrollAddBoxIntoView(); if (newText.trim().length>=2) setShowSuggestions(true); }}
                   onBlur={()=> setTimeout(()=>setShowSuggestions(false), 150)}
                   onKeyDown={(e)=>{ if (e.key === 'Enter') { e.preventDefault(); addFreeText(); } }}
                   placeholder="Zoek product of typ iets nieuws…"
-                  className="w-full pr-12 px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm" />
+                  className="w-full pr-12 px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm"
+                />
                 <Button
                   onClick={addFreeText}
                   className="absolute right-1 top-1/2 -translate-y-1/2 bg-emerald-600 text-white w-10 h-10 p-0 rounded-xl"
@@ -1446,17 +1468,11 @@ async function addItemFromProduct(p) {
                           {it._name}
                         </div>
 
-                        <div
-                          className="rounded-full overflow-hidden bg-slate-200 flex items-center justify-center text-[11px] font-bold text-slate-600 shrink-0"
-                          style={{ width: '20px', height: '20px' }}
-                          title={(it.updatedByName || it.createdByName) ? ('Laatst aangepast door ' + (it.updatedByName || it.createdByName)) : 'Laatst aangepast (onbekend)'}
-                        >
-                          {(it.updatedByPhotoURL || it.createdByPhotoURL) ? (
-                            <img src={it.updatedByPhotoURL || it.createdByPhotoURL} alt={(it.updatedByName || it.createdByName || 'avatar')} className="w-full h-full object-cover" />
-                          ) : (
-                            ((it.updatedByName || it.createdByName || '?').trim()[0] || '?').toUpperCase()
-                          )}
-                        </div>
+                        <SmallAvatar
+                          url={it.updatedByPhotoURL || it.createdByPhotoURL || ''}
+                          name={(it.updatedByName || it.createdByName || '').trim()}
+                          size={20}
+                        />
 
                         <div
                           className={
