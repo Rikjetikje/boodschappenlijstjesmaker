@@ -1044,16 +1044,22 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
 
 
     
-      const SmallAvatar = React.memo(function SmallAvatar({ url, name, size = 24 }) {
-        const nm = (name || '').trim();
+      const SmallAvatar = React.memo(function SmallAvatar(props) {
+        const url = props && props.url ? props.url : '';
+        const name = props && props.name ? props.name : '';
+        const size = props && props.size ? props.size : 24;
+
+        const nm = String(name || '').trim();
         const initial = (nm ? nm[0] : '?').toUpperCase();
-        const px = Math.max(16, Math.min(32, Number(size)||24));
+        const px = Math.max(16, Math.min(32, Number(size) || 24));
         const style = { width: px + 'px', height: px + 'px' };
+        const title = nm ? ('Laatst aangepast door ' + nm) : 'Laatst aangepast (onbekend)';
+
         return (
           <div
             style={style}
             className="rounded-full overflow-hidden bg-slate-200 flex items-center justify-center text-[11px] font-bold text-slate-600 shrink-0"
-            title={nm ? `Laatst aangepast door ${nm}` : 'Laatst aangepast (onbekend)'}
+            title={title}
           >
             {url ? <img src={url} alt={nm || 'avatar'} className="w-full h-full object-cover" /> : initial}
           </div>
