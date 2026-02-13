@@ -1650,8 +1650,7 @@ async function addItemFromProduct(p) {
                         )}
 
                         {storeMode && (
-                          <div className="ml-2 w-6 h-6 rounded-lg border flex items-center justify-center text-xs font-bold "
-                            + (it.checked ? "bg-emerald-600 border-emerald-600 text-white" : "bg-white border-slate-300 text-slate-400")}
+                          <div className={"ml-2 w-6 h-6 rounded-lg border flex items-center justify-center text-xs font-bold " + (it.checked ? "bg-emerald-600 border-emerald-600 text-white" : "bg-white border-slate-300 text-slate-400")}
                             title={it.checked ? "Afgevinkt" : "Niet afgevinkt"}
                           >
                             {it.checked ? "✓" : ""}
