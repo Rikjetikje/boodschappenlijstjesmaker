@@ -22,6 +22,15 @@
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
 
   <style>
+
+    /* iOS Safari: prevent auto-zoom on form fields (requires >=16px computed font-size) */
+    @supports (-webkit-touch-callout: none) {
+      input, select, textarea {
+        font-size: 16px !important;
+      }
+    }
+
+
     /* Better tap targets on mobile */
     button, input, select { -webkit-tap-highlight-color: transparent; }
     .wysiwyg { min-height: 160px; }
