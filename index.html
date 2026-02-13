@@ -953,6 +953,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
             </button>
           </div>
         </div>
+      </div>
 
       <Card>
         <div className="divide-y divide-slate-100">
@@ -1041,6 +1042,11 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
     </div>
   );
 }
+
+
+    
+      const SmallAvatar = React.memo(function SmallAvatar({ url, name, size = 24 }) {
+        const nm = (name || '').trim();
         const initial = (nm ? nm[0] : '?').toUpperCase();
         const px = Math.max(16, Math.min(32, Number(size)||24));
         const style = { width: px + 'px', height: px + 'px' };
@@ -1066,12 +1072,12 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
       function scrollAddBoxIntoView() {
         const el = addInputRef.current;
         if (!el) return;
-        // iOS keyboard: move input towards top to keep suggestions visible
+        // Move the input near the top so suggestions stay visible above the iOS keyboard
         const r = el.getBoundingClientRect();
-        const targetY = window.scrollY + r.top - 12;
-        if (Math.abs(window.scrollY - targetY) > 8) {
-          window.scrollTo({ top: targetY, behavior: 'smooth' });
-        }
+        const target = window.scrollY + r.top - 12;
+        window.requestAnimationFrame(() => {
+          window.scrollTo({ top: Math.max(0, target), behavior: 'smooth' });
+        });
       }
 
 
@@ -1405,11 +1411,12 @@ async function addItemFromProduct(p) {
                   placeholder="Zoek product of typ iets nieuws…"
                   className="w-full pr-12 px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm"
                 />
-                <Button
+                <button
                   onClick={addFreeText}
-                  className="absolute right-1 top-1/2 -translate-y-1/2 bg-emerald-600 text-white w-10 h-10 p-0 rounded-xl"
+                  className="absolute right-1 top-1/2 -translate-y-1/2 w-10 h-10 rounded-xl bg-emerald-600 text-white font-bold"
                   title="Toevoegen"
-                >+</Button>
+                  type="button"
+                >+</button>
               </div>
 
               <select
@@ -1462,17 +1469,11 @@ async function addItemFromProduct(p) {
                           {it._name}
                         </div>
 
-                        <div
-                          className="rounded-full overflow-hidden bg-slate-200 flex items-center justify-center text-[11px] font-bold text-slate-600 shrink-0"
-                          style={{ width: '20px', height: '20px' }}
-                          title={(it.updatedByName || it.createdByName) ? ('Laatst aangepast door ' + (it.updatedByName || it.createdByName)) : 'Laatst aangepast (onbekend)'}
-                        >
-                          {(it.updatedByPhotoURL || it.createdByPhotoURL) ? (
-                            <img src={it.updatedByPhotoURL || it.createdByPhotoURL} alt={(it.updatedByName || it.createdByName || 'avatar')} className="w-full h-full object-cover" />
-                          ) : (
-                            ((it.updatedByName || it.createdByName || '?').trim()[0] || '?').toUpperCase()
-                          )}
-                        </div>
+                        <SmallAvatar
+                          url={it.updatedByPhotoURL || it.createdByPhotoURL || ''}
+                          name={(it.updatedByName || it.createdByName || '').trim()}
+                          size={20}
+                        />
 
                         <div
                           className={
