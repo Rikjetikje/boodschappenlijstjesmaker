@@ -45,6 +45,18 @@
 
 <body class="bg-slate-50">
   <div id="root"></div>
+ <script>
+(function(){
+  const pre = document.createElement('pre');
+  pre.style.cssText = "padding:12px;font:12px/1.4 -apple-system,system-ui;white-space:pre-wrap";
+  pre.textContent =
+    "React: " + (!!window.React) + "\n" +
+    "ReactDOM: " + (!!window.ReactDOM) + "\n" +
+    "Babel: " + (!!window.Babel) + "\n" +
+    "firebase: " + (!!window.firebase) + "\n";
+  document.body.insertBefore(pre, document.getElementById('root'));
+})();
+</script> 
 <script>
 (function(){
   function ensureBox(){
