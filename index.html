@@ -1187,17 +1187,6 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
         setTimeout(doScroll, 180);
       }
 
-
-      useEffect(() => {
-        // Track viewport height (iOS keyboard shrinks visual viewport)
-        const vv = window.visualViewport;
-        if (!vv) return;
-        const handler = () => setVvh(vv.height);
-        vv.addEventListener('resize', handler);
-        vv.addEventListener('scroll', handler);
-        handler();
-        
-
       function formatNeedsLine(needsByRecipe) {
         const entries = Object.values(needsByRecipe || {});
         if (!entries.length) return "";
@@ -1221,10 +1210,18 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
         }
         parts.push(...textBits);
 
-        const recipeCount = entries.length;
         const label = "nodig:";
         return `${label} ${parts.join(" + ")}`;
       }
+
+      useEffect(() => {
+        // Track viewport height (iOS keyboard shrinks visual viewport)
+        const vv = window.visualViewport;
+        if (!vv) return;
+        const handler = () => setVvh(vv.height);
+        vv.addEventListener('resize', handler);
+        vv.addEventListener('scroll', handler);
+        handler();
 
 return () => {
           vv.removeEventListener('resize', handler);
@@ -1585,7 +1582,7 @@ async function addItemFromProduct(p) {
           const cat = (p?.category) || it.categorySnapshot || 'Overig';
           const key = cat || 'Overig';
           if (!map[key]) map[key] = [];
-          map[key].push({ ...it, _name: name, _cat: cat, _qty: currentQty(it) });
+          map[key].push({ ...it, _name: name, _cat: cat, _qty: currentQty(it), _needsLine: formatNeedsLine(it.needsByRecipe) });
         });
         const cats = Object.keys(map).sort((a,b) => CATEGORY_OPTIONS.indexOf(a) - CATEGORY_OPTIONS.indexOf(b));
         return cats.map(c => ({ category: c, items: map[c].sort((a,b)=> (a._name||'').localeCompare(b._name||'', 'nl')) }));
@@ -1685,11 +1682,11 @@ async function addItemFromProduct(p) {
                           <div className={(storeMode ? "text-base" : "text-sm") + " " + (it.checked ? "line-through text-slate-400" : "text-slate-800")}>
                             {it._name}
                           </div>
-                          {it.needsByRecipe && Object.keys(it.needsByRecipe).length > 0 && (
+                          {it._needsLine ? (
                             <div className="text-[11px] text-slate-400 truncate">
-                              {formatNeedsLine(it.needsByRecipe)}
+                              {it._needsLine}
                             </div>
-                          )}
+                          ) : null}
                         </div>
                         {storeMode ? (
                           <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none transform-gpu"
