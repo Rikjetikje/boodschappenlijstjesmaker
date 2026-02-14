@@ -2047,7 +2047,9 @@ async function addRecipeToList(r, targetServings, pickState) {
               amountStr = String(amountStr || '');
             }
           }
-          const buyInc = clamp(parseInt(String(ing.buyQty ?? 1), 10) || 1, 1, 99);
+          const buyInc = (overrideQty != null && isFinite(overrideQty))
+            ? clamp(Math.round(overrideQty), 0, 99)
+            : clamp(parseInt(String(ing.buyQty ?? 1), 10) || 1, 1, 99);
 
           const id = itemIdForProduct(ensuredProductId);
           const ref = db.doc(`households/${householdId}/lists/${activeListId}/items/${id}`);
@@ -2126,14 +2128,7 @@ async function addRecipeToList(r, targetServings, pickState) {
 
       
       function parseDefaultQty(ing) {
-        const unit = String(ing?.unit || 'st').toLowerCase();
-        const amtStr = String(ing?.amount ?? '').trim();
-        const num = parseFloat(amtStr.replace(',', '.'));
-        if (DISCRETE_UNITS.includes(unit)) {
-          if (!isNaN(num)) return clamp(Math.round(num), 0, 99);
-          return 1;
-        }
-        return 1;
+        return clamp(parseInt(String(ing?.buyQty ?? 1), 10) || 1, 1, 99);
       }
 
 function ensurePickState(recipe) {
@@ -2254,8 +2249,13 @@ function ensurePickState(recipe) {
                                   {checked ? "✓" : ""}
                                 </button>
 
-                                <div className={"flex-1 min-w-0 text-sm font-semibold truncate " + (checked ? "text-slate-800" : "text-slate-400 line-through")}>
-                                  {disp.name || "(onbekend)"}
+                                <div className="flex-1 min-w-0">
+                                  <div className={"text-sm font-semibold truncate " + (checked ? "text-slate-800" : "text-slate-400 line-through")}>
+                                    {disp.name || "(onbekend)"}
+                                  </div>
+                                  {ing.amount && (
+                                    <div className="text-[11px] text-slate-400 truncate">nodig: {ing.amount} {ing.unit || 'st'}</div>
+                                  )}
                                 </div>
 
                                 <div className="flex items-center gap-1 shrink-0">
