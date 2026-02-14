@@ -1681,14 +1681,16 @@ async function addItemFromProduct(p) {
                         className={"relative flex items-center bg-white border border-slate-200 rounded-xl " + (storeMode ? "px-4 py-3 pr-12" : "px-3 py-2")}
                         onClick={() => { if (storeMode) { toggle(it); } else { setOpenItemId(openItemId === it.id ? null : it.id); } }}
                       >
-                        <div className={"flex-1 min-w-0 pr-2 " + (storeMode ? "text-base" : "text-sm") + " " + (it.checked ? "line-through text-slate-400" : "text-slate-800")}>
-                          {it._name}
-                        </div>
-                        {it.needsByRecipe && Object.keys(it.needsByRecipe).length > 0 && (
-                          <div className="absolute left-4 right-14 bottom-2 text-xs text-slate-500 truncate">
-                            {formatNeedsLine(it.needsByRecipe)}
+                        <div className="flex-1 min-w-0 pr-2">
+                          <div className={(storeMode ? "text-base" : "text-sm") + " " + (it.checked ? "line-through text-slate-400" : "text-slate-800")}>
+                            {it._name}
                           </div>
-                        )}
+                          {it.needsByRecipe && Object.keys(it.needsByRecipe).length > 0 && (
+                            <div className="text-[11px] text-slate-400 truncate">
+                              {formatNeedsLine(it.needsByRecipe)}
+                            </div>
+                          )}
+                        </div>
                         {storeMode ? (
                           <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none transform-gpu"
                                style={{ WebkitTransform: "translateZ(0)", transform: "translateZ(0)" }}>
@@ -2374,7 +2376,7 @@ function ensurePickState(recipe) {
 
                             <div className="mt-2 grid grid-cols-3 gap-2">
                               <div>
-                                <div className="text-[11px] font-semibold text-slate-500 mb-1">Hoeveelheid</div>
+                                <div className="text-[11px] font-semibold text-slate-500 mb-1">Nodig</div>
                                 <input
                                   value={ing.amount || ''}
                                   onChange={(e)=>updateIng(idx, { amount: e.target.value })}
