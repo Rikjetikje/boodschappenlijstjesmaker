@@ -1965,6 +1965,12 @@ async function addRecipeToList(r, targetServings, pickState) {
             checked: false,
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
             createdBy: currentUser?.uid || '',
+            createdByName: currentUser?.displayName || '',
+            createdByPhotoURL: currentUser?.photoURL || '',
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            updatedBy: currentUser?.uid || '',
+            updatedByName: currentUser?.displayName || '',
+            updatedByPhotoURL: currentUser?.photoURL || '',
             source: `recipe:${r.id}`,
           });
 
