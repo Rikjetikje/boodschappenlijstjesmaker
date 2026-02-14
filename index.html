@@ -1222,7 +1222,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
         parts.push(...textBits);
 
         const recipeCount = entries.length;
-        const label = "Nodig:";
+        const label = "nodig:";
         return `${label} ${parts.join(" + ")}`;
       }
 
@@ -2054,11 +2054,12 @@ async function addRecipeToList(r, targetServings, pickState) {
           const id = itemIdForProduct(ensuredProductId);
           const ref = db.doc(`households/${householdId}/lists/${activeListId}/items/${id}`);
 
-          // Build "need" for this recipe (store as numeric if possible)
-          const needNum = parseFloat(String(amountStr).replace(',','.'));
+          // Build "need" for this recipe from original recipe amount
+          const origAmount = String(ing.amount ?? ing.qty ?? ing.quantity ?? '').trim();
+          const needNum = parseFloat(origAmount.replace(',','.'));
           const needObj = isFinite(needNum)
             ? { value: needNum, unit: String(unit || 'st') }
-            : { valueText: String(amountStr || '').trim(), unit: String(unit || 'st') };
+            : { valueText: origAmount, unit: String(unit || 'st') };
 
           // bestaat het item al op de lijst?
           const existing = existingByProductId.get(ensuredProductId);
