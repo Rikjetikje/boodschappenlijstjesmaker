@@ -2089,9 +2089,7 @@ async function addRecipeToList(r, targetServings, pickState) {
               nameSnapshot: name,
               categorySnapshot: (ensuredProduct?.category) || cat,
 
-              qty: firebase.firestore.FieldValue.increment(buyInc),
-              amount: amountStr,
-              unit,
+              qty: buyInc,
               checked: false,
 
               ...needsPatch,
