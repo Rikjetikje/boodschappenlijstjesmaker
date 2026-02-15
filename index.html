@@ -2063,30 +2063,18 @@ async function addRecipeToList(r, targetServings, pickState) {
           // bestaat het item al op de lijst?
           const existing = existingByProductId.get(ensuredProductId);
 
-          // We updaten altijd de needs-map voor dit recept:
-          const needsPatch = {
-            [`needsByRecipe.${r.id}`]: needObj
-          };
-
           if (existing) {
-            // Item bestaat al → NIET qty verhogen (default slim gedrag)
-            batch.set(ref, {
-              id,
-              productId: ensuredProductId,
-              nameSnapshot: name,
-              categorySnapshot: (ensuredProduct?.category) || cat,
-
-              ...needsPatch,
-
-              // alleen "wie/wijziging" updaten
+            // Item bestaat al → needs bijwerken via update (dot-notation werkt bij update)
+            batch.update(ref, {
+              [`needsByRecipe.${r.id}`]: needObj,
               updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
               updatedBy: currentUser?.uid || '',
               updatedByName: currentUser?.displayName || '',
               updatedByPhotoURL: currentUser?.photoURL || '',
-            }, { merge: true });
+            });
 
           } else {
-            // Item bestaat nog niet → nieuw item aanmaken + qty inc
+            // Item bestaat nog niet → nieuw item aanmaken
             batch.set(ref, {
               id,
               productId: ensuredProductId,
@@ -2096,7 +2084,7 @@ async function addRecipeToList(r, targetServings, pickState) {
               qty: buyInc,
               checked: false,
 
-              ...needsPatch,
+              needsByRecipe: { [r.id]: needObj },
 
               createdAt: firebase.firestore.FieldValue.serverTimestamp(),
               createdBy: currentUser?.uid || '',
