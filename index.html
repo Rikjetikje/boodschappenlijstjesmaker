@@ -169,6 +169,27 @@ const { useEffect, useMemo, useRef, useState } = React;
     // Expose for safety (in case Babel wraps scopes)
     window.formatNum = formatNum;
 
+    function searchRelevance(name, query) {
+      const n = (name||'').toLowerCase();
+      const q = query.toLowerCase();
+      if (n === q) return 0;                              // exact match
+      if (n.startsWith(q)) return 1;                      // starts with query
+      const re = new RegExp('(^|\\s|/)' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+      if (re.test(n)) return 2;                           // query as separate word
+      return 3;                                           // substring (e.g. pindakaas)
+    }
+
+    function sortByRelevance(arr, query) {
+      const q = query.trim().toLowerCase();
+      if (!q) return arr;
+      return arr.slice().sort((a,b) => {
+        const ra = searchRelevance(a.name, q);
+        const rb = searchRelevance(b.name, q);
+        if (ra !== rb) return ra - rb;
+        return (a.name||'').localeCompare(b.name||'', 'nl');
+      });
+    }
+
 
     function titleFromLegacyDocId(docId) {
       // best-effort: "aardappelen_kruimig_3_kg" -> "aardappelen kruimig 3 kg"
@@ -766,6 +787,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
     const q = query.trim().toLowerCase();
     let arr = products || [];
     if (q) arr = arr.filter(p => (p.name||'').toLowerCase().includes(q));
+    if (q) arr = sortByRelevance(arr, q);
 
     const cmpAZ = (a,b) => (a.name||'').localeCompare(b.name||'', 'nl');
     const cmpCategory = (a,b) => {
@@ -1136,6 +1158,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
       const [newCategory, setNewCategory] = useState('Overig');
       const [showSuggestions, setShowSuggestions] = useState(false);
       const [openItemId, setOpenItemId] = useState(null);
+      const [showAllDone, setShowAllDone] = useState(false);
       const addInputRef = useRef(null);
 
       // Mobile UX: "magnet" add bar to top on focus (especially iOS keyboard)
@@ -1314,9 +1337,8 @@ useEffect(() => {
       const suggestions = useMemo(() => {
         const q = newText.trim().toLowerCase();
         if (q.length < 2) return [];
-        return (products || [])
-          .filter(p => (p.name||'').toLowerCase().includes(q))
-          .sort((a,b) => (a.name||'').localeCompare(b.name||'', 'nl'))
+        return sortByRelevance((products || [])
+          .filter(p => (p.name||'').toLowerCase().includes(q)), q)
           .slice(0, 30);
       }, [products, newText]);
 
@@ -1424,13 +1446,19 @@ async function addItemFromProduct(p) {
 
       async function toggle(item) {
         if (!householdId || !activeListId) return;
+        const nowChecked = !item.checked;
         await db.doc(`households/${householdId}/lists/${activeListId}/items/${item.id}`).set({
-          checked: !item.checked,
+          checked: nowChecked,
           updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
           updatedBy: (currentUser && currentUser.uid) ? currentUser.uid : '',
           updatedByName: (currentUser && currentUser.displayName) ? currentUser.displayName : '',
           updatedByPhotoURL: (currentUser && currentUser.photoURL) ? currentUser.photoURL : '',
         }, { merge: true });
+        // Check if all items are now checked
+        if (nowChecked && items && items.length > 0) {
+          const allDone = items.every(it => it.id === item.id ? true : it.checked);
+          if (allDone) setShowAllDone(true);
+        }
       }
 
       async function remove(item) {
@@ -1781,6 +1809,34 @@ async function addItemFromProduct(p) {
             </div>
           )}
 
+          {showAllDone && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={()=>setShowAllDone(false)}>
+              <div className="bg-white rounded-3xl shadow-2xl p-8 mx-4 max-w-sm text-center" onClick={e=>e.stopPropagation()}>
+                <div className="text-6xl mb-4">🎉</div>
+                <div className="text-xl font-bold text-slate-800 mb-2">Alles gedaan!</div>
+                <div className="text-sm text-slate-500 mb-6">Alle boodschappen zijn afgevinkt.</div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={()=>setShowAllDone(false)}
+                    className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-700"
+                  >Sluiten</button>
+                  <button
+                    onClick={async ()=>{
+                      setShowAllDone(false);
+                      const snap = await db.collection(`households/${householdId}/lists/${activeListId}/items`).get();
+                      if (!snap.empty) {
+                        const batch = db.batch();
+                        snap.docs.forEach(d => batch.delete(d.ref));
+                        await batch.commit();
+                      }
+                    }}
+                    className="flex-1 px-4 py-2.5 rounded-xl bg-red-500 text-white text-sm font-semibold"
+                  >Lijst wissen</button>
+                </div>
+              </div>
+            </div>
+          )}
+
         </div>
       );
     }
@@ -2115,8 +2171,7 @@ async function addRecipeToList(r, targetServings, pickState) {
       const productSuggestions = (text) => {
         const q = (text||'').trim().toLowerCase();
         if (q.length < 2) return [];
-        return (products||[]).filter(p => (p.name||'').toLowerCase().includes(q))
-          .sort((a,b)=>(a.name||'').localeCompare(b.name||'', 'nl'))
+        return sortByRelevance((products||[]).filter(p => (p.name||'').toLowerCase().includes(q)), q)
           .slice(0, 8);
       };
 
