@@ -172,15 +172,20 @@ const { useEffect, useMemo, useRef, useState } = React;
     function searchRelevance(name, query) {
       const n = (name||'').toLowerCase();
       const q = query.toLowerCase();
+      const esc = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       if (n === q) return 0;                              // exact match
-      // Check if query appears as a standalone word (preceded by start/space/slash, followed by end/space/slash)
-      const reWord = new RegExp('(^|\\s|/)' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '($|\\s|/)');
-      if (reWord.test(n)) return 1;                       // standalone word (e.g. "halfvolle melk")
-      if (n.startsWith(q)) return 2;                      // starts with query as part of compound (e.g. "melkbiscuits")
-      // query appears as start of a word but not standalone
-      const reWordStart = new RegExp('(^|\\s|/)' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-      if (reWordStart.test(n)) return 3;                  // start of a word (e.g. "houdbare melkchocolade")
-      return 4;                                           // substring within a word (e.g. "karnemelk")
+      // starts with query as standalone word (e.g. "kaas belegen 48+")
+      const reStartWord = new RegExp('^' + esc + '($|\\s|/)');
+      if (reStartWord.test(n)) return 1;
+      // query as standalone word later in name (e.g. "houdbare halfvolle melk")
+      const reWord = new RegExp('(\\s|/)' + esc + '($|\\s|/)');
+      if (reWord.test(n)) return 2;
+      // starts with query as part of compound word (e.g. "melkbiscuits")
+      if (n.startsWith(q)) return 3;
+      // query starts a word later in name (e.g. "houdbare melkchocolade")
+      const reWordStart = new RegExp('(\\s|/)' + esc);
+      if (reWordStart.test(n)) return 4;
+      return 5;                                           // substring within a word (e.g. "karnemelk", "pindakaas")
     }
 
     function sortByRelevance(arr, query) {
