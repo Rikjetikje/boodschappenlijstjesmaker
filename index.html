@@ -173,10 +173,14 @@ const { useEffect, useMemo, useRef, useState } = React;
       const n = (name||'').toLowerCase();
       const q = query.toLowerCase();
       if (n === q) return 0;                              // exact match
-      if (n.startsWith(q)) return 1;                      // starts with query
-      const re = new RegExp('(^|\\s|/)' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-      if (re.test(n)) return 2;                           // query as separate word
-      return 3;                                           // substring (e.g. pindakaas)
+      // Check if query appears as a standalone word (preceded by start/space/slash, followed by end/space/slash)
+      const reWord = new RegExp('(^|\\s|/)' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '($|\\s|/)');
+      if (reWord.test(n)) return 1;                       // standalone word (e.g. "halfvolle melk")
+      if (n.startsWith(q)) return 2;                      // starts with query as part of compound (e.g. "melkbiscuits")
+      // query appears as start of a word but not standalone
+      const reWordStart = new RegExp('(^|\\s|/)' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+      if (reWordStart.test(n)) return 3;                  // start of a word (e.g. "houdbare melkchocolade")
+      return 4;                                           // substring within a word (e.g. "karnemelk")
     }
 
     function sortByRelevance(arr, query) {
