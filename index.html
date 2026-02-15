@@ -724,18 +724,16 @@ const { useEffect, useMemo, useRef, useState } = React;
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
-              <button
-                type="button"
+              <div
+                className="flex items-center gap-2 cursor-pointer select-none"
                 onClick={() => setStoreMode?.(!storeMode)}
-                className={
-                  "inline-flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-xs font-bold border " +
-                  (storeMode ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-slate-700 border-slate-200")
-                }
-                title={storeMode ? "Winkelstand uit" : "Winkelstand aan"}
+                title={storeMode ? "Winkelmodus uit" : "Winkelmodus aan"}
               >
-                <span aria-hidden="true">🛒</span>
-                <span className="hidden sm:inline">{storeMode ? "Winkel" : "Normaal"}</span>
-              </button>
+                <span className="text-xs font-semibold text-slate-500">🛒</span>
+                <div className={"relative w-11 h-6 rounded-full transition-colors duration-200 " + (storeMode ? "bg-emerald-500" : "bg-slate-300")}>
+                  <div className={"absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 " + (storeMode ? "translate-x-5" : "translate-x-0")} />
+                </div>
+              </div>
               {!storeMode && (syncing ? <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" title="Synchroniseren"></span>
                         : <span className="w-2 h-2 rounded-full bg-emerald-400" title="Gesynchroniseerd"></span>)}
               <button onClick={onSignOut} className="flex items-center gap-2 transform-gpu" style={{ WebkitTransform: "translateZ(0)", transform: "translateZ(0)" }}>
