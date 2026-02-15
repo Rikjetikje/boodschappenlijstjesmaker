@@ -1582,7 +1582,9 @@ async function addItemFromProduct(p) {
           const cat = (p?.category) || it.categorySnapshot || 'Overig';
           const key = cat || 'Overig';
           if (!map[key]) map[key] = [];
-          map[key].push({ ...it, _name: name, _cat: cat, _qty: currentQty(it), _needsLine: formatNeedsLine(it.needsByRecipe) });
+          const nl = formatNeedsLine(it.needsByRecipe);
+          console.log('[DEBUG]', name, 'needsByRecipe=', JSON.stringify(it.needsByRecipe), 'needsLine=', nl);
+          map[key].push({ ...it, _name: name, _cat: cat, _qty: currentQty(it), _needsLine: nl });
         });
         const cats = Object.keys(map).sort((a,b) => CATEGORY_OPTIONS.indexOf(a) - CATEGORY_OPTIONS.indexOf(b));
         return cats.map(c => ({ category: c, items: map[c].sort((a,b)=> (a._name||'').localeCompare(b._name||'', 'nl')) }));
