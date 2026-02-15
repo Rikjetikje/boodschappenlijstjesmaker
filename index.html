@@ -787,7 +787,6 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
     const q = query.trim().toLowerCase();
     let arr = products || [];
     if (q) arr = arr.filter(p => (p.name||'').toLowerCase().includes(q));
-    if (q) arr = sortByRelevance(arr, q);
 
     const cmpAZ = (a,b) => (a.name||'').localeCompare(b.name||'', 'nl');
     const cmpCategory = (a,b) => {
@@ -798,7 +797,12 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
       return cmpAZ(a,b);
     };
 
-    const innerCmp = (sortMode === 'category') ? cmpCategory : cmpAZ;
+    const innerCmp = q ? ((a,b) => {
+      const ra = searchRelevance(a.name, q);
+      const rb = searchRelevance(b.name, q);
+      if (ra !== rb) return ra - rb;
+      return (a.name||'').localeCompare(b.name||'', 'nl');
+    }) : (sortMode === 'category') ? cmpCategory : cmpAZ;
 
     // Always put the chosen cycles on top (when any chip is active)
     const anyCycleActive = !!(cycleFlags.W || cycleFlags['2W'] || cycleFlags['3W']);
