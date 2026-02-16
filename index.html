@@ -236,7 +236,10 @@ const { useEffect, useMemo, useRef, useState } = React;
 
     // 6-letter code
     function makeCode() {
-      return "KRDPKY";
+      const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+      let out = "";
+      for (let i=0;i<6;i++) out += chars[Math.floor(Math.random()*chars.length)];
+      return out;
     }
 
     // ---------------- Auth hook ----------------
@@ -454,6 +457,7 @@ const { useEffect, useMemo, useRef, useState } = React;
       const [error, setError] = useState('');
       const [code, setCode] = useState('');
       const [householdName, setHouseholdName] = useState('Ons huishouden');
+      const [createdCode, setCreatedCode] = useState(null);
 
       async function createHousehold() {
         setError('');
@@ -469,6 +473,26 @@ const { useEffect, useMemo, useRef, useState } = React;
             inviteCode = makeCode();
           }
 
+          // default list
+          const listId = genId('l');
+
+          // Link user to household first (so rules allow subsequent writes)
+          await db.doc(`users/${user.uid}`).set({
+            householdId,
+            activeListId: listId,
+            displayName: user.displayName || '',
+            photoURL: user.photoURL || '',
+            email: user.email || '',
+          }, { merge: true });
+
+          // Add as member
+          await db.doc(`households/${householdId}/members/${user.uid}`).set({
+            displayName: user.displayName || '',
+            photoURL: user.photoURL || '',
+            joinedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          });
+
+          // Now create household meta
           await db.doc(`households/${householdId}/meta/info`).set({
             name: householdName.trim() || 'Ons huishouden',
             code: inviteCode,
@@ -481,34 +505,15 @@ const { useEffect, useMemo, useRef, useState } = React;
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
           });
 
-          // member first
-          await db.doc(`households/${householdId}/members/${user.uid}`).set({
-            displayName: user.displayName || '',
-            photoURL: user.photoURL || '',
-            joinedAt: firebase.firestore.FieldValue.serverTimestamp(),
-          });
-
-          // default list
-          const listId = genId('l');
+          // Create default list
           await db.doc(`households/${householdId}/lists_meta/${listId}`).set({
             name: 'Boodschappen',
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
             createdBy: user.uid,
           });
 
-          await db.doc(`users/${user.uid}`).set({
-            householdId,
-            activeListId: listId,
-            displayName: user.displayName || '',
-            photoURL: user.photoURL || '',
-            email: user.email || '',
-          }, { merge: true });
-
-          // Offer to email the invite code
-          const hhName = householdName.trim() || 'Ons huishouden';
-          const subject = encodeURIComponent(`Uitnodiging voor ${hhName}`);
-          const body = encodeURIComponent(`Hoi!\n\nIk heb een huishouden aangemaakt in Boodschappenlijstjesmaker.\nJe kunt meedoen met deze code: ${inviteCode}\n\nGa naar de app en kies "Bestaand huishouden" en voer de code in.\n\nGroetjes!`);
-          window.open(`mailto:?subject=${subject}&body=${body}`, '_self');
+          // Show invite code dialog
+          setCreatedCode({ code: inviteCode, name: householdName.trim() || 'Ons huishouden' });
         } catch (e) {
           console.error("Create household error:", e);
           setError(e?.message || 'Er ging iets mis bij het aanmaken.');
@@ -616,6 +621,39 @@ const { useEffect, useMemo, useRef, useState } = React;
               )}
             </div>
           </Card>
+
+          {createdCode && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+              <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 text-center">
+                <div className="text-3xl mb-2">🎉</div>
+                <div className="text-lg font-bold text-slate-900 mb-1">Huishouden aangemaakt!</div>
+                <div className="text-sm text-slate-600 mb-4">
+                  De code voor jouw huishouden is:
+                </div>
+                <div className="font-mono text-2xl font-black tracking-widest text-emerald-700 bg-emerald-50 rounded-xl py-3 mb-4">
+                  {createdCode.code}
+                </div>
+                <div className="text-sm text-slate-500 mb-5">
+                  Bewaar deze om anderen uit te nodigen, of stuur nu meteen een mailtje.
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => setCreatedCode(null)}
+                    className="flex-1 bg-white border border-slate-200 text-slate-700"
+                  >Later</Button>
+                  <Button
+                    onClick={() => {
+                      const subject = encodeURIComponent(`Uitnodiging voor ${createdCode.name}`);
+                      const body = encodeURIComponent(`Hoi!\n\nIk heb een huishouden aangemaakt in Boodschappenlijstjesmaker.\nJe kunt meedoen met deze code: ${createdCode.code}\n\nGa naar de app en kies "Deelnemen" en voer de code in.\n\nGroetjes!`);
+                      window.open(`mailto:?subject=${subject}&body=${body}`, '_self');
+                      setCreatedCode(null);
+                    }}
+                    className="flex-1 bg-emerald-600 text-white"
+                  >Nu mailen</Button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       );
     }
@@ -624,6 +662,10 @@ const { useEffect, useMemo, useRef, useState } = React;
     function Header({ user, householdId, householdInfo, members, syncing, storeMode, setStoreMode, onCopyCode, onSignOut }) {
       const [editingName, setEditingName] = useState(false);
       const [draftName, setDraftName] = useState(householdInfo?.name || '');
+      const [showMenu, setShowMenu] = useState(false);
+      const [showManage, setShowManage] = useState(false);
+
+      const isOwner = householdInfo?.createdBy === user?.uid;
 
       useEffect(() => {
         setDraftName(householdInfo?.name || '');
@@ -722,9 +764,32 @@ const { useEffect, useMemo, useRef, useState } = React;
               </div>
               {syncing ? <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" title="Synchroniseren"></span>
                         : <span className="w-2 h-2 rounded-full bg-emerald-400" title="Gesynchroniseerd"></span>}
-              <button onClick={onSignOut} className="flex items-center gap-2 transform-gpu" style={{ WebkitTransform: "translateZ(0)", transform: "translateZ(0)" }}>
-                {user.photoURL ? <img src={user.photoURL} className="w-7 h-7 rounded-full transform-gpu" /> : <div className="w-7 h-7 rounded-full bg-slate-200 transform-gpu"></div>}
-              </button>
+              <div className="relative">
+                <button onClick={() => setShowMenu(!showMenu)} className="flex items-center gap-2 transform-gpu" style={{ WebkitTransform: "translateZ(0)", transform: "translateZ(0)" }}>
+                  {user.photoURL ? <img src={user.photoURL} className="w-7 h-7 rounded-full transform-gpu" /> : <div className="w-7 h-7 rounded-full bg-slate-200 transform-gpu"></div>}
+                </button>
+                {showMenu && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)} />
+                    <div className="absolute right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-50 overflow-hidden w-52">
+                      <div className="px-3 py-2 border-b border-slate-100">
+                        <div className="text-xs font-semibold text-slate-900 truncate">{user.displayName || user.email}</div>
+                        <div className="text-[10px] text-slate-400 truncate">{user.email}</div>
+                      </div>
+                      {isOwner && (
+                        <button
+                          onClick={() => { setShowMenu(false); setShowManage(true); }}
+                          className="w-full text-left px-3 py-2.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                        >⚙️ Huishouden beheren</button>
+                      )}
+                      <button
+                        onClick={() => { setShowMenu(false); onSignOut(); }}
+                        className="w-full text-left px-3 py-2.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2 border-t border-slate-100"
+                      >🚪 Uitloggen</button>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           </div>
 
@@ -744,6 +809,125 @@ const { useEffect, useMemo, useRef, useState } = React;
                 )}
               </div>
             </div>
+          )}
+
+          {showManage && (
+            <Modal title="Huishouden beheren" onClose={() => setShowManage(false)}>
+              {/* Invite code */}
+              <div className="mb-4">
+                <div className="text-xs font-semibold text-slate-500 mb-1">Uitnodigingscode</div>
+                <div className="flex items-center gap-2">
+                  <div className="font-mono font-bold text-lg tracking-widest text-emerald-700 bg-emerald-50 rounded-lg px-3 py-1.5">
+                    {householdInfo?.code || '—'}
+                  </div>
+                  <button
+                    onClick={() => {
+                      if (householdInfo?.code) {
+                        navigator.clipboard.writeText(householdInfo.code).catch(() => {});
+                      }
+                    }}
+                    className="text-xs px-2 py-1.5 bg-slate-100 rounded-lg text-slate-600 hover:bg-slate-200"
+                  >Kopieer</button>
+                </div>
+              </div>
+
+              {/* Members list */}
+              <div className="mb-4">
+                <div className="text-xs font-semibold text-slate-500 mb-2">Leden ({(members || []).length})</div>
+                <div className="space-y-2">
+                  {(members || []).map(m => {
+                    const mId = m?.uid || m?.id;
+                    const mName = m?.name || m?.displayName || 'Lid';
+                    const mPhoto = m?.photoURL || '';
+                    const isMe = mId === user?.uid;
+                    const isCreator = mId === householdInfo?.createdBy;
+                    return (
+                      <div key={mId} className="flex items-center gap-2 py-1.5 px-2 rounded-lg bg-slate-50">
+                        {mPhoto
+                          ? <img src={mPhoto} className="w-6 h-6 rounded-full" />
+                          : <div className="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-600">
+                              {(mName.trim()[0] || '?').toUpperCase()}
+                            </div>
+                        }
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium text-slate-800 truncate">
+                            {mName}{isMe ? ' (jij)' : ''}{isCreator ? ' ⭐' : ''}
+                          </div>
+                        </div>
+                        {isOwner && !isMe && (
+                          <button
+                            onClick={async () => {
+                              if (!confirm(`${mName} verwijderen uit het huishouden?`)) return;
+                              try {
+                                await db.doc(`households/${householdId}/members/${mId}`).delete();
+                              } catch(e) {
+                                console.error('Remove member error:', e);
+                                alert('Kon lid niet verwijderen: ' + (e?.message || 'Onbekende fout'));
+                              }
+                            }}
+                            className="text-[10px] px-2 py-1 bg-rose-100 text-rose-600 rounded-lg hover:bg-rose-200 shrink-0"
+                          >Verwijderen</button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Delete household */}
+              {isOwner && (
+                <div className="border-t border-slate-100 pt-4">
+                  <button
+                    onClick={async () => {
+                      if (!confirm('Weet je zeker dat je het hele huishouden wilt verwijderen? Dit kan niet ongedaan worden.')) return;
+                      if (!confirm('Echt zeker? Alle lijsten, producten en recepten worden verwijderd.')) return;
+                      try {
+                        // Delete invite code
+                        if (householdInfo?.code) {
+                          await db.doc(`invite_codes/${householdInfo.code}`).delete().catch(() => {});
+                        }
+
+                        // Helper to delete all docs in a collection
+                        async function deleteCollection(path) {
+                          const snap = await db.collection(path).get();
+                          if (!snap.empty) {
+                            const batch = db.batch();
+                            snap.docs.forEach(d => batch.delete(d.ref));
+                            await batch.commit();
+                          }
+                        }
+
+                        // Delete subcollections
+                        const listsMeta = await db.collection(`households/${householdId}/lists_meta`).get();
+                        for (const listDoc of listsMeta.docs) {
+                          await deleteCollection(`households/${householdId}/lists/${listDoc.id}/items`);
+                        }
+                        await deleteCollection(`households/${householdId}/lists_meta`);
+                        await deleteCollection(`households/${householdId}/products`);
+                        await deleteCollection(`households/${householdId}/recipes`);
+                        await deleteCollection(`households/${householdId}/members`);
+
+                        // Delete meta
+                        await db.doc(`households/${householdId}/meta/info`).delete().catch(() => {});
+
+                        // Clear own user doc (other members will see household is gone on next load)
+                        await db.doc(`users/${user.uid}`).set({
+                          householdId: firebase.firestore.FieldValue.delete(),
+                          activeListId: firebase.firestore.FieldValue.delete(),
+                        }, { merge: true }).catch(() => {});
+
+                        setShowManage(false);
+                        window.location.reload();
+                      } catch(e) {
+                        console.error('Delete household error:', e);
+                        alert('Kon huishouden niet verwijderen: ' + (e?.message || 'Onbekende fout'));
+                      }
+                    }}
+                    className="w-full text-center px-4 py-2.5 text-sm font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-xl"
+                  >🗑️ Huishouden verwijderen</button>
+                </div>
+              )}
+            </Modal>
           )}
         </header>
       );
