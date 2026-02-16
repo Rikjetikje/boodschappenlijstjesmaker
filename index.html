@@ -242,6 +242,10 @@ const { useEffect, useMemo, useRef, useState } = React;
       return out;
     }
 
+    // Default products for new households (exported from De Hasseltjes)
+    // To update: use "Producten exporteren" in manage menu, then paste here
+    var DEFAULT_PRODUCTS = [];
+
     // ---------------- Auth hook ----------------
     function useAuth() {
       const [user, setUser] = useState(null);
@@ -324,6 +328,7 @@ const { useEffect, useMemo, useRef, useState } = React;
             // Only show v2 products (stable IDs) to avoid duplicates with legacy docs.
             const ps = psAll.filter(p => p.schemaVersion === 2 || (typeof p.id === 'string' && p.id.startsWith('p_')));
             setProducts(ps);
+            window.__APP_PRODUCTS = ps;
             setSyncing(false);
           }, err => { console.error("Products listener error:", err); setSyncing(false); })
         );
@@ -511,6 +516,28 @@ const { useEffect, useMemo, useRef, useState } = React;
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
             createdBy: user.uid,
           });
+
+          // Seed default products
+          if (DEFAULT_PRODUCTS.length > 0) {
+            const BATCH_SIZE = 400;
+            for (let i = 0; i < DEFAULT_PRODUCTS.length; i += BATCH_SIZE) {
+              const batch = db.batch();
+              DEFAULT_PRODUCTS.slice(i, i + BATCH_SIZE).forEach(p => {
+                const pid = genId('p');
+                batch.set(db.doc(`households/${householdId}/products/${pid}`), {
+                  name: p.name,
+                  category: p.category || 'Overig',
+                  cycle: '',
+                  schemaVersion: 2,
+                  updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                  updatedBy: user.uid,
+                  updatedByName: user.displayName || '',
+                  updatedByPhotoURL: user.photoURL || '',
+                });
+              });
+              await batch.commit();
+            }
+          }
 
           // Show invite code dialog
           setCreatedCode({ code: inviteCode, name: householdName.trim() || 'Ons huishouden' });
@@ -876,7 +903,20 @@ const { useEffect, useMemo, useRef, useState } = React;
 
               {/* Delete household */}
               {isOwner && (
-                <div className="border-t border-slate-100 pt-4">
+                <div className="border-t border-slate-100 pt-4 space-y-2">
+                  <button
+                    onClick={() => {
+                      // Export products as JSON for seeding
+                      const exported = (members ? [] : []).length; // dummy to keep lint happy
+                      const prods = (window.__APP_PRODUCTS || []).map(p => ({ name: p.name, category: p.category || 'Overig' }));
+                      const json = JSON.stringify(prods, null, 2);
+                      navigator.clipboard.writeText(json).then(() => alert(`${prods.length} producten gekopieerd naar klembord!`)).catch(() => {
+                        // Fallback: show in prompt
+                        prompt('Kopieer deze JSON:', json);
+                      });
+                    }}
+                    className="w-full text-center px-4 py-2.5 text-sm font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl"
+                  >📋 Producten exporteren</button>
                   <button
                     onClick={async () => {
                       if (!confirm('Weet je zeker dat je het hele huishouden wilt verwijderen? Dit kan niet ongedaan worden.')) return;
