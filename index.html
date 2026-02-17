@@ -328,7 +328,6 @@ const { useEffect, useMemo, useRef, useState } = React;
             // Only show v2 products (stable IDs) to avoid duplicates with legacy docs.
             const ps = psAll.filter(p => p.schemaVersion === 2 || (typeof p.id === 'string' && p.id.startsWith('p_')));
             setProducts(ps);
-            window.__APP_PRODUCTS = ps;
             setSyncing(false);
           }, err => { console.error("Products listener error:", err); setSyncing(false); })
         );
@@ -456,13 +455,12 @@ const { useEffect, useMemo, useRef, useState } = React;
     }
 
     // ---------------- Household setup ----------------
-    function SetupScreen({ user }) {
+    function SetupScreen({ user, onCreated }) {
       const [mode, setMode] = useState('join'); // join | create
       const [busy, setBusy] = useState(false);
       const [error, setError] = useState('');
       const [code, setCode] = useState('');
       const [householdName, setHouseholdName] = useState('Ons huishouden');
-      const [createdCode, setCreatedCode] = useState(null);
 
       async function createHousehold() {
         setError('');
@@ -540,7 +538,7 @@ const { useEffect, useMemo, useRef, useState } = React;
           }
 
           // Show invite code dialog
-          setCreatedCode({ code: inviteCode, name: householdName.trim() || 'Ons huishouden' });
+          onCreated({ code: inviteCode, name: householdName.trim() || 'Ons huishouden' });
         } catch (e) {
           console.error("Create household error:", e);
           setError(e?.message || 'Er ging iets mis bij het aanmaken.');
@@ -648,39 +646,6 @@ const { useEffect, useMemo, useRef, useState } = React;
               )}
             </div>
           </Card>
-
-          {createdCode && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-              <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 text-center">
-                <div className="text-3xl mb-2">🎉</div>
-                <div className="text-lg font-bold text-slate-900 mb-1">Huishouden aangemaakt!</div>
-                <div className="text-sm text-slate-600 mb-4">
-                  De code voor jouw huishouden is:
-                </div>
-                <div className="font-mono text-2xl font-black tracking-widest text-emerald-700 bg-emerald-50 rounded-xl py-3 mb-4">
-                  {createdCode.code}
-                </div>
-                <div className="text-sm text-slate-500 mb-5">
-                  Bewaar deze om anderen uit te nodigen, of stuur nu meteen een mailtje.
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    onClick={() => setCreatedCode(null)}
-                    className="flex-1 bg-white border border-slate-200 text-slate-700"
-                  >Later</Button>
-                  <Button
-                    onClick={() => {
-                      const subject = encodeURIComponent(`Uitnodiging voor ${createdCode.name}`);
-                      const body = encodeURIComponent(`Hoi!\n\nIk heb een huishouden aangemaakt in Boodschappenlijstjesmaker.\nJe kunt meedoen met deze code: ${createdCode.code}\n\nGa naar de app en kies "Deelnemen" en voer de code in.\n\nGroetjes!`);
-                      window.open(`mailto:?subject=${subject}&body=${body}`, '_self');
-                      setCreatedCode(null);
-                    }}
-                    className="flex-1 bg-emerald-600 text-white"
-                  >Nu mailen</Button>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       );
     }
@@ -903,20 +868,7 @@ const { useEffect, useMemo, useRef, useState } = React;
 
               {/* Delete household */}
               {isOwner && (
-                <div className="border-t border-slate-100 pt-4 space-y-2">
-                  <button
-                    onClick={() => {
-                      // Export products as JSON for seeding
-                      const exported = (members ? [] : []).length; // dummy to keep lint happy
-                      const prods = (window.__APP_PRODUCTS || []).map(p => ({ name: p.name, category: p.category || 'Overig' }));
-                      const json = JSON.stringify(prods, null, 2);
-                      navigator.clipboard.writeText(json).then(() => alert(`${prods.length} producten gekopieerd naar klembord!`)).catch(() => {
-                        // Fallback: show in prompt
-                        prompt('Kopieer deze JSON:', json);
-                      });
-                    }}
-                    className="w-full text-center px-4 py-2.5 text-sm font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl"
-                  >📋 Producten exporteren</button>
+                <div className="border-t border-slate-100 pt-4">
                   <button
                     onClick={async () => {
                       if (!confirm('Weet je zeker dat je het hele huishouden wilt verwijderen? Dit kan niet ongedaan worden.')) return;
@@ -2795,6 +2747,7 @@ function ensurePickState(recipe) {
         if (storeMode && tab !== 'list') setTab('list');
       }, [storeMode, tab]);
       const [showSignOut, setShowSignOut] = useState(false);
+      const [createdCode, setCreatedCode] = useState(null);
 
       // Load household info (name + code)
       useEffect(() => {
@@ -2972,7 +2925,7 @@ function ensurePickState(recipe) {
       }
 
       if (!householdId) {
-        return <SetupScreen user={user} />;
+        return <SetupScreen user={user} onCreated={setCreatedCode} />;
       }
 
       return (
@@ -3073,6 +3026,39 @@ function ensurePickState(recipe) {
               />
             )}
           </div>
+
+          {createdCode && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+              <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 text-center">
+                <div className="text-3xl mb-2">🎉</div>
+                <div className="text-lg font-bold text-slate-900 mb-1">Huishouden aangemaakt!</div>
+                <div className="text-sm text-slate-600 mb-4">
+                  De code voor jouw huishouden is:
+                </div>
+                <div className="font-mono text-2xl font-black tracking-widest text-emerald-700 bg-emerald-50 rounded-xl py-3 mb-4">
+                  {createdCode.code}
+                </div>
+                <div className="text-sm text-slate-500 mb-5">
+                  Bewaar deze om anderen uit te nodigen, of stuur nu meteen een mailtje.
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => setCreatedCode(null)}
+                    className="flex-1 bg-white border border-slate-200 text-slate-700"
+                  >Later</Button>
+                  <Button
+                    onClick={() => {
+                      const subject = encodeURIComponent(`Uitnodiging voor ${createdCode.name}`);
+                      const body = encodeURIComponent(`Hoi!\n\nIk heb een huishouden aangemaakt in Boodschappenlijstjesmaker.\nJe kunt meedoen met deze code: ${createdCode.code}\n\nGa naar de app en kies "Deelnemen" en voer de code in.\n\nGroetjes!`);
+                      window.open(`mailto:?subject=${subject}&body=${body}`, '_self');
+                      setCreatedCode(null);
+                    }}
+                    className="flex-1 bg-emerald-600 text-white"
+                  >Nu mailen</Button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {showSignOut && (
             <Modal title="Uitloggen" onClose={()=>setShowSignOut(false)}>
