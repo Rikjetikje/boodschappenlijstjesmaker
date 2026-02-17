@@ -476,26 +476,16 @@ const { useEffect, useMemo, useRef, useState } = React;
             inviteCode = makeCode();
           }
 
-          // default list
           const listId = genId('l');
 
-          // Link user to household first (so rules allow subsequent writes)
-          await db.doc(`users/${user.uid}`).set({
-            householdId,
-            activeListId: listId,
-            displayName: user.displayName || '',
-            photoURL: user.photoURL || '',
-            email: user.email || '',
-          }, { merge: true });
-
-          // Add as member
+          // 1) Add as member first (needed for security rules)
           await db.doc(`households/${householdId}/members/${user.uid}`).set({
             displayName: user.displayName || '',
             photoURL: user.photoURL || '',
             joinedAt: firebase.firestore.FieldValue.serverTimestamp(),
           });
 
-          // Now create household meta
+          // 2) Household meta
           await db.doc(`households/${householdId}/meta/info`).set({
             name: householdName.trim() || 'Ons huishouden',
             code: inviteCode,
@@ -503,19 +493,20 @@ const { useEffect, useMemo, useRef, useState } = React;
             createdBy: user.uid,
           });
 
+          // 3) Invite code
           await db.doc(`invite_codes/${inviteCode}`).set({
             householdId,
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
           });
 
-          // Create default list
+          // 4) Default list
           await db.doc(`households/${householdId}/lists_meta/${listId}`).set({
             name: 'Boodschappen',
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
             createdBy: user.uid,
           });
 
-          // Seed default products
+          // 5) Seed default products
           if (DEFAULT_PRODUCTS.length > 0) {
             const BATCH_SIZE = 400;
             for (let i = 0; i < DEFAULT_PRODUCTS.length; i += BATCH_SIZE) {
@@ -536,6 +527,15 @@ const { useEffect, useMemo, useRef, useState } = React;
               await batch.commit();
             }
           }
+
+          // 6) LAST: link user to household (triggers UI transition via onSnapshot)
+          await db.doc(`users/${user.uid}`).set({
+            householdId,
+            activeListId: listId,
+            displayName: user.displayName || '',
+            photoURL: user.photoURL || '',
+            email: user.email || '',
+          }, { merge: true });
 
           // Show invite code dialog
           onCreated({ code: inviteCode, name: householdName.trim() || 'Ons huishouden' });
@@ -3039,23 +3039,12 @@ function ensurePickState(recipe) {
                   {createdCode.code}
                 </div>
                 <div className="text-sm text-slate-500 mb-5">
-                  Bewaar deze om anderen uit te nodigen, of stuur nu meteen een mailtje.
+                  Je vindt deze code terug onder <strong>Huishouden beheren</strong> als je rechtsboven op je avatar klikt.
                 </div>
-                <div className="flex gap-2">
-                  <Button
-                    onClick={() => setCreatedCode(null)}
-                    className="flex-1 bg-white border border-slate-200 text-slate-700"
-                  >Later</Button>
-                  <Button
-                    onClick={() => {
-                      const subject = encodeURIComponent(`Uitnodiging voor ${createdCode.name}`);
-                      const body = encodeURIComponent(`Hoi!\n\nIk heb een huishouden aangemaakt in Boodschappenlijstjesmaker.\nJe kunt meedoen met deze code: ${createdCode.code}\n\nGa naar de app en kies "Deelnemen" en voer de code in.\n\nGroetjes!`);
-                      window.open(`mailto:?subject=${subject}&body=${body}`, '_self');
-                      setCreatedCode(null);
-                    }}
-                    className="flex-1 bg-emerald-600 text-white"
-                  >Nu mailen</Button>
-                </div>
+                <Button
+                  onClick={() => setCreatedCode(null)}
+                  className="w-full bg-emerald-600 text-white"
+                >OK</Button>
               </div>
             </div>
           )}
