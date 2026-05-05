@@ -1814,8 +1814,20 @@ async function addItemFromProduct(p) {
           map[key].push({ ...it, _name: name, _cat: cat, _qty: currentQty(it), _needsLine: formatNeedsLine(it.needsByRecipe) });
         });
         const cats = Object.keys(map).sort((a,b) => CATEGORY_OPTIONS.indexOf(a) - CATEGORY_OPTIONS.indexOf(b));
-        return cats.map(c => ({ category: c, items: map[c].sort((a,b)=> (a._name||'').localeCompare(b._name||'', 'nl')) }));
-      }, [items, products]);
+        const groups = cats.map(c => ({ category: c, items: map[c].sort((a,b)=> (a._name||'').localeCompare(b._name||'', 'nl')) }));
+        if (storeMode) {
+          const checkedItems = [];
+          const uncheckedGroups = groups.map(g => ({
+            ...g,
+            items: g.items.filter(it => { if (it.checked) { checkedItems.push(it); return false; } return true; })
+          })).filter(g => g.items.length > 0);
+          if (checkedItems.length > 0) {
+            uncheckedGroups.push({ category: '__checked__', items: checkedItems.sort((a,b) => (a._name||'').localeCompare(b._name||'', 'nl')) });
+          }
+          return uncheckedGroups;
+        }
+        return groups;
+      }, [items, products, storeMode]);
 
       return (
         <div className="pb-24">
@@ -1902,10 +1914,18 @@ async function addItemFromProduct(p) {
                   <div className="text-sm">Je lijst is leeg</div>
                 </div>
               ) : byCategory.map((group, gi) => (
-                <div key={group.category} className={storeMode ? (gi % 2 === 0 ? "bg-white/60 rounded-2xl p-2" : "bg-slate-50 rounded-2xl p-2") : ""}>
-                  <div className={"text-[11px] font-semibold uppercase tracking-wide px-2 py-1 mb-2 rounded-xl " + (storeMode ? "bg-slate-100 text-slate-600" : "text-slate-400")}>
-                    {group.category}
-                  </div>
+                <div key={group.category} className={storeMode && group.category !== '__checked__' ? (gi % 2 === 0 ? "bg-white/60 rounded-2xl p-2" : "bg-slate-50 rounded-2xl p-2") : (group.category === '__checked__' ? "mt-2" : "")}>
+                  {group.category === '__checked__' ? (
+                    <div className="flex items-center gap-2 px-2 py-1 mb-2">
+                      <div className="h-px flex-1 bg-slate-200" />
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Afgestreept</div>
+                      <div className="h-px flex-1 bg-slate-200" />
+                    </div>
+                  ) : (
+                    <div className={"text-[11px] font-semibold uppercase tracking-wide px-2 py-1 mb-2 rounded-xl " + (storeMode ? "bg-slate-100 text-slate-600" : "text-slate-400")}>
+                      {group.category}
+                    </div>
+                  )}
                   <div className="space-y-1">
                     {group.items.map(it => (
                       <SwipeRow key={it.id} item={it} onSwipeRight={(x)=>toggle(x)} onSwipeLeft={storeMode ? ((x)=>toggle(x)) : ((x)=>remove(x))}>
