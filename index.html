@@ -1843,7 +1843,7 @@ async function addItemFromProduct(p) {
                   value={newText}
                   onChange={(e)=>{ setNewText(e.target.value); setShowSuggestions(true); }}
                   onFocus={()=>{ setStickyAdd(true); scrollAddBoxIntoView(true); if (newText.trim().length>=2) setShowSuggestions(true); }}
-                  onBlur={()=> { setTimeout(()=>{ setShowSuggestions(false); }, 150); }}
+                  onBlur={()=> { setTimeout(()=>{ setShowSuggestions(false); if (!newText.trim()) setStickyAdd(false); }, 150); }}
                   onKeyDown={(e)=>{ if (e.key === 'Enter') { e.preventDefault(); addFreeText(); }
                     if (e.key === 'Escape') { e.preventDefault(); setNewText(''); setShowSuggestions(false); setStickyAdd(false); } }}
                   placeholder="Zoek product of typ iets nieuws…"
