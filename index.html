@@ -2077,6 +2077,7 @@ async function addItemFromProduct(p) {
       const [quickServings, setQuickServings] = useState(5);
       const [expandedId, setExpandedId] = useState(null);
       const [pickMap, setPickMap] = useState({});
+      const [newIngId, setNewIngId] = useState(null);
 
       const filtered = useMemo(() => {
         const q = query.trim().toLowerCase();
@@ -2154,10 +2155,11 @@ async function addItemFromProduct(p) {
       }
 
       function addIngredientRow() {
+        const id = genId('ing');
         setDraft(d => ({
           ...d,
           ingredients: [...(d.ingredients||[]), {
-            _id: genId('ing'),
+            _id: id,
             productId: null,
             nameSnapshot: '',
             categorySnapshot: 'Overig',
@@ -2166,6 +2168,7 @@ async function addItemFromProduct(p) {
             buyQty: 1,
           }]
         }));
+        setNewIngId(id);
       }
 
       function updateIng(idx, patch) {
@@ -2614,6 +2617,7 @@ function ensurePickState(recipe) {
                               <div className="flex-1 relative">
                                 <div className="text-[11px] font-semibold text-slate-500 mb-1">Product</div>
                                 <input
+                                  ref={el => { if (el && ing._id === newIngId) { el.focus(); setNewIngId(null); } }}
                                   value={disp.name}
                                   onChange={(e)=>updateIng(idx, { productId: null, nameSnapshot: e.target.value })}
                                   placeholder="bijv. Paprika"
