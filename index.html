@@ -70,8 +70,8 @@
   <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
 
-  <!-- Babel (JSX in-browser) -->
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Babel (JSX in-browser) — pinned to 7.x; v8 (latest) breaks the inline text/babel script -->
+  <script src="https://unpkg.com/@babel/standalone@7.29.7/babel.min.js"></script>
 
   <!-- Firebase v8 (compat style) -->
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
