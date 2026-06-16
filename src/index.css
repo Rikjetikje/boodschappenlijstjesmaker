@@ -1,0 +1,18 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* iOS Safari: prevent auto-zoom on form fields (requires >=16px computed font-size) */
+@supports (-webkit-touch-callout: none) {
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* Better tap targets on mobile */
+button, input, select { -webkit-tap-highlight-color: transparent; }
+.wysiwyg { min-height: 160px; }
+.wysiwyg:empty:before {
+  content: attr(data-placeholder);
+  color: #94a3b8;
+}

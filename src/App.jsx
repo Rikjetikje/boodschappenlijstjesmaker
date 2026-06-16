@@ -1,92 +1,9 @@
-<!doctype html>
-<html lang="nl">
-<head>
-  <link rel="icon" href="./favicon.ico">
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Boodschappenlijstjemaker — fixed10 — fixed12</title>
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { auth, db, firebase } from './firebase';
 
-  <!-- Tailwind (CDN) -->
-  <script src="https://cdn.tailwindcss.com"></script>
-
-  <!-- React 18 -->
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-
-  <!-- Babel (JSX in-browser) -->
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
-  <!-- Firebase v8 (compat style) -->
-  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
-
-  <style>
-
-    /* iOS Safari: prevent auto-zoom on form fields (requires >=16px computed font-size) */
-    @supports (-webkit-touch-callout: none) {
-      input, select, textarea {
-        font-size: 16px !important;
-      }
-    }
-
-
-    /* Better tap targets on mobile */
-    button, input, select { -webkit-tap-highlight-color: transparent; }
-    .wysiwyg { min-height: 160px; }
-    .wysiwyg:empty:before {
-      content: attr(data-placeholder);
-      color: #94a3b8;
-    }
-  </style>
-
-  <script>window.APP_BUILD = "mobile-magnet-lockfix3b-20260213154931"; console.log("APP_BUILD", window.APP_BUILD);</script>
-</head>
-
-<body class="bg-slate-50">
-  <div id="root"></div>
-
-  <script>
-  // Global helper (outside Babel wrapper) so any transformed chunk can access it.
-  function formatNum(n) {
-    if (!isFinite(n)) return '';
-    const rounded = Math.round(n * 100) / 100;
-    const isInt = Math.abs(rounded - Math.round(rounded)) < 1e-9;
-    const s = isInt ? String(Math.round(rounded)) : String(rounded);
-    return s.replace('.', ',');
-  }
-</script>
-
-
-  <script>
-    // Globals needed across Babel-transformed chunks
-    var DISCRETE_UNITS = ['st','stuk','bl','blik','zak','pak','pot','fles','tube','bol','rol','doos','ei','teen','stronk','bos','krop','blikje','beker','sachet','sachets','cup','portie'];
-  </script>
-
-<script type="text/babel">console.log("APP_BUILD products-plusminus-v4 + recipes-qty-v2");
-const { useEffect, useMemo, useRef, useState } = React;
-
-    // ---------------- Firebase ----------------
-    const firebaseConfig = {
-      apiKey: "AIzaSyAVhQohz3ueJ_DNaY0HNOVcC-BkPSNFcfQ",
-      authDomain: "boodschappenlijstjesmaker.firebaseapp.com",
-      projectId: "boodschappenlijstjesmaker",
-      storageBucket: "boodschappenlijstjesmaker.firebasestorage.app",
-      messagingSenderId: "624229728215",
-      appId: "1:624229728215:web:4f89657e1ddf044a4fd592",
-    };
-
-    const firebaseApp = firebase.initializeApp(firebaseConfig);
-    const auth = firebaseApp.auth();
-    const db = firebaseApp.firestore();
-
-    db.enablePersistence({ synchronizeTabs: true }).catch((err) => {
-      if (err.code === 'failed-precondition') {
-        console.warn('Firestore persistence: multiple tabs open, only one can enable persistence.');
-      } else if (err.code === 'unimplemented') {
-        console.warn('Firestore persistence: browser does not support it.');
-      }
-    });
+const DISCRETE_UNITS = ['st','stuk','bl','blik','zak','pak','pot','fles','tube','bol','rol','doos','ei','teen','stronk','bos','krop','blikje','beker','sachet','sachets','cup','portie'];
+const CART_EMPTY = 'data:image/png;base64,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';
+const CART_FULL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADgAAAA4CAYAAACohjseAAABCGlDQ1BJQ0MgUHJvZmlsZQAAeJxjYGA8wQAELAYMDLl5JUVB7k4KEZFRCuwPGBiBEAwSk4sLGHADoKpv1yBqL+viUYcLcKakFicD6Q9ArFIEtBxopAiQLZIOYWuA2EkQtg2IXV5SUAJkB4DYRSFBzkB2CpCtkY7ETkJiJxcUgdT3ANk2uTmlyQh3M/Ck5oUGA2kOIJZhKGYIYnBncAL5H6IkfxEDg8VXBgbmCQixpJkMDNtbGRgkbiHEVBYwMPC3MDBsO48QQ4RJQWJRIliIBYiZ0tIYGD4tZ2DgjWRgEL7AwMAVDQsIHG5TALvNnSEfCNMZchhSgSKeDHkMyQx6QJYRgwGDIYMZAKbWPz9HbOBQAAAT00lEQVR42u1aeZRdRZn/fVX33rf3vqU76aQ7e5okQiDIahZAEHVkxm704MhkcOMMwgAzjA6e6X4ehxE1qIg6esZxO4rTT9GBIeoESBMgJCQdAqRD9n3tDv367e/eW1Xf/PFeJx0IJB2ZxTnUOffdP+rdqvrV99XvW+oD3ml/3I3+pybq7e2U9QNzxj3fop64JgK/I6ozSZCZ33R3ieicd5CZiYj4xQfvuScasGdnXdcQkwAMAIGT79KvrxUyxSKIiQNBh9I+f+Waz33z1e7ubhGPx81457fGLuJMizx9Jwg93aXNOd0CenoIAJM2H64JORdJNrCEOPVwMMBgEAn4SkCAATDCARs5t/gwgFc7OraMfkHcffJrisOcESAR8fLly0M333yzvXPnTtTU1Jz4w7FjxyQRJU8n2M7eTpGghAbiJfDcLdAzBiiDEonSwgg0MpIrqLyrNLOR2mgQCAyGFBKCCCDAVwqZogsiGGWMYIb/Oo1jip88k8ygtzqjFgCsXNk3t7Gpbu2Ro4N2MBShQtEb/Vw3t7Tmn312zdcuv/zS+5hZEpEe7Ux0JfSCzqsqAx88v8nsS2fXUvwQAKC7W3R2bKEEJfSNSOjO3k7Jh4wlhGX5yqeXtm2Xnq9KK2OGY1uYP2sGApZdxkAA2AAkSBgCgPqBQSrJGvar/3Jhe12Fg21HXEXUv+utJFhSfvgpZl5NoOdBWMPg5wlYYwyvU8qvtmzrz8uzGgCE7m4BwLroO5+5T35o3jbfUgNmanjrxT+647GF936sDfG4SXQl9MKbrq248o4/qUp0JbQlSAGAIIGKSASxSBgVkXD5HYEg8ZZUuaijgbvvmF/1yrfmrG4M5F7lwvArHbWFrS8+eN43AAjmUSzjNBNr1214IRIJnb9h/QuTli1bdrSzt9tJdMW9C79963cC0+pu9TJ5QBmACHZFCP6R1F614fAiOX/CXSLmfEQwaCRT+PFPcuFL6sKBy7KuZywpBZjHshiMKWn1SRVlE3QckfbN0qWff+gpANj04Lwls5vMk6m8ywxBIYeRzsvC+gMNzTfEnx45nbqKURLp7e2VzCxGn82bNzvMLHzPfbaxsclqampa0M3dItEV9xZ+9RNtsjZ0q5vKKfi6tDLD7CVzmmLBKXLBhBeshsjtCMgGDsr60ITKv9kbxGW66IEBoZSCNgbKmNJbKTCfmajrKy2bjYHxYIwy7BXAjgQv6AiIt1RRIuKuri5NRGb0GRoaMkRk8vnCM0QCNVV1F8Upbi7+4i2zOebcRAGLoZlAJMq6QCRIslIsqkINquhr9hSzp9gUPA2isWbnFPUhOrP951XvsYqevSkZCj9ZOb9KVE6NqticKkoHIv9cjIpcb2+nPB3ZWG82YF9fnwGAA0NHN04+PqQ80u+f+9An5lB99YeJNemiz0SQpzWanmIikicgnO5/421DDfzLYTd/64LUtGC1IRQNELMQ09TeePnvXO7tlG9BMm9s8XjcMDN94mMfO5hNp3eEayoW1Exs6NRQRAALQSSIcNpHiFP7QACd2yOkJXp7WVLXL3Xn+ek7Y4002WSMYkW2SSrT0IgP9f/y6ivR2cubN3c7zCx7e3vlGSVYlqIEoHLF4vr2YPOsWhPyDnmvORHpkDlL95AAFAkwSgD+GWhNEOArsO8CxAABauRIruse0j+8GVWNtZnbkWUWony0mBmOhSlNqpuIlgLwgPjZqejY5hn1tGR8/LKa6ZKIKCTtU0iBgbK0BDQbMPMpOHwCQlpAq7IHY07vfDARwAzbdQFjSDg2YtMWXrFp7RdCAf83H5bVR2uzOa1BJMEGACTSzHaVXNL/zKc+LaLnbw+HY3JwcDh7xRVXrAPAdAY/UhCRSSQS86ZNn7kpaDuIWqE3cAKB4GofReUhYgchhSzDPhVk1i9CA0Ao/Eb5E0DagAp5wHHATgBghmPL0sblGPmCYUkeCXjQCIHHHO1oWAJSQOg8iDX2HNx/yTWLF699SwmO+p+bN2/eOrV92t6irdt+9vLjRhstTjIhoah9vKthKi5unolf73wOhzKvwZEWeCwMw7hm2kI0Ggn78X+HMKaMqtyvFHRVNfKLl8Le9iqCL20CAg6g2bDDqHgPUBsoiqyZizTmoh6/RYCOgWEDxFBJY4qDGXhN72XXbkbq+JHM2agol90z77r3vX9jfaS27be71vOe1BGELAeGGZIERtwcbpy5CFe3XYDnD2/Bil3rUemEoUtqBALB1z7mTZyJSaIKkcd+A6voAlICzIAQEIU8ijNmIXv9BxDYvhVV//ZzmIoY4BmBCkbtZQyE01Dms0jRBWigxxDALoCDgASUVxTHD2UMTbpWZjy1d+WXl28/qzPY19dHAJDKZdZMDbT92QUTpvPh7HHEygAECTABw24ayhi0VTYjYgcRdUInARKh6AsorYGgDROrACgLtqwTAA0AU1EBIgIpDROOgMNhwDJAiKHJQDJQQAssZCDYBagCgAQgwDBQ4XaminboI0cHvt/f7zOzPCPAoaEhBoB0KrU2m81gfn2b6Nu7CSErAMMGRAQBoKA8FJSH5mgNYnbwRL+gEjlKZmitwJYNE43AaAWW1ihDgQzDRKIlpTYGHArBBINgyeAgQUHBIAQftbA4BRCgES2vUsKwCz86g8mOwC/mNwBAf3+/OKMLMRoL3n///bHFS6/aHQ5H6gpukS0hTgkQCQQpBLTR4LI10CAUjMBoGBASgEMMuOUv7TeaGhYCxAwYA0MCkg1CxgWFGAaEvArBEgTDGtqUNm+Uy9mwCUYqxb79e66/ZunSFWclQSLiMptmnl+7blM4FLpqx/EDpqBcKcpeGpcDs2k1zRAksWP4IDQDlVJjlpOHAYGMghuaBGXXweFtEJ4LPhQAcck8kNbQlZXwm1tgHToEZDKIskLGDmFdVRs4xQhJxsxagaFCCk3OEVTaQMEnSAEYX7NntYtMJu0d2r9/SynW7uGzsoN9fX0CgHE9/9lIIHjVzwae4FX7X0LMCcNwKZJwlY+Hrr4NUyqb0PPMjzDoeegIeOht2QqLAHhpjEy9B37zjaja+QCc3A7woxNBQxYQIFA6i+w112L49jsR+t530LTqP3GovhX3zV2GDXUFKFdhXpPAd99bi58OPI2BQz/Ht69gzKgsAr5BsSj5UOwblEN014plyw6UNc+Is3IDy+dwOJt+Xnk+LmiaLoJWABEniLAdRNQOwZEWBgsjqAxF0BitRYVlIy1ieA0VsGQIbIVBrEFEMLISJhwAzxBgOwwOhcHhEHQ0CsNAjZvDlgmz8Jkr/x4bWuaiSho4tsDEqAAJIOOm8MxQHW5YOQmP7KoDHAsItzIirVBu/pUEoEfd0LMCODAwwACwa+/ApuHUSG5WwxTBxnDGKyDnF5H3i8h6BRxIDyFkBxCxgsh7WQy6Pg4UFRyTA1QepNNgsgEwhJcDNSdBJgfkC6B8AcaSCGoXv6uYhb84/3bssOvg5HLIKSDrGVQHCcwK+1JDCIoiBosubnk6gjv6HBzWk1laYRQKuf6x7H/WecpRsln3Qv/aiurKizcd3K4BllQewrBGbagKkyrqsTN5BEk3D5DENDuPeqsU/+lAA3SgGVZ+F4TKlCh+yAZrCcu48BvqoevqsSMFFDxGkBU0yRJhGWBCFKgPE3YMH0FOFUvJKxBSrkZ7ZZVprWkSu3btWXzddVf39fb2yq6uLm2dLcBRx7voFtZNCDRePKe2lRUb0Gi6jwk2afhaYUZlLWxUAiAUmVBgOsGkYA0VagWxBoPAVUBEFjBsqiA0IaA9tEcIiHDZFfPKmRLAIge+EZhUWQ8aIxsB5oAdFKl0Ordr17atY7XurAEuWrSIASDn5p6xSdz+q+3P0M8GnkJ1IIyMIUymEXy9jaDnLwcf+y3Cex4EWzFEoAGSEH4a2fprMDL9C6jZ8SUEjz8ByChilMZ/5K/C/YM34ZMXRLC0zcbdTxZxMMMISIarH4bmowDbWL7007Aswl0rv3vCyVBGI2IF+bsfuIsEsP222247Nkow4wLY09PDAHDw8L7+tsZWf3pNi+0pj18jSYI17m3ahYnawm4/D9uugWUKYFOKDkACZPKQOgsCwYAQ0a8BwsNDIx/Bj9JdKCgFKQHNhLTHKCiCZh9FnYYyBUQsiapgBPvSRzFczCBgOSAAed9FS6TO1FdUi33DezcB4L6+PguAGhfAeDzO5Z3Zt3HDpu2zG9s6HOlw3k3Rt5sO4N32EJJ5B443COM0AKwh/Ew5CyhAKgfhJ8FMkMQ44MbwxaF78UTuUlRZWXi+gSUc+AZIuxo534KnCyjqFIoqj5rKKlQFI1h9YBDDhSwqA2EAQMrNYXJVI4LCRjKb3njWKYvT8czozuSLuQ2t9ZM7ls2/3tToQXFJxQj2GQnJGgY22IkiNemTIPYBiFI6xvhQwRaQzqJYdQnWFJdiQt15+KxIw7AF3wCtMYIxjD+d6cBVAkQhaF4MX3tojNTAGIOWaB0+9a73IWg5AABXebi4ZbZMplPQSq0fa9bGfbu0atUqa/HixWr16tXLWia1/itcrWAHrYwup9uJAC8D1h4QqAIJCWPK8S0RiH0IbwRkBRFzgACK0BBlRw9IuQbaANUhgVL+SAIIQxChqHyk3CxigTDCVgCmnCM0xnCRFQ2nhke2PPds27I77xwZe9UwHgli0aJFprxD66vrm8zIvm1y76pfw3EcMBF0sYCm86/EhIuWYNeKH2B4/35Mb/PR3pKBcj14oSnwp/8VnjuQw2+2+wha8kTEaAzj1gUOIjbhvqdyUBwE8U4ofhpZX+G69oW4YeZl+Ob6X2HrawcQsgLwjEKVEzb3Lr5ZkqFXXw9u3ABHP3z5F7/Y3vr37Ydi1bWTsgd3G8AIEhb8fAahumZMvOxaFDMjOL5jAFPCHkIVw/CKLqAyMGSQcgkbjzGijoHhk5cMhoG8D7x4rGRCyByHx9uQ8gyumnIBmIENR3ZgR/Igwk4IWTeP8xumcmUoiuNqsH+sOTsngKMBMAD1/Nr16+qbWyeF6ptN9vAeYQUtkBAoJAcBzQjVNJZyM1S6OWIQYFzA+AhaFkZTmFQK9mEJRtAiZDyGYsAmgDkLAwNbWJgYq8OIm8FwIQMpSsZfGY3Z9W2wSWIkNbLxTS9fxtP6+/vFhRde6P/+9ys3ismTP1Q/+0Jl2QHIYAjacxGsboDv5hGbMAU10zogGxQK0Qx8x0DblVCGURsmXNAoEbQIzCUzbguJgGTkCJhXb8ERDGOicHk6wA6aotXI+y5m1kyEYQ0hJHK+xwuapiGZGtGuyvePPUbnRDKjl5Arn1x154SmCfFoNBoTUoJOJJkIzAZG+SApIaR1gmSonDGD8SAIsE+TpvV0aUEn+0rROgHwtAKD4Uh7jDoZ2I6D3Xv3jKx4/LGWeDyeP+czOOrbrVy58vpZs2Y9MHx8aOTwkcMPRkKhpHldGlAIAQMz6mFBiFNzzeZNMoej/zvZZ04Zs9RnxnACm4qKKnJ9tz8ej+e7u7vFqAdzLlfREgDWPL/2sf0HDulHHul9z/+rKovRHOlLL73yjGF+N8FUJZNJNxaLUSaz4H+pCqIPixYtQiKR4K6uLv22kAyXk50tLS0imUwik8nw0FDiFICdnZ1IJN4+GJ2dQOJ1A5bmWFSep3NUw8zrawnOGmAikSAA8DzPr66ppkcffbT+lltu2f1/XUXPGmB9fT0BQDqbfWTa9GlL5s2b/9Onnnr6K83NjVnAwlOrV/OxY8dw6aWXYs6MGTh+/KgxQhhrrNUd58IUAGGMqKtrElu2b8eaNWvQ2NiIJUuWQLLP6XReW0Gr7JJZ2L59yys33HDDyOgl/3jNBHV3d1Nzc7OcM2fuT6dNn3ajbds4emwQa9dvwNHBQTAbBANBzJ0zG/Pmngd5gj7PpaCqpGnaGLz8ygBe3rIFrlsEkUBTQwMuWXgRGurrYIyB1ho1NTV4ceOL37vkkoWfGfWZxx1NxONxoHQJ9pHHVqz4yeSJrRc+0bf6jiPDx6vCgSALKWk4nTLPrV8vcrncipnTpr7gKSUsIcZN3coY4ViW2bFz98KNWwbep7Q2wUBAGOXz9j27aWQkmXrvksXf0syKiDidyZDnFR4fe3l7zrVqozZx4RVXtF19zbXbHCdgDQ4OIplMUlt7u4pEItbg4SM//MZX/+kv/9AzdPvffu7HTc3NH8/lcmrP7t1WdXU1NzQ0wHNd9bvfr5jW/9xz+9+WM3gK4ZRBvrRt28xAMGizYZNMJsX+/fvR2tpKYDaxWHQ6M1sDAwNiaKhj3BKsrx8QHR0d5t5/vK8dzEYrRfv37wcRUUNDgwkGg/a1V10752tf+tLhQqEgr7vuOt3T02NeX+51TgB7OzsNEfHdd9+9EZWiYAUCwba2Nr+1tVXYju1Lywp6nvssEanu7m4rHj9v3DzT3d1tnXfeeervvvAPz8qKqsstxy5efvnlkFIaA1hesVA4mhx6cfHixYqZ9ZuVmolzAUhE3NnZKZcvXz7oFQqfdyybwpGIHY1FZSQaC6ZGklvzqeQDzEw9PT36XObo6enRzEz5VPKBVDK5NRaNBaOxmAxHIrZj21QoFD//gwcfPNbZ2Snfqs7uD6oXHXW+77rrcx+M1FTcBKIa7fsv7Nl28OsPP/z942cq8jvbXOxHP/qpuvYZk/6aAtZCViZdyGR+8sBXv/zouVYgjhvkf8fmnWmct5j37V9EZ2ev7Ow8kWwVPT09+g+R3Okk2dPTIwGYjo4OSiSARKJL4532Tvvjb/8FiucmlCeeOhYAAAAASUVORK5CYII=';
 
     // ---------------- Utils ----------------
     function genId(prefix='') {
@@ -111,6 +28,36 @@ const { useEffect, useMemo, useRef, useState } = React;
 
     // Expose for safety (in case Babel wraps scopes)
     window.formatNum = formatNum;
+
+    function searchRelevance(name, query) {
+      const n = (name||'').toLowerCase();
+      const q = query.toLowerCase();
+      const esc = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      if (n === q) return 0;                              // exact match
+      // starts with query as standalone word (e.g. "kaas belegen 48+")
+      const reStartWord = new RegExp('^' + esc + '($|\\s|/)');
+      if (reStartWord.test(n)) return 1;
+      // query as standalone word later in name (e.g. "houdbare halfvolle melk")
+      const reWord = new RegExp('(\\s|/)' + esc + '($|\\s|/)');
+      if (reWord.test(n)) return 2;
+      // starts with query as part of compound word (e.g. "melkbiscuits")
+      if (n.startsWith(q)) return 3;
+      // query starts a word later in name (e.g. "houdbare melkchocolade")
+      const reWordStart = new RegExp('(\\s|/)' + esc);
+      if (reWordStart.test(n)) return 4;
+      return 5;                                           // substring within a word (e.g. "karnemelk", "pindakaas")
+    }
+
+    function sortByRelevance(arr, query) {
+      const q = query.trim().toLowerCase();
+      if (!q) return arr;
+      return arr.slice().sort((a,b) => {
+        const ra = searchRelevance(a.name, q);
+        const rb = searchRelevance(b.name, q);
+        if (ra !== rb) return ra - rb;
+        return (a.name||'').localeCompare(b.name||'', 'nl');
+      });
+    }
 
 
     function titleFromLegacyDocId(docId) {
@@ -152,6 +99,10 @@ const { useEffect, useMemo, useRef, useState } = React;
       for (let i=0;i<6;i++) out += chars[Math.floor(Math.random()*chars.length)];
       return out;
     }
+
+    // Default products for new households (exported from De Hasseltjes)
+    // To update: use "Producten exporteren" in manage menu, then paste here
+    var DEFAULT_PRODUCTS = [{"name":"100% Dadel Stroop 330 g","category":"Ontbijt, broodbeleg en bakproducten"},{"name":"Becel Original 500 ml","category":"Zuivel, eieren, boter"},{"name":"Bloemenhoning 500 g","category":"Ontbijt, broodbeleg en bakproducten"},{"name":"Biologisch Tuinerwten 450g","category":"Diepvries"},{"name":"C'est La Room Brie 60+ 200 g","category":"Vleeswaren, kaas en tapas"},{"name":"Blauwe Bessen 125 g","category":"Aardappelen, groente en fruit"},{"name":"Biologisch Rundergehakt Mager 250 g","category":"Vlees, vis en vega"},{"name":"Chavroux Pure Geitenkaas 45+ 150 g","category":"Vleeswaren, kaas en tapas"},{"name":"Conimex Wokolie Oosterse 500 ml","category":"Conserven, soepen, sauzen, oliën"},{"name":"Bonne Maman Aardbeien en Frambozen 370 g","category":"Ontbijt, broodbeleg en bakproducten"},{"name":"Biologisch Zalm zonder Huid ca. 110 g","category":"Vlees, vis en vega"},{"name":"100% Pindakaas Naturel 600 g","category":"Ontbijt, broodbeleg en bakproducten"},{"name":"Bruine Linzen 400 g","category":"Wereldkeukens, kruiden, pasta en rijst"},{"name":"Boeren Tijger Volkoren","category":"Brood en gebak"},{"name":"Cappuccino Mousse met Biscuit 75g","category":"Zuivel, eieren, boter"},{"name":"Afwasborstel","category":"Huishouden"},{"name":"Biologisch Kipfilet ca. 400g","category":"Vlees, vis en vega"},{"name":"Alpro Mild & Creamy No Sugars Soyaproduct Nature 755 g","category":"Vega en plantaardig"},{"name":"Chili Bonen in Saus 380 g","category":"Conserven, soepen, sauzen, oliën"},{"name":"Biologische Kastanjechampignon 250g","category":"Aardappelen, groente en fruit"},{"name":"Aardappelen Kruimig 3 kg","category":"Aardappelen, groente en fruit"},{"name":"Bami Groente 450 g","category":"Verse maaltijden en gemak"},{"name":"Cookie Gelato 75 g","category":"Diepvries"},{"name":"Bonne Maman Aardbeien Confiture 370 g","category":"Ontbijt, broodbeleg en bakproducten"},{"name":"Arla Biologisch Volle Yoghurt 1 L","category":"Zuivel, eieren, boter"},{"name":"Calvé Pindakaas Stukjes Pinda 650 g","category":"Ontbijt, broodbeleg en bakproducten"},{"name":"Aviko Dunne Friet Supercrunch Airfryer","category":"Diepvries"},{"name":"Biologisch Shiitake 100 g","category":"Aardappelen, groente en fruit"},{"name":"Biscuits Yoghurt Aardbeiensmaak 5 x 2 Stuks","category":"Koek, snoep, chocolade en chips"},{"name":"Boon Kidneybonen in Chilisaus 380 g","category":"Conserven, soepen, sauzen, oliën"},{"name":"Biologisch Rundergehakt 500 g","category":"Vlees, vis en vega"},{"name":"Biologische Zwarte Bonen 405 g","category":"Conserven, soepen, sauzen, oliën"},{"name":"Bolletje Echte Beschuit","category":"Brood en gebak"},{"name":"Allesreiniger Waterlelie Katoen 1,25 L","category":"Huishouden"},{"name":"Biologisch Hamburger Rund 2 Stuks","category":"Vlees, vis en vega"},{"name":"Chocoladehagelslag Puur 600 g","category":"Ontbijt, broodbeleg en bakproducten"},{"name":"Avocado Eetrijp 2 Stuks","category":"Aardappelen, groente en fruit"},{"name":"Carbonell Kappertjes Nonpareilles 100 g","category":"Conserven, soepen, sauzen, oliën"},{"name":"Burrata 250 g","category":"Vleeswaren, kaas en tapas"},{"name":"B'tween Mueslireep Melkchocolade 6 x 25g","category":"Koek, snoep, chocolade en chips"},{"name":"Bananen","category":"Aardappelen, groente en fruit"},{"name":"Aardappelen Vastkokend 1 kg","category":"Aardappelen, groente en fruit"},{"name":"Biologisch Eieren 10 Stuks","category":"Zuivel, eieren, boter"},{"name":"Biologisch Kipfilet ca. 100 g","category":"Vleeswaren, kaas en tapas"},{"name":"Bonne Maman Viervruchten Confiture 370 g","category":"Ontbijt, broodbeleg en bakproducten"},{"name":"Bloemkool","category":"Aardappelen, groente en fruit"},{"name":"Biologisch Tomaten Passata 680 g","category":"Conserven, soepen, sauzen, oliën"},{"name":"Coca-Cola Zero Sugar Zero Cafeïne 1,5 L","category":"Frisdrank en sappen"},{"name":"Aluminiumfolie 30 Meter","category":"Huishouden"},{"name":"Coca-Cola Zero Sugar 1,5 L","category":"Frisdrank en sappen"},{"name":"Belegen Kaas 48+ Stuk 545 g","category":"Vleeswaren, kaas en tapas"},{"name":"Biologisch Oesterzwam 150 g","category":"Aardappelen, groente en fruit"},{"name":"Biologische Pompoen","category":"Aardappelen, groente en fruit"},{"name":"Coca-Cola Zero Sugar 1 L","category":"Frisdrank en sappen"},{"name":"Bleekselderij","category":"Aardappelen, groente en fruit"},{"name":"Biologisch Gerookte Kipfilet ca. 100 g","category":"Vleeswaren, kaas en tapas"},{"name":"Biologisch Spekreepjes 2 x 100 g","category":"Vleeswaren, kaas en tapas"},{"name":"Bosui","category":"Aardappelen, groente en fruit"},{"name":"Brugse Zot Belgisch Blond 4 x 330ML","category":"Bier en wijn"},{"name":"Chocolade Hagelslag Puur 380 g","category":"Ontbijt, broodbeleg en bakproducten"},{"name":"Bimi 200 g","category":"Aardappelen, groente en fruit"},{"name":"Biologisch Avocado ca. 650 g","category":"Aardappelen, groente en fruit"},{"name":"Biologisch Aardappelen Kruimig 1 kg","category":"Aardappelen, groente en fruit"},{"name":"Biologisch Karnemelk 1 L","category":"Zuivel, eieren, boter"},{"name":"Cornets Vanille Smaak 16 Stuks","category":"Diepvries"},{"name":"Biologische Kipfilet 1 Stuk ca. 200 g","category":"Vlees, vis en vega"},{"name":"Biologisch Volkoren Havermout 500 g","category":"Ontbijt, broodbeleg en bakproducten"},{"name":"Biologisch Hele Sperziebonen 450g","category":"Diepvries"},{"name":"Biologische Komkommer","category":"Aardappelen, groente en fruit"},{"name":"Burrito Kruidenmix 15 g","category":"Wereldkeukens, kruiden, pasta en rijst"},{"name":"Biologisch Rode Uien 3 Stuks","category":"Aardappelen, groente en fruit"},{"name":"Cashewnoten Gezouten 200 g","category":"Koek, snoep, chocolade en chips"},{"name":"Candyman Vrieslollies 10 Stuks 500 ml","category":"Diepvries"},{"name":"Biologisch Citroen 2 Stuks","category":"Aardappelen, groente en fruit"},{"name":"Aardappelschijfjes 450 g","category":"Diepvries"},{"name":"Cashewnoten Gezouten Voordeelverpakking 500 g","category":"Koek, snoep, chocolade en chips"},{"name":"Biologisch Volle Yoghurt 1 L","category":"Zuivel, eieren, boter"},{"name":"Damme Abdijkaas 45+ Mild Stuk ca. 150g","category":"Vleeswaren, kaas en tapas"},{"name":"L'Oréal Paris Elnett Micro-Verstuiving Haarspray 75 ml","category":"Drogisterij"},{"name":"Glorix Bleek Original 3 x 750 ml","category":"Huishouden"},{"name":"Hartige Biscuits Kaas & Tomaat 4 x 3 Stuks","category":"Koek, snoep, chocolade en chips"},{"name":"Holie's Crunchy Bar Protein Peanut Chocolate 3 x 2 Stuks 6 x 20 g","category":"Koek, snoep, chocolade en chips"},{"name":"Kips Vega Tuinkruiden en Bospaddenstoelen Paté 125g","category":"Vega en plantaardig"},{"name":"Grana Padano Kaas 200 g","category":"Vleeswaren, kaas en tapas"},{"name":"Kokki Djawa Boemboe Saté Hot 500 g","category":"Wereldkeukens, kruiden, pasta en rijst"},{"name":"Doritos Nacho Cheese Tortilla Chips 272g","category":"Koek, snoep, chocolade en chips"},{"name":"Feta Kaas 43+ Plak 200 g","category":"Vleeswaren, kaas en tapas"},{"name":"Julienne Koolmix 150 g","category":"Aardappelen, groente en fruit"},{"name":"Garden Gourmet Vleesvervanger Falafel Spicy balletjes 190g","category":"Vega en plantaardig"},{"name":"Gebroken Sperziebonen 400 g","category":"Diepvries"},{"name":"Kastanje Champignons 400 g","category":"Aardappelen, groente en fruit"},{"name":"Iglo Vissticks 15 stuks 15 x 28 g","category":"Diepvries"},{"name":"Kaiser Broodjes 4 Stuks","category":"Brood en gebak"},{"name":"Geraspte Kaas Belegen 48+ 175 g","category":"Vleeswaren, kaas en tapas"},{"name":"Kastanje Champignons 250 g","category":"Aardappelen, groente en fruit"},{"name":"Keukenpapier Sterk & Absorberend 2 Lagen 3 Rollen","category":"Huishouden"},{"name":"Euroma Speculaaskruiden by Jonnie Boer","category":"Wereldkeukens, kruiden, pasta en rijst"},{"name":"Knorr Cup-a-Soup Indiase Kerrie 3 x 175 ml","category":"Conserven, soepen, sauzen, oliën"},{"name":"De Vegetarische Slager Pluimfeestburger Veganistisch 180 g","category":"Vega en plantaardig"},{"name":"Falafel Naturel Voordeelverpakking 360 g","category":"Vega en plantaardig"},{"name":"De Vegetarische Slager Cordon Blij Vegan 180 g","category":"Vega en plantaardig"},{"name":"Gekookte Bietjes Biologisch 500 g","category":"Aardappelen, groente en fruit"},{"name":"Kips Vega Paté 125 g","category":"Vega en plantaardig"},{"name":"Houdbare Halfvolle Melk Voordeelverpakking 6 x 1 L","category":"Zuivel, eieren, boter"},{"name":"Cornets Vanille Smaak 8 Stuks","category":"Diepvries"},{"name":"Courgette","category":"Aardappelen, groente en fruit"},{"name":"Drink me Chai Vegan Chai Latte 250 g","category":"Koffie en thee"},{"name":"Knorr Bouillon Blokjes Groente 15 tabletten","category":"Conserven, soepen, sauzen, oliën"},{"name":"Ei-Bieslook Salade 250 g","category":"Vleeswaren, kaas en tapas"},{"name":"HAK Zwarte Bonen 380g","category":"Conserven, soepen, sauzen, oliën"},{"name":"Kaasblokjes Jong Belegen 48+ 130 g","category":"Vleeswaren, kaas en tapas"},{"name":"Knoflook 100 g","category":"Aardappelen, groente en fruit"},{"name":"Kips Kleintje Vega Smeerworst 6 x 20 g","category":"Vega en plantaardig"},{"name":"Kernhem 60+ ca. 183 g","category":"Vleeswaren, kaas en tapas"},{"name":"Duvel 6.66% Blond 4 x 330ML","category":"Bier en wijn"},{"name":"HAK Linzencurry Protein Bowl 555g","category":"Conserven, soepen, sauzen, oliën"},{"name":"Elstar Appels Voordeelverpakking 1,5 kg","category":"Aardappelen, groente en fruit"},{"name":"Knoppers Melk Crispy Wafel 5 Stuks 125g","category":"Koek, snoep, chocolade en chips"},{"name":"Cottage Cheese 200 g","category":"Zuivel, eieren, boter"},{"name":"IJsbergsla 1 Stuk","category":"Aardappelen, groente en fruit"},{"name":"Houmous Pikant 200 g","category":"Wereldkeukens, kruiden, pasta en rijst"},{"name":"Kaasstengels 150 g","category":"Koek, snoep, chocolade en chips"},{"name":"Katja Zure Matjes Mix 250 g","category":"Koek, snoep, chocolade en chips"},{"name":"Houdbare Halfvolle Melk 1 L","category":"Zuivel, eieren, boter"},{"name":"Emmi Raclette Classic","category":"Vleeswaren, kaas en tapas"},{"name":"Fijngesneden Opbakaardappelen 600 g","category":"Aardappelen, groente en fruit"},{"name":"Havermout Fijne Vlokken Volkoren Voordeelverpakking 1KG","category":"Ontbijt, broodbeleg en bakproducten"},{"name":"HEMA Nagelborsteltje","category":"Drogisterij"},{"name":"Fijnproevers Mandarijnen 1 kg","category":"Aardappelen, groente en fruit"},{"name":"Desem Baguettes Wit 2 Stuks","category":"Brood en gebak"},{"name":"Grand'Italia Spaghetti Tradizionali Voordeelpak 1 kg","category":"Wereldkeukens, kruiden, pasta en rijst"},{"name":"Jonagold Appels Voordeelverpakking 1,5 kg","category":"Aardappelen, groente en fruit"},{"name":"ERU Goudkuipje Naturel 200 g","category":"Vleeswaren, kaas en tapas"},{"name":"Kabeljauwfilet Naturel ca. 260 g","category":"Vlees, vis en vega"},{"name":"Cottage Cheese Light 200 g","category":"Zuivel, eieren, boter"},{"name":"Gember Ontbijtkoek Ongesneden 465 g","category":"Ontbijt, broodbeleg en bakproducten"},{"name":"Julienne Wortel 150 g","category":"Aardappelen, groente en fruit"},{"name":"Crème Fraîche Light 50% Minder Vet 125 g","category":"Zuivel, eieren, boter"},{"name":"Koningsvogel Sambal Manis 280 g","category":"Wereldkeukens, kruiden, pasta en rijst"},{"name":"Holie's Granola Protein Peanut Butter 350 g","category":"Ontbijt, broodbeleg en bakproducten"},{"name":"Komo Huisvuilzakken + Sluitstrips 20 Stuks","category":"Huishouden"},{"name":"Dille 15 g","category":"Aardappelen, groente en fruit"},{"name":"HiPRO Protein Mousse Dark Chocolate 200 g","category":"Zuivel, eieren, boter"},{"name":"Galbani Grana Padano Kaas 150 g","category":"Vleeswaren, kaas en tapas"},{"name":"Faja Lobi Sandhia's Roti 4 Stuks 280 g","category":"Wereldkeukens, kruiden, pasta en rijst"},{"name":"Knolselderij","category":"Aardappelen, groente en fruit"},{"name":"Fruitbiscuits Appelsmaak 6 x 3 Stuks","category":"Koek, snoep, chocolade en chips"},{"name":"Griekse Olijvenmix 120 g","category":"Conserven, soepen, sauzen, oliën"},{"name":"Goldsteig Mozzarella Classic 220 g","category":"Vleeswaren, kaas en tapas"},{"name":"Knorr Pittige Tomaat Cup-a-Soup 3 x 175 ml","category":"Conserven, soepen, sauzen, oliën"},{"name":"Jan Pizzadeeg met zuurdesem en tomatensaus 600g","category":"Verse maaltijden en gemak"},{"name":"Fijne Champignons 250 g","category":"Aardappelen, groente en fruit"},{"name":"Kips Vega Filet Americain 125 g","category":"Vega en plantaardig"},{"name":"Druiven Wit Pitloos 500 g","category":"Aardappelen, groente en fruit"},{"name":"Fairtrade Bio Bananen 850 g","category":"Aardappelen, groente en fruit"},{"name":"Dikke Rijstwafels Zeezout 120 g","category":"Koek, snoep, chocolade en chips"},{"name":"La Place Kruiden Munt 15 Stuks","category":"Koffie en thee"},{"name":"Halloumi Grillkaas 225 g","category":"Vleeswaren, kaas en tapas"},{"name":"Dikke Maiswafels Zeezout 120 g","category":"Koek, snoep, chocolade en chips"},{"name":"Katja Biggetjes 255 g","category":"Koek, snoep, chocolade en chips"},{"name":"Italiaanse Kruiden 55 g","category":"Wereldkeukens, kruiden, pasta en rijst"},{"name":"Kips Groentespread Zongedroogde Tomaat 125g","category":"Vleeswaren, kaas en tapas"},{"name":"Go-Tan Kokosmelk 8% 500ml","category":"Wereldkeukens, kruiden, pasta en rijst"},{"name":"Ginger Ale 1 L","category":"Frisdrank en sappen"},{"name":"Kalkoenfilet 100 g","category":"Vleeswaren, kaas en tapas"},{"name":"Gesneden IJsbergsla 200 g","category":"Aardappelen, groente en fruit"},{"name":"Dr. Oetker Ristorante Pizza Margherita 295 g","category":"Diepvries"},{"name":"Kaas Belegen 48+ Stuk Voordeelverpakking 910 g","category":"Vleeswaren, kaas en tapas"},{"name":"Filet Americain Mager 150 g","category":"Vleeswaren, kaas en tapas"},{"name":"Frietjes Zoete Aardappel 400 g","category":"Diepvries"},{"name":"Extra Jam Bosvruchten 430 g","category":"Ontbijt, broodbeleg en bakproducten"},{"name":"De Sinaasappelaere Sinaasappelsap 33 cl","category":"Frisdrank en sappen"},{"name":"Hak Mais 190 g","category":"Conserven, soepen, sauzen, oliën"},{"name":"Gemengde Drop Zoet & Zout 350 g","category":"Koek, snoep, chocolade en chips"},{"name":"Kokos Plantaardige Variatie op Yoghurt 400g","category":"Vega en plantaardig"},{"name":"Geitenkaas Schijfjes Naturel 125 g","category":"Vleeswaren, kaas en tapas"},{"name":"Fruitbiscuits Bosvruchten­smaak 6 x 3 Stuks","category":"Koek, snoep, chocolade en chips"},{"name":"Italiaanse Bollen 2 Stuks","category":"Brood en gebak"},{"name":"Franse Kwark Mager 1 kg","category":"Zuivel, eieren, boter"},{"name":"Kappertjes in Azijn 100 g","category":"Conserven, soepen, sauzen, oliën"},{"name":"Crunchy Muesli Appel & Rozijn 900g","category":"Ontbijt, broodbeleg en bakproducten"},{"name":"De Vegetarische Slager Lekker Burgerlijk Vegan 160 g","category":"Vega en plantaardig"},{"name":"Frutesse Stroop Maestrichter 450 g","category":"Ontbijt, broodbeleg en bakproducten"},{"name":"Gemengde Groente 450 g","category":"Diepvries"},{"name":"Fruitreep Appelsmaak 8 Stuks","category":"Koek, snoep, chocolade en chips"},{"name":"Druiven Rood/Blauw Pitloos 500 g","category":"Aardappelen, groente en fruit"},{"name":"Groene Olijven Basilicum 140g","category":"Conserven, soepen, sauzen, oliën"},{"name":"Hot Salsa 230 g","category":"Wereldkeukens, kruiden, pasta en rijst"},{"name":"Goudse Kaas 48+ Belegen Stuk ca. 580 g","category":"Vleeswaren, kaas en tapas"},{"name":"Extra Zacht & Sterk Toiletpapier 4-Laags Voordeelverpakking 16 Rollen","category":"Huishouden"},{"name":"Karvan Cévitam Sinaasappel Original Siroop 600 ml","category":"Frisdrank en sappen"},{"name":"Koska Sesampasta 300g","category":"Wereldkeukens, kruiden, pasta en rijst"},{"name":"Franse Frites 1 kg","category":"Diepvries"},{"name":"Ei Salade met Lente-Ui 150 g","category":"Vleeswaren, kaas en tapas"},{"name":"Kruidenkaas Italiaanse Stijl 50+ ca. 250 g","category":"Vleeswaren, kaas en tapas"},{"name":"Komkommer","category":"Aardappelen, groente en fruit"},{"name":"Kropsla","category":"Aardappelen, groente en fruit"},{"name":"Hooghoudt Limonade Siroop Valencia 0,7 L","category":"Frisdrank en sappen"},{"name":"Hema Plastic Elastieken","category":"Non-food en servicebalie"},{"name":"Lasagnebladen Naturel 250 g","category":"Wereldkeukens, kruiden, pasta en rijst"},{"name":"Lay's Max Ribbel Chips Naturel 275 gr","category":"Koek, snoep, chocolade en chips"},{"name":"Lassie Zilvervliesrijst Voordeelpak 750 g","category":"Wereldkeukens, kruiden, pasta en rijst"},{"name":"Lay's Sensations Thai Sweet Chilli Chips 150 gr","category":"Koek, snoep, chocolade en chips"},{"name":"Lay's Max Ribbel Chips Heinz Tomaten Ketchup 185 gr","category":"Koek, snoep, chocolade en chips"},{"name":"Le Rustique Camembert 250 g","category":"Vleeswaren, kaas en tapas"},{"name":"Minikrieltjes 600 g","category":"Aardappelen, groente en fruit"},{"name":"Mini Babybel Jonge 45+ kaas tussendoortje 20 g x 5","category":"Vleeswaren, kaas en tapas"},{"name":"Sambal Light 15+ Smeerkaas 200 g","category":"Vleeswaren, kaas en tapas"},{"name":"Roosvicee Vruchtenmix siroop 500 ml","category":"Frisdrank en sappen"},{"name":"Volkoren Biscuit 300 g","category":"Koek, snoep, chocolade en chips"},{"name":"Mineola 1 kg","category":"Aardappelen, groente en fruit"},{"name":"Stokbrood Rustiek Wit Afbakbrood 300 g","category":"Brood en gebak"},{"name":"Verse Gnocchi 400 g","category":"Verse maaltijden en gemak"},{"name":"Vivera Plantaardig Kruim Gehaakt 200 g","category":"Vega en plantaardig"},{"name":"Rösti Rondjes 600 g","category":"Diepvries"},{"name":"Maza Muhammara 200g","category":"Wereldkeukens, kruiden, pasta en rijst"},{"name":"Muesli Vier Noten Voordeelverpakking 900 g","category":"Ontbijt, broodbeleg en bakproducten"},{"name":"Slagers Leverworst 250 g","category":"Vleeswaren, kaas en tapas"},{"name":"Napoleon Citroen 225 g","category":"Koek, snoep, chocolade en chips"},{"name":"Pally Theekoekjes 300 g","category":"Koek, snoep, chocolade en chips"},{"name":"Sojadrink Ongezoet 1 L","category":"Vega en plantaardig"},{"name":"Ovengebakken Scharrel Kipfilet ca. 120 g","category":"Vleeswaren, kaas en tapas"},{"name":"Mini Snacks Airfryer & Oven ca. 16 Stuks","category":"Diepvries"},{"name":"Rivella Original 1,5 L","category":"Frisdrank en sappen"},{"name":"Sparkling Ice Tea 6 x 250ML","category":"Frisdrank en sappen"},{"name":"Pistachenoten Gezouten 200 g","category":"Koek, snoep, chocolade en chips"},{"name":"Naturel Ontbijtkoek 550 g","category":"Ontbijt, broodbeleg en bakproducten"},{"name":"Palingworst ca. 110g","category":"Vleeswaren, kaas en tapas"},{"name":"Plakjes Leverworst 175 g","category":"Vleeswaren, kaas en tapas"},{"name":"Mars Minimix chocolade repen uitdeelzak 500g","category":"Koek, snoep, chocolade en chips"},{"name":"Tagliatelle 500 g","category":"Wereldkeukens, kruiden, pasta en rijst"},{"name":"Snackgroente Komkommertjes 400 g","category":"Aardappelen, groente en fruit"},{"name":"Peroni Nastro Azzurro 0,0% Alcoholvrij 6 x 330ML","category":"Bier en wijn"},{"name":"Tijger Bollen 2 Stuks","category":"Brood en gebak"},{"name":"Naturel Light 15+ Smeerkaas 200 g","category":"Vleeswaren, kaas en tapas"},{"name":"Pataks mini Naan garlic & herbs","category":"Wereldkeukens, kruiden, pasta en rijst"},{"name":"Pangasiusfilet 270 g","category":"Vlees, vis en vega"},{"name":"Salted Caramel Stracciatella 70 g","category":"Zuivel, eieren, boter"},{"name":"Vivera Vegetarische Kaas Schnitzel 2 Stuks 150 g","category":"Vega en plantaardig"},{"name":"Snack Worteltjes 300 g","category":"Aardappelen, groente en fruit"},{"name":"Tortilla Volkoren 8 Stuks","category":"Wereldkeukens, kruiden, pasta en rijst"},{"name":"Rodekool met Appel 520 g","category":"Conserven, soepen, sauzen, oliën"},{"name":"Tiramisu Dessert 500 g","category":"Zuivel, eieren, boter"},{"name":"Maïskorrels 330 g","category":"Conserven, soepen, sauzen, oliën"},{"name":"Optimel Drinkyoghurt Mango Passievrucht 0% Vet 1L","category":"Zuivel, eieren, boter"},{"name":"Peterselie 40 g","category":"Aardappelen, groente en fruit"},{"name":"Stroop Wafels met Roomboter 468 g","category":"Koek, snoep, chocolade en chips"},{"name":"Plantaardige Worstenbroodjes 4 Stuks","category":"Vega en plantaardig"},{"name":"Venturino Bartolomeo Pesto alla Genovese 180 g","category":"Conserven, soepen, sauzen, oliën"},{"name":"The Flower Farm Bakken Zonder Palmolie Value Pack 750 ml","category":"Zuivel, eieren, boter"},{"name":"Spruiten 500 g","category":"Aardappelen, groente en fruit"},{"name":"Pizzakit met Pizzadeeg en Tomatensaus","category":"Verse maaltijden en gemak"},{"name":"Mullrose Schoonmaakazijn Magic Vinax 1L","category":"Huishouden"},{"name":"Plantaardig Wokstukjes Oosterse Stijl 175g","category":"Vega en plantaardig"},{"name":"Tampons Super 32 Stuks","category":"Drogisterij"},{"name":"Viking Blue ca. 100 g","category":"Vleeswaren, kaas en tapas"},{"name":"Pinot Grigio Rosé Biologisch 750ML","category":"Bier en wijn"},{"name":"Stegeman Vegetarisch Broodbeleg met Mediterraanse Kruiden 100 g","category":"Vega en plantaardig"},{"name":"Maaltijd Pita's 5 Stuks","category":"Brood en gebak"},{"name":"Olijven Mammoet","category":"Conserven, soepen, sauzen, oliën"},{"name":"Veldsla 85 g","category":"Aardappelen, groente en fruit"},{"name":"Olijven Naturel 140 g","category":"Conserven, soepen, sauzen, oliën"},{"name":"Paracetamol 500mg 20tabl","category":"Drogisterij"},{"name":"Slagroom 250 g","category":"Zuivel, eieren, boter"},{"name":"Spices Chai 20 Stuks","category":"Koffie en thee"},{"name":"LU PiM's Koekjes Peer 150g","category":"Koek, snoep, chocolade en chips"},{"name":"Sultana FruitBiscuits Naturel 218 g","category":"Koek, snoep, chocolade en chips"},{"name":"Neuburger Coupe Danube Chocoladesmaak 200 g","category":"Zuivel, eieren, boter"},{"name":"Uien 1 kg","category":"Aardappelen, groente en fruit"},{"name":"Maggi Champignon Bouillon 80 g","category":"Conserven, soepen, sauzen, oliën"},{"name":"Risotto rijst Arborio 500 g","category":"Wereldkeukens, kruiden, pasta en rijst"},{"name":"Pickwick Pure Groene Thee 20 Stuks","category":"Koffie en thee"},{"name":"Sinaasappel Sap 1,5 L","category":"Frisdrank en sappen"},{"name":"Minikrieltjes 450 g","category":"Aardappelen, groente en fruit"},{"name":"Santa Maria Chunky Wrap Salsa Hot 230 g","category":"Wereldkeukens, kruiden, pasta en rijst"},{"name":"Lipton Yellow Label Classico 50 Stuks","category":"Koffie en thee"},{"name":"Traybake Knolselderij & Pompoen Mix 450 g","category":"Verse maaltijden en gemak"},{"name":"Spaghetti","category":"Wereldkeukens, kruiden, pasta en rijst"},{"name":"MAGGI Jus Naturel Voordeel 125 g","category":"Conserven, soepen, sauzen, oliën"},{"name":"Maaltijd Pita's Griekse Stijl 5 Stuks","category":"Brood en gebak"},{"name":"Nacho Chips 200g","category":"Koek, snoep, chocolade en chips"},{"name":"Romige Vla Chocoladesmaak 1 L","category":"Zuivel, eieren, boter"},{"name":"Tros Tomaten 5 Stuks","category":"Aardappelen, groente en fruit"},{"name":"Plantaardige Balletjes Voorgegaard Voordeelverpakking 367 g","category":"Vega en plantaardig"},{"name":"Tomaten Sugo","category":"Conserven, soepen, sauzen, oliën"},{"name":"Sperziebonen 500 g","category":"Aardappelen, groente en fruit"},{"name":"Vivera Plantaardige Kipstukjes 175 g","category":"Vega en plantaardig"},{"name":"Platte Peterselie 15 g","category":"Aardappelen, groente en fruit"},{"name":"Ongeroosterde Pijnboompitten 100 g","category":"Ontbijt, broodbeleg en bakproducten"},{"name":"Plantaardig Spekreepjes met Rooksmaak 175g","category":"Vega en plantaardig"},{"name":"Maza Hoemoes Paprika & Oregano 200 g","category":"Wereldkeukens, kruiden, pasta en rijst"},{"name":"Verstegen Dille 17 g","category":"Wereldkeukens, kruiden, pasta en rijst"},{"name":"Mini Naan Knoflook Koriander 200 g","category":"Wereldkeukens, kruiden, pasta en rijst"},{"name":"Muntthee","category":"Koffie en thee"},{"name":"Verstegen Komijnzaad Gemalen 37 g","category":"Wereldkeukens, kruiden, pasta en rijst"},{"name":"Muesli Naturel 1 kg","category":"Ontbijt, broodbeleg en bakproducten"},{"name":"Reuze Rozijnenbollen 4 Stuks","category":"Brood en gebak"},{"name":"Snijworst 140 g","category":"Vleeswaren, kaas en tapas"},{"name":"Tarwe Gepoft 160 g","category":"Ontbijt, broodbeleg en bakproducten"},{"name":"Mozzarella di Bufala Campana DOP 250 g","category":"Vleeswaren, kaas en tapas"},{"name":"Oranje Pompoen Biologisch","category":"Aardappelen, groente en fruit"},{"name":"Verstegen Paprikapoeder Pikant 35 g","category":"Wereldkeukens, kruiden, pasta en rijst"},{"name":"Neutral Waspoeder Parfumvrij Wit 18 wasbeurten","category":"Huishouden"},{"name":"Venkel","category":"Aardappelen, groente en fruit"},{"name":"Melkchocolade Caramel Zeezout 140 g","category":"Koek, snoep, chocolade en chips"},{"name":"Tomaten Gezeefd Passata 500 g","category":"Conserven, soepen, sauzen, oliën"},{"name":"Vegetarische Kaas Schnitzel 2 Stuks","category":"Vega en plantaardig"},{"name":"The Flower Farm Smeren Zonder Palmolie 375 g","category":"Zuivel, eieren, boter"},{"name":"Sultana Crunchers Kaas/Tomaat 175 g","category":"Koek, snoep, chocolade en chips"},{"name":"Patentbloem 1KG","category":"Ontbijt, broodbeleg en bakproducten"},{"name":"Paddenstoelen Bouillon Blokjes 8 Stuks","category":"Conserven, soepen, sauzen, oliën"},{"name":"Melkbiscuits 6 Stuks","category":"Koek, snoep, chocolade en chips"},{"name":"Plantaardige Gehakte Kruimige Stukjes Rui Gegaard 200 g","category":"Vega en plantaardig"},{"name":"Look-O-Look Zure Regenboog Streken Vegan 20 stuks","category":"Koek, snoep, chocolade en chips"},{"name":"Mozzarella Maxi 250 g","category":"Vleeswaren, kaas en tapas"},{"name":"Maza Hoemoes 200 g","category":"Wereldkeukens, kruiden, pasta en rijst"},{"name":"Slagroom Luxe 250g","category":"Zuivel, eieren, boter"},{"name":"Venco Droptoppers Zacht & Salmiak 215 g","category":"Koek, snoep, chocolade en chips"},{"name":"Lutti Foppies Zuur Citric 175 g","category":"Koek, snoep, chocolade en chips"},{"name":"Vivera Plantaardige Shoarma 300 g","category":"Vega en plantaardig"},{"name":"Marcel's Green Soap wasverzachter Patchouli & Cranberry 750 ML","category":"Huishouden"},{"name":"Magnetron Popcorn Zout 3 x 90 g","category":"Koek, snoep, chocolade en chips"},{"name":"Paprika Mix 3 Stuks","category":"Aardappelen, groente en fruit"},{"name":"Topking VlamTosti's Lekker Pittig 2 Stuks 240 g","category":"Verse maaltijden en gemak"},{"name":"Royal Mediterranean Ontpitte Kalamata Variëteit Olijven 195 g","category":"Conserven, soepen, sauzen, oliën"},{"name":"Tiramisu 80 g","category":"Zuivel, eieren, boter"},{"name":"Speculoos Pasta 400 g","category":"Ontbijt, broodbeleg en bakproducten"},{"name":"Ongebrande Notenmix 200 g","category":"Koek, snoep, chocolade en chips"},{"name":"LU Mini Crackers Naturel 8 x 5 Stuks 250g","category":"Koek, snoep, chocolade en chips"},{"name":"Magioni Carrot Banana Pancakes 4 x 40 g","category":"Diepvries"},{"name":"Maza Hoemoes Spicy Mango 200 g","category":"Wereldkeukens, kruiden, pasta en rijst"},{"name":"Pannen Sponsen 2 Stuks","category":"Huishouden"},{"name":"Naturel 48+ Smeerkaas 200 g","category":"Vleeswaren, kaas en tapas"},{"name":"Mueslireep yoghurt & rood fruit","category":"Ontbijt, broodbeleg en bakproducten"},{"name":"Puur Chocopasta 400 g","category":"Ontbijt, broodbeleg en bakproducten"},{"name":"Roosjes Bloemkool & Broccoli 400 g","category":"Aardappelen, groente en fruit"},{"name":"Pranutti Duopasta 600g","category":"Ontbijt, broodbeleg en bakproducten"},{"name":"St. Paulin ca. 122 g","category":"Vleeswaren, kaas en tapas"},{"name":"Paddenstoelen Mix","category":"Aardappelen, groente en fruit"},{"name":"Optimel Drinkyoghurt Limoen 0% Vet 1L","category":"Zuivel, eieren, boter"},{"name":"Rucola Nootachtig & Licht Pittig 85 g","category":"Aardappelen, groente en fruit"},{"name":"Vegetarische Kaas Schnitzel Voordeelverpakking 400 g","category":"Vega en plantaardig"},{"name":"Mascarpone 250 g","category":"Zuivel, eieren, boter"},{"name":"Snackgroente Tomaatjes 250g","category":"Aardappelen, groente en fruit"},{"name":"Straffe Hendrik Brugs Tripel 330ML","category":"Bier en wijn"},{"name":"Vissticks Krokant 15 Stuks","category":"Diepvries"},{"name":"Roomboter Croissants 4 Stuks","category":"Brood en gebak"},{"name":"Schotel Meergranen Volkoren Knapperig en Vers","category":"Brood en gebak"},{"name":"Rucola 150 g","category":"Aardappelen, groente en fruit"},{"name":"Plakjes Gehaktbal 160 g","category":"Vleeswaren, kaas en tapas"},{"name":"Verse Friet 1 kg","category":"Aardappelen, groente en fruit"},{"name":"Mini Krieltjes 200 g","category":"Aardappelen, groente en fruit"},{"name":"Maza Baba Anoesch 200 g","category":"Wereldkeukens, kruiden, pasta en rijst"},{"name":"Red Phoenix Sriracha mayo","category":"Conserven, soepen, sauzen, oliën"},{"name":"Ongezouten Roomboter 250 g","category":"Zuivel, eieren, boter"},{"name":"Stacked Flavour Original Chips 170 g","category":"Koek, snoep, chocolade en chips"},{"name":"Vegan Bitterballen Airfryer & Oven ca. 12 Stuks","category":"Diepvries"},{"name":"Verstegen Koriander Gemalen 33 g","category":"Wereldkeukens, kruiden, pasta en rijst"},{"name":"Mandarijnen 1 kg","category":"Aardappelen, groente en fruit"},{"name":"Spitskool 2-3 Personen","category":"Aardappelen, groente en fruit"},{"name":"Pangasiusfilet Citroen/Peper","category":"Vlees, vis en vega"},{"name":"Neutral Waspoeder Kleur 18 wasbeurten","category":"Huishouden"},{"name":"Oreo Double Crème Koekjes 157g","category":"Koek, snoep, chocolade en chips"},{"name":"Maaslander Jong 30+ Kaas Plakken 150 g","category":"Vleeswaren, kaas en tapas"},{"name":"Scharrel Kipfilet 120 g","category":"Vleeswaren, kaas en tapas"},{"name":"Zalmfilet met Huid Naturel ca. 360 g","category":"Vlees, vis en vega"},{"name":"Zalmfilet met Huid Naturel ca. 125 g","category":"Vlees, vis en vega"},{"name":"Zoet & Sappig Mini Roma Trostomaten 300 g","category":"Aardappelen, groente en fruit"},{"name":"Vrije Uitloop Eieren M/L 10 Stuks","category":"Zuivel, eieren, boter"},{"name":"Waspeen 500 g","category":"Aardappelen, groente en fruit"},{"name":"Volkoren Meergranenbollen 2 Stuks","category":"Brood en gebak"},{"name":"Zoete Punt Paprika Mix 3 Stuks","category":"Aardappelen, groente en fruit"},{"name":"Wasa Sesam 250 g","category":"Koek, snoep, chocolade en chips"},{"name":"Vriesverse Bosvruchten Voordeelverpakking 750 g","category":"Diepvries"},{"name":"Yoghurt Griekse Stijl Naturel 10% Vet 1KG","category":"Zuivel, eieren, boter"},{"name":"Zeezout Boter 100 g","category":"Zuivel, eieren, boter"},{"name":"Zonnatura Crunch Sesam 3 x 50 g","category":"Koek, snoep, chocolade en chips"},{"name":"XL Tortilla Naturel 12 Stuks","category":"Wereldkeukens, kruiden, pasta en rijst"},{"name":"XL Tortilla Naturel 6 Stuks","category":"Wereldkeukens, kruiden, pasta en rijst"},{"name":"Vriesverse Frambozen Blauwe Bessen 250 g","category":"Diepvries"},{"name":"Westmalle Trappist Dubbel 4 x 330ML","category":"Bier en wijn"},{"name":"Zuivelspread Naturel 200 g","category":"Vleeswaren, kaas en tapas"},{"name":"Zoetzuur Rode Uienringen 340 g","category":"Conserven, soepen, sauzen, oliën"},{"name":"Zoete Puntpaprika 500 g","category":"Aardappelen, groente en fruit"},{"name":"Worstenbroodjes 4 Stuks","category":"Brood en gebak"},{"name":"XL Tortilla Volkoren 6 Stuks","category":"Wereldkeukens, kruiden, pasta en rijst"},{"name":"Witlof 2-3 Personen 500g","category":"Aardappelen, groente en fruit"},{"name":"Wortelen 500 g","category":"Aardappelen, groente en fruit"},{"name":"Volkoren Pita's 5 Stuks","category":"Brood en gebak"},{"name":"Zongedroogde Sultana Rozijnen 500 g","category":"Ontbijt, broodbeleg en bakproducten"},{"name":"Yoghurt Griekse Stijl 0,1% Vet 1 kg","category":"Zuivel, eieren, boter"},{"name":"Zwarte Olijven Zonder Pit 340 g","category":"Conserven, soepen, sauzen, oliën"},{"name":"Witte Kaas Plak 250 g","category":"Vleeswaren, kaas en tapas"},{"name":"Prei","category":"Aardappelen, groente en fruit"},{"name":"Tomato Frito","category":"Conserven, soepen, sauzen, oliën"}];
 
     // ---------------- Auth hook ----------------
     function useAuth() {
@@ -362,7 +313,7 @@ const { useEffect, useMemo, useRef, useState } = React;
     }
 
     // ---------------- Household setup ----------------
-    function SetupScreen({ user }) {
+    function SetupScreen({ user, onCreated }) {
       const [mode, setMode] = useState('join'); // join | create
       const [busy, setBusy] = useState(false);
       const [error, setError] = useState('');
@@ -383,6 +334,16 @@ const { useEffect, useMemo, useRef, useState } = React;
             inviteCode = makeCode();
           }
 
+          const listId = genId('l');
+
+          // 1) Add as member first (needed for security rules)
+          await db.doc(`households/${householdId}/members/${user.uid}`).set({
+            displayName: user.displayName || '',
+            photoURL: user.photoURL || '',
+            joinedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          });
+
+          // 2) Household meta
           await db.doc(`households/${householdId}/meta/info`).set({
             name: householdName.trim() || 'Ons huishouden',
             code: inviteCode,
@@ -390,26 +351,42 @@ const { useEffect, useMemo, useRef, useState } = React;
             createdBy: user.uid,
           });
 
+          // 3) Invite code
           await db.doc(`invite_codes/${inviteCode}`).set({
             householdId,
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
           });
 
-          // member first
-          await db.doc(`households/${householdId}/members/${user.uid}`).set({
-            displayName: user.displayName || '',
-            photoURL: user.photoURL || '',
-            joinedAt: firebase.firestore.FieldValue.serverTimestamp(),
-          });
-
-          // default list
-          const listId = genId('l');
+          // 4) Default list
           await db.doc(`households/${householdId}/lists_meta/${listId}`).set({
             name: 'Boodschappen',
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
             createdBy: user.uid,
           });
 
+          // 5) Seed default products
+          if (DEFAULT_PRODUCTS.length > 0) {
+            const BATCH_SIZE = 400;
+            for (let i = 0; i < DEFAULT_PRODUCTS.length; i += BATCH_SIZE) {
+              const batch = db.batch();
+              DEFAULT_PRODUCTS.slice(i, i + BATCH_SIZE).forEach(p => {
+                const pid = genId('p');
+                batch.set(db.doc(`households/${householdId}/products/${pid}`), {
+                  name: p.name,
+                  category: p.category || 'Overig',
+                  cycle: '',
+                  schemaVersion: 2,
+                  updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                  updatedBy: user.uid,
+                  updatedByName: user.displayName || '',
+                  updatedByPhotoURL: user.photoURL || '',
+                });
+              });
+              await batch.commit();
+            }
+          }
+
+          // 6) LAST: link user to household (triggers UI transition via onSnapshot)
           await db.doc(`users/${user.uid}`).set({
             householdId,
             activeListId: listId,
@@ -417,6 +394,9 @@ const { useEffect, useMemo, useRef, useState } = React;
             photoURL: user.photoURL || '',
             email: user.email || '',
           }, { merge: true });
+
+          // Show invite code dialog
+          onCreated({ code: inviteCode, name: householdName.trim() || 'Ons huishouden' });
         } catch (e) {
           console.error("Create household error:", e);
           setError(e?.message || 'Er ging iets mis bij het aanmaken.');
@@ -472,7 +452,7 @@ const { useEffect, useMemo, useRef, useState } = React;
       return (
         <div className="max-w-xl mx-auto px-4 pt-6 pb-24">
           <div className="flex items-center justify-between mb-4">
-            <h1 className="text-xl font-black text-slate-900">Boodschappenlijstjemaker</h1>
+            <h1 className="text-xl font-black text-slate-900">Boodschappenlijstjesmaker</h1>
             <div className="flex items-center gap-2">
               <img src={user.photoURL || ''} className="w-8 h-8 rounded-full bg-slate-200" />
               <button onClick={() => auth.signOut()} className="text-xs text-slate-500 underline">uitloggen</button>
@@ -498,7 +478,7 @@ const { useEffect, useMemo, useRef, useState } = React;
                   <div>
                     <div className="text-xs font-semibold text-slate-500 mb-1">Huishoud-code</div>
                     <input value={code} onChange={(e)=>setCode(e.target.value.toUpperCase())}
-                      placeholder="bijv. PXKCRE"
+                      placeholder="bijv. KRDPKY"
                       className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white font-mono tracking-wider" />
                     <div className="text-[11px] text-slate-400 mt-1">6 tekens (letters/cijfers).</div>
                   </div>
@@ -532,6 +512,10 @@ const { useEffect, useMemo, useRef, useState } = React;
     function Header({ user, householdId, householdInfo, members, syncing, storeMode, setStoreMode, onCopyCode, onSignOut }) {
       const [editingName, setEditingName] = useState(false);
       const [draftName, setDraftName] = useState(householdInfo?.name || '');
+      const [showMenu, setShowMenu] = useState(false);
+      const [showManage, setShowManage] = useState(false);
+
+      const isOwner = householdInfo?.createdBy === user?.uid;
 
       useEffect(() => {
         setDraftName(householdInfo?.name || '');
@@ -612,57 +596,188 @@ const { useEffect, useMemo, useRef, useState } = React;
 
       return (
         <header className="mb-4">
-          <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center justify-between gap-2">
             <div className="min-w-0">
-              <h1 className="text-xl font-black text-slate-900 leading-tight">Boodschappenlijstjemaker</h1>
-
-              <div className="flex items-center gap-3 flex-wrap">
-                {!storeMode && <HouseholdNameLine />}
-
-                {!storeMode && (
-                <div className="inline-flex items-center -space-x-2" aria-label="Leden">
-                  {show.map((m, idx) => <Avatar key={(m && (m.uid || m.id)) || idx} m={m} i={idx} />)}
-                  {extra > 0 && (
-                    <div
-                      className="w-5 h-5 rounded-full ring-2 ring-white bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-600"
-                      style={{ zIndex: 0 }}
-                      title={`${extra} meer`}
-                    >
-                      +{extra}
-                    </div>
-                  )}
-                </div>
-              )}
-              </div>
+              <h1 className="text-base font-black text-slate-900 leading-tight">Boodschappenlijstjesmaker</h1>
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
-              <button
-                type="button"
+              <div
+                className="flex items-center gap-1 cursor-pointer select-none"
                 onClick={() => setStoreMode?.(!storeMode)}
-                className={
-                  "inline-flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-xs font-bold border " +
-                  (storeMode ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-slate-700 border-slate-200")
-                }
-                title={storeMode ? "Winkelstand uit" : "Winkelstand aan"}
+                title={storeMode ? "Winkelmodus uit" : "Winkelmodus aan"}
               >
-                <span aria-hidden="true">🛒</span>
-                <span className="hidden sm:inline">{storeMode ? "Winkel" : "Normaal"}</span>
-              </button>
-              {!storeMode && (syncing ? <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" title="Synchroniseren"></span>
-                        : <span className="w-2 h-2 rounded-full bg-emerald-400" title="Gesynchroniseerd"></span>)}
-              <button onClick={onSignOut} className="flex items-center gap-2 transform-gpu" style={{ WebkitTransform: "translateZ(0)", transform: "translateZ(0)" }}>
-                {user.photoURL ? <img src={user.photoURL} className="w-7 h-7 rounded-full transform-gpu" /> : <div className="w-7 h-7 rounded-full bg-slate-200 transform-gpu"></div>}
-              </button>
+                <img src={storeMode ? CART_FULL : CART_EMPTY} className="w-6 h-6" style={{objectFit:'contain'}} />
+                <div className={"relative w-11 h-6 rounded-full transition-colors duration-200 " + (storeMode ? "bg-emerald-500" : "bg-slate-300")}>
+                  <div className={"absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 " + (storeMode ? "translate-x-5" : "translate-x-0")} />
+                </div>
+              </div>
+              {syncing ? <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" title="Synchroniseren"></span>
+                        : <span className="w-2 h-2 rounded-full bg-emerald-400" title="Gesynchroniseerd"></span>}
+              <div className="relative">
+                <button onClick={() => setShowMenu(!showMenu)} className="flex items-center gap-2 transform-gpu" style={{ WebkitTransform: "translateZ(0)", transform: "translateZ(0)" }}>
+                  {user.photoURL ? <img src={user.photoURL} className="w-7 h-7 rounded-full transform-gpu" /> : <div className="w-7 h-7 rounded-full bg-slate-200 transform-gpu"></div>}
+                </button>
+                {showMenu && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)} />
+                    <div className="absolute right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-50 overflow-hidden w-52">
+                      <div className="px-3 py-2 border-b border-slate-100">
+                        <div className="text-xs font-semibold text-slate-900 truncate">{user.displayName || user.email}</div>
+                        <div className="text-[10px] text-slate-400 truncate">{user.email}</div>
+                      </div>
+                      {isOwner && (
+                        <button
+                          onClick={() => { setShowMenu(false); setShowManage(true); }}
+                          className="w-full text-left px-3 py-2.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                        >⚙️ Huishouden beheren</button>
+                      )}
+                      <button
+                        onClick={() => { setShowMenu(false); onSignOut(); }}
+                        className="w-full text-left px-3 py-2.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2 border-t border-slate-100"
+                      >🚪 Uitloggen</button>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           </div>
 
-          {!storeMode && householdInfo?.code && (
-            <div className="mt-2 flex items-center gap-2">
-              <span className="text-xs text-slate-500">Code:</span>
-              <span className="font-mono font-bold text-sm tracking-wider text-emerald-700">{householdInfo.code}</span>
-              <button onClick={onCopyCode} className="text-[10px] px-2 py-1 bg-slate-100 rounded-lg text-slate-600">Kopieer</button>
+          {!storeMode && (
+            <div className="flex items-center gap-3 flex-wrap mt-1">
+              <HouseholdNameLine />
+              <div className="inline-flex items-center -space-x-2" aria-label="Leden">
+                {show.map((m, idx) => <Avatar key={(m && (m.uid || m.id)) || idx} m={m} i={idx} />)}
+                {extra > 0 && (
+                  <div
+                    className="w-5 h-5 rounded-full ring-2 ring-white bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-600"
+                    style={{ zIndex: 0 }}
+                    title={`${extra} meer`}
+                  >
+                    +{extra}
+                  </div>
+                )}
+              </div>
             </div>
+          )}
+
+          {showManage && (
+            <Modal title="Huishouden beheren" onClose={() => setShowManage(false)}>
+              {/* Invite code */}
+              <div className="mb-4">
+                <div className="text-xs font-semibold text-slate-500 mb-1">Uitnodigingscode</div>
+                <div className="flex items-center gap-2">
+                  <div className="font-mono font-bold text-lg tracking-widest text-emerald-700 bg-emerald-50 rounded-lg px-3 py-1.5">
+                    {householdInfo?.code || '—'}
+                  </div>
+                  <button
+                    onClick={() => {
+                      if (householdInfo?.code) {
+                        navigator.clipboard.writeText(householdInfo.code).catch(() => {});
+                      }
+                    }}
+                    className="text-xs px-2 py-1.5 bg-slate-100 rounded-lg text-slate-600 hover:bg-slate-200"
+                  >Kopieer</button>
+                </div>
+              </div>
+
+              {/* Members list */}
+              <div className="mb-4">
+                <div className="text-xs font-semibold text-slate-500 mb-2">Leden ({(members || []).length})</div>
+                <div className="space-y-2">
+                  {(members || []).map(m => {
+                    const mId = m?.uid || m?.id;
+                    const mName = m?.name || m?.displayName || 'Lid';
+                    const mPhoto = m?.photoURL || '';
+                    const isMe = mId === user?.uid;
+                    const isCreator = mId === householdInfo?.createdBy;
+                    return (
+                      <div key={mId} className="flex items-center gap-2 py-1.5 px-2 rounded-lg bg-slate-50">
+                        {mPhoto
+                          ? <img src={mPhoto} className="w-6 h-6 rounded-full" />
+                          : <div className="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-600">
+                              {(mName.trim()[0] || '?').toUpperCase()}
+                            </div>
+                        }
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium text-slate-800 truncate">
+                            {mName}{isMe ? ' (jij)' : ''}{isCreator ? ' ⭐' : ''}
+                          </div>
+                        </div>
+                        {isOwner && !isMe && (
+                          <button
+                            onClick={async () => {
+                              if (!confirm(`${mName} verwijderen uit het huishouden?`)) return;
+                              try {
+                                await db.doc(`households/${householdId}/members/${mId}`).delete();
+                              } catch(e) {
+                                console.error('Remove member error:', e);
+                                alert('Kon lid niet verwijderen: ' + (e?.message || 'Onbekende fout'));
+                              }
+                            }}
+                            className="text-[10px] px-2 py-1 bg-rose-100 text-rose-600 rounded-lg hover:bg-rose-200 shrink-0"
+                          >Verwijderen</button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Delete household */}
+              {isOwner && (
+                <div className="border-t border-slate-100 pt-4">
+                  <button
+                    onClick={async () => {
+                      if (!confirm('Weet je zeker dat je het hele huishouden wilt verwijderen? Dit kan niet ongedaan worden.')) return;
+                      if (!confirm('Echt zeker? Alle lijsten, producten en recepten worden verwijderd.')) return;
+                      try {
+                        // Delete invite code
+                        if (householdInfo?.code) {
+                          await db.doc(`invite_codes/${householdInfo.code}`).delete().catch(() => {});
+                        }
+
+                        // Helper to delete all docs in a collection
+                        async function deleteCollection(path) {
+                          const snap = await db.collection(path).get();
+                          if (!snap.empty) {
+                            const batch = db.batch();
+                            snap.docs.forEach(d => batch.delete(d.ref));
+                            await batch.commit();
+                          }
+                        }
+
+                        // Delete subcollections
+                        const listsMeta = await db.collection(`households/${householdId}/lists_meta`).get();
+                        for (const listDoc of listsMeta.docs) {
+                          await deleteCollection(`households/${householdId}/lists/${listDoc.id}/items`);
+                        }
+                        await deleteCollection(`households/${householdId}/lists_meta`);
+                        await deleteCollection(`households/${householdId}/products`);
+                        await deleteCollection(`households/${householdId}/recipes`);
+                        await deleteCollection(`households/${householdId}/members`);
+
+                        // Delete meta
+                        await db.doc(`households/${householdId}/meta/info`).delete().catch(() => {});
+
+                        // Clear own user doc (other members will see household is gone on next load)
+                        await db.doc(`users/${user.uid}`).set({
+                          householdId: firebase.firestore.FieldValue.delete(),
+                          activeListId: firebase.firestore.FieldValue.delete(),
+                        }, { merge: true }).catch(() => {});
+
+                        setShowManage(false);
+                        window.location.reload();
+                      } catch(e) {
+                        console.error('Delete household error:', e);
+                        alert('Kon huishouden niet verwijderen: ' + (e?.message || 'Onbekende fout'));
+                      }
+                    }}
+                    className="w-full text-center px-4 py-2.5 text-sm font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-xl"
+                  >🗑️ Huishouden verwijderen</button>
+                </div>
+              )}
+            </Modal>
           )}
         </header>
       );
@@ -672,6 +787,7 @@ const { useEffect, useMemo, useRef, useState } = React;
     
 function ProductsTab({ householdId, products, items, currentUser, activeListId }) {
   const [query, setQuery] = useState('');
+  const [newProductCategory, setNewProductCategory] = useState('Overig');
   const [editingId, setEditingId] = useState(null);
   const [editName, setEditName] = useState('');
   const [editCategory, setEditCategory] = useState('Overig');
@@ -719,7 +835,12 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
       return cmpAZ(a,b);
     };
 
-    const innerCmp = (sortMode === 'category') ? cmpCategory : cmpAZ;
+    const innerCmp = q ? ((a,b) => {
+      const ra = searchRelevance(a.name, q);
+      const rb = searchRelevance(b.name, q);
+      if (ra !== rb) return ra - rb;
+      return (a.name||'').localeCompare(b.name||'', 'nl');
+    }) : (sortMode === 'category') ? cmpCategory : cmpAZ;
 
     // Always put the chosen cycles on top (when any chip is active)
     const anyCycleActive = !!(cycleFlags.W || cycleFlags['2W'] || cycleFlags['3W']);
@@ -748,7 +869,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
       id,
       schemaVersion: 2,
       name,
-      category: 'Overig',
+      category: newProductCategory || 'Overig',
       updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
       updatedBy: currentUser?.uid || '',
       updatedByName: currentUser?.displayName || '',
@@ -757,6 +878,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
     };
     await db.doc(`households/${householdId}/products/${id}`).set(product);
     setQuery('');
+    setNewProductCategory('Overig');
   }
 
   function startEdit(p) {
@@ -930,9 +1052,25 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
       <div className="mb-3 space-y-2">
         <div className="flex flex-col sm:flex-row gap-2">
           <input value={query} onChange={(e)=>setQuery(e.target.value)}
+            onKeyDown={(e)=>{ if (e.key === 'Enter' && query.trim()) { e.preventDefault(); createProduct(); } if (e.key === 'Escape') { e.preventDefault(); setQuery(''); setNewProductCategory('Overig'); } }}
             placeholder="Zoek of maak product…"
             className="w-full sm:flex-1 px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm" />
-          <Button onClick={createProduct} className="bg-emerald-600 text-white w-full sm:w-12 px-0">+</Button>
+          <select
+            value={newProductCategory || 'Overig'}
+            onChange={(e)=>setNewProductCategory(e.target.value)}
+            className="w-full sm:w-56 px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm"
+            title="Categorie voor nieuw product"
+          >
+            {CATEGORY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+          {query.trim() ? (
+            <>
+              <Button onClick={createProduct} className="bg-emerald-600 text-white w-full sm:w-12 px-0" title="Product aanmaken">✓</Button>
+              <Button onClick={()=>{ setQuery(''); setNewProductCategory('Overig'); }} className="bg-rose-500 text-white w-full sm:w-12 px-0" title="Annuleren">✕</Button>
+            </>
+          ) : (
+            <Button onClick={createProduct} className="bg-emerald-600 text-white w-full sm:w-12 px-0" title="Product aanmaken">+</Button>
+          )}
         </div>
 
         <div className="flex flex-wrap gap-2 items-center">
@@ -1079,6 +1217,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
       const [newCategory, setNewCategory] = useState('Overig');
       const [showSuggestions, setShowSuggestions] = useState(false);
       const [openItemId, setOpenItemId] = useState(null);
+      const [showAllDone, setShowAllDone] = useState(false);
       const addInputRef = useRef(null);
 
       // Mobile UX: "magnet" add bar to top on focus (especially iOS keyboard)
@@ -1130,6 +1269,32 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
         setTimeout(doScroll, 180);
       }
 
+      function formatNeedsLine(needsByRecipe) {
+        const entries = Object.values(needsByRecipe || {});
+        if (!entries.length) return "";
+        const byUnit = new Map();
+        const textBits = [];
+
+        entries.forEach(e => {
+          const unit = String(e?.unit || "").trim();
+          if (e?.value != null && isFinite(Number(e.value))) {
+            const cur = byUnit.get(unit) || 0;
+            byUnit.set(unit, cur + Number(e.value));
+          } else if (e?.valueText) {
+            textBits.push(`${e.valueText} ${unit}`.trim());
+          }
+        });
+
+        const parts = [];
+        for (const [unit, total] of byUnit.entries()) {
+          const nice = (Math.round(total * 100) / 100).toString().replace('.', ',');
+          parts.push(`${nice} ${unit}`.trim());
+        }
+        parts.push(...textBits);
+
+        const label = "nodig:";
+        return `${label} ${parts.join(" + ")}`;
+      }
 
       useEffect(() => {
         // Track viewport height (iOS keyboard shrinks visual viewport)
@@ -1139,7 +1304,8 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
         vv.addEventListener('resize', handler);
         vv.addEventListener('scroll', handler);
         handler();
-        return () => {
+
+return () => {
           vv.removeEventListener('resize', handler);
           vv.removeEventListener('scroll', handler);
         };
@@ -1230,9 +1396,8 @@ useEffect(() => {
       const suggestions = useMemo(() => {
         const q = newText.trim().toLowerCase();
         if (q.length < 2) return [];
-        return (products || [])
-          .filter(p => (p.name||'').toLowerCase().includes(q))
-          .sort((a,b) => (a.name||'').localeCompare(b.name||'', 'nl'))
+        return sortByRelevance((products || [])
+          .filter(p => (p.name||'').toLowerCase().includes(q)), q)
           .slice(0, 30);
       }, [products, newText]);
 
@@ -1340,13 +1505,19 @@ async function addItemFromProduct(p) {
 
       async function toggle(item) {
         if (!householdId || !activeListId) return;
+        const nowChecked = !item.checked;
         await db.doc(`households/${householdId}/lists/${activeListId}/items/${item.id}`).set({
-          checked: !item.checked,
+          checked: nowChecked,
           updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
           updatedBy: (currentUser && currentUser.uid) ? currentUser.uid : '',
           updatedByName: (currentUser && currentUser.displayName) ? currentUser.displayName : '',
           updatedByPhotoURL: (currentUser && currentUser.photoURL) ? currentUser.photoURL : '',
         }, { merge: true });
+        // Check if all items are now checked
+        if (nowChecked && items && items.length > 0) {
+          const allDone = items.every(it => it.id === item.id ? true : it.checked);
+          if (allDone) setShowAllDone(true);
+        }
       }
 
       async function remove(item) {
@@ -1498,11 +1669,23 @@ async function addItemFromProduct(p) {
           const cat = (p?.category) || it.categorySnapshot || 'Overig';
           const key = cat || 'Overig';
           if (!map[key]) map[key] = [];
-          map[key].push({ ...it, _name: name, _cat: cat, _qty: currentQty(it) });
+          map[key].push({ ...it, _name: name, _cat: cat, _qty: currentQty(it), _needsLine: formatNeedsLine(it.needsByRecipe) });
         });
         const cats = Object.keys(map).sort((a,b) => CATEGORY_OPTIONS.indexOf(a) - CATEGORY_OPTIONS.indexOf(b));
-        return cats.map(c => ({ category: c, items: map[c].sort((a,b)=> (a._name||'').localeCompare(b._name||'', 'nl')) }));
-      }, [items, products]);
+        const groups = cats.map(c => ({ category: c, items: map[c].sort((a,b)=> (a._name||'').localeCompare(b._name||'', 'nl')) }));
+        if (storeMode) {
+          const checkedItems = [];
+          const uncheckedGroups = groups.map(g => ({
+            ...g,
+            items: g.items.filter(it => { if (it.checked) { checkedItems.push(it); return false; } return true; })
+          })).filter(g => g.items.length > 0);
+          if (checkedItems.length > 0) {
+            uncheckedGroups.push({ category: '__checked__', items: checkedItems.sort((a,b) => (a._name||'').localeCompare(b._name||'', 'nl')) });
+          }
+          return uncheckedGroups;
+        }
+        return groups;
+      }, [items, products, storeMode]);
 
       return (
         <div className="pb-24">
@@ -1518,9 +1701,9 @@ async function addItemFromProduct(p) {
                   value={newText}
                   onChange={(e)=>{ setNewText(e.target.value); setShowSuggestions(true); }}
                   onFocus={()=>{ setStickyAdd(true); scrollAddBoxIntoView(true); if (newText.trim().length>=2) setShowSuggestions(true); }}
-                  onBlur={()=> { setTimeout(()=>{ setShowSuggestions(false); setStickyAdd(false); }, 150); }}
+                  onBlur={()=> { setTimeout(()=>{ setShowSuggestions(false); if (!newText.trim()) setStickyAdd(false); }, 150); }}
                   onKeyDown={(e)=>{ if (e.key === 'Enter') { e.preventDefault(); addFreeText(); }
-                    if (e.key === 'Escape') { e.preventDefault(); setStickyAdd(false); } }}
+                    if (e.key === 'Escape') { e.preventDefault(); setNewText(''); setShowSuggestions(false); setStickyAdd(false); } }}
                   placeholder="Zoek product of typ iets nieuws…"
                   className="w-full pr-10 px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm"
                 />
@@ -1546,6 +1729,13 @@ async function addItemFromProduct(p) {
               >
                 {CATEGORY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
+
+              {newText.trim() && (
+                <>
+                  <Button onClick={addFreeText} className="bg-emerald-600 text-white w-full sm:w-12 px-0" title="Toevoegen">✓</Button>
+                  <Button onClick={()=>{ setNewText(''); setShowSuggestions(false); setStickyAdd(false); }} className="bg-rose-500 text-white w-full sm:w-12 px-0" title="Annuleren">✕</Button>
+                </>
+              )}
             </div>
 
             {showSuggestions && suggestions.length > 0 && (
@@ -1569,7 +1759,7 @@ async function addItemFromProduct(p) {
           </div>
           )}
 
-          {(!storeMode && stickyAdd) && <div style={{ height: 88 }} />}
+          {(!storeMode && stickyAdd) && <div style={{ height: 136 }} />}
 
 
           <Card>
@@ -1582,10 +1772,18 @@ async function addItemFromProduct(p) {
                   <div className="text-sm">Je lijst is leeg</div>
                 </div>
               ) : byCategory.map((group, gi) => (
-                <div key={group.category} className={storeMode ? (gi % 2 === 0 ? "bg-white/60 rounded-2xl p-2" : "bg-slate-50 rounded-2xl p-2") : ""}>
-                  <div className={"text-[11px] font-semibold uppercase tracking-wide px-2 py-1 mb-2 rounded-xl " + (storeMode ? "bg-slate-100 text-slate-600" : "text-slate-400")}>
-                    {group.category}
-                  </div>
+                <div key={group.category} className={storeMode && group.category !== '__checked__' ? (gi % 2 === 0 ? "bg-white/60 rounded-2xl p-2" : "bg-slate-50 rounded-2xl p-2") : (group.category === '__checked__' ? "mt-2" : "")}>
+                  {group.category === '__checked__' ? (
+                    <div className="flex items-center gap-2 px-2 py-1 mb-2">
+                      <div className="h-px flex-1 bg-slate-200" />
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Afgestreept</div>
+                      <div className="h-px flex-1 bg-slate-200" />
+                    </div>
+                  ) : (
+                    <div className={"text-[11px] font-semibold uppercase tracking-wide px-2 py-1 mb-2 rounded-xl " + (storeMode ? "bg-slate-100 text-slate-600" : "text-slate-400")}>
+                      {group.category}
+                    </div>
+                  )}
                   <div className="space-y-1">
                     {group.items.map(it => (
                       <SwipeRow key={it.id} item={it} onSwipeRight={(x)=>toggle(x)} onSwipeLeft={storeMode ? ((x)=>toggle(x)) : ((x)=>remove(x))}>
@@ -1594,8 +1792,15 @@ async function addItemFromProduct(p) {
                         className={"relative flex items-center bg-white border border-slate-200 rounded-xl " + (storeMode ? "px-4 py-3 pr-12" : "px-3 py-2")}
                         onClick={() => { if (storeMode) { toggle(it); } else { setOpenItemId(openItemId === it.id ? null : it.id); } }}
                       >
-                        <div className={"flex-1 min-w-0 pr-2 " + (storeMode ? "text-base" : "text-sm") + " " + (it.checked ? "line-through text-slate-400" : "text-slate-800")}>
-                          {it._name}
+                        <div className="flex-1 min-w-0 pr-2">
+                          <div className={(storeMode ? "text-base" : "text-sm") + " " + (it.checked ? "line-through text-slate-400" : "text-slate-800")}>
+                            {it._name}
+                          </div>
+                          {it._needsLine ? (
+                            <div className="text-[11px] text-slate-400 truncate">
+                              {it._needsLine}
+                            </div>
+                          ) : null}
                         </div>
                         {storeMode ? (
                           <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none transform-gpu"
@@ -1690,6 +1895,34 @@ async function addItemFromProduct(p) {
             </div>
           )}
 
+          {showAllDone && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={()=>setShowAllDone(false)}>
+              <div className="bg-white rounded-3xl shadow-2xl p-8 mx-4 max-w-sm text-center" onClick={e=>e.stopPropagation()}>
+                <div className="text-6xl mb-4">🎉</div>
+                <div className="text-xl font-bold text-slate-800 mb-2">Alles gedaan!</div>
+                <div className="text-sm text-slate-500 mb-6">Alle boodschappen zijn afgevinkt.</div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={()=>setShowAllDone(false)}
+                    className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-700"
+                  >Sluiten</button>
+                  <button
+                    onClick={async ()=>{
+                      setShowAllDone(false);
+                      const snap = await db.collection(`households/${householdId}/lists/${activeListId}/items`).get();
+                      if (!snap.empty) {
+                        const batch = db.batch();
+                        snap.docs.forEach(d => batch.delete(d.ref));
+                        await batch.commit();
+                      }
+                    }}
+                    className="flex-1 px-4 py-2.5 rounded-xl bg-red-500 text-white text-sm font-semibold"
+                  >Lijst wissen</button>
+                </div>
+              </div>
+            </div>
+          )}
+
         </div>
       );
     }
@@ -1702,6 +1935,7 @@ async function addItemFromProduct(p) {
       const [quickServings, setQuickServings] = useState(5);
       const [expandedId, setExpandedId] = useState(null);
       const [pickMap, setPickMap] = useState({});
+      const [newIngId, setNewIngId] = useState(null);
 
       const filtered = useMemo(() => {
         const q = query.trim().toLowerCase();
@@ -1716,9 +1950,17 @@ async function addItemFromProduct(p) {
         const baseServings = 5;
         const rec = {
           id,
-          name: 'Nieuw recept',
+          name: '',
           baseServings,
-          ingredients: [],
+          ingredients: [{
+            _id: genId('ing'),
+            productId: null,
+            nameSnapshot: '',
+            categorySnapshot: 'Overig',
+            amount: '',
+            unit: 'st',
+            buyQty: 1,
+          }],
           preparationHtml: '',
           createdAt: null,
           createdBy: currentUser?.uid || '',
@@ -1771,18 +2013,20 @@ async function addItemFromProduct(p) {
       }
 
       function addIngredientRow() {
+        const id = genId('ing');
         setDraft(d => ({
           ...d,
           ingredients: [...(d.ingredients||[]), {
-            _id: genId('ing'),
+            _id: id,
             productId: null,
             nameSnapshot: '',
             categorySnapshot: 'Overig',
             amount: '',
             unit: 'st',
-            
+            buyQty: 1,
           }]
         }));
+        setNewIngId(id);
       }
 
       function updateIng(idx, patch) {
@@ -1953,28 +2197,61 @@ async function addRecipeToList(r, targetServings, pickState) {
               amountStr = String(amountStr || '');
             }
           }
-          const id = itemIdForProduct(ensuredProductId);
-          batch.set(db.doc(`households/${householdId}/lists/${activeListId}/items/${id}`), {
-            id,
-            productId: ensuredProductId,
-            nameSnapshot: name,
-            categorySnapshot: (ensuredProduct?.category) || cat,
-            qty: firebase.firestore.FieldValue.increment(qtyInc || 1),
-            amount: amountStr,
-            unit,
-            checked: false,
-            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-            createdBy: currentUser?.uid || '',
-            createdByName: currentUser?.displayName || '',
-            createdByPhotoURL: currentUser?.photoURL || '',
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-            updatedBy: currentUser?.uid || '',
-            updatedByName: currentUser?.displayName || '',
-            updatedByPhotoURL: currentUser?.photoURL || '',
-            source: `recipe:${r.id}`,
-          });
+          const buyInc = (overrideQty != null && isFinite(overrideQty))
+            ? clamp(Math.round(overrideQty), 0, 99)
+            : clamp(parseInt(String(ing.buyQty ?? 1), 10) || 1, 1, 99);
 
-          existingByProductId.set(ensuredProductId, { id, productId: ensuredProductId, qty: clamp(qtyInc||1,0,99), checked: false, amount: amountStr, unit });
+          const id = itemIdForProduct(ensuredProductId);
+          const ref = db.doc(`households/${householdId}/lists/${activeListId}/items/${id}`);
+
+          // Build "need" for this recipe from original recipe amount
+          const origAmount = String(ing.amount ?? ing.qty ?? ing.quantity ?? '').trim();
+          const needNum = parseFloat(origAmount.replace(',','.'));
+          const needObj = isFinite(needNum)
+            ? { value: needNum, unit: String(unit || 'st') }
+            : { valueText: origAmount, unit: String(unit || 'st') };
+
+          // bestaat het item al op de lijst?
+          const existing = existingByProductId.get(ensuredProductId);
+
+          if (existing) {
+            // Item bestaat al → needs bijwerken via update (dot-notation werkt bij update)
+            batch.update(ref, {
+              [`needsByRecipe.${r.id}`]: needObj,
+              updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+              updatedBy: currentUser?.uid || '',
+              updatedByName: currentUser?.displayName || '',
+              updatedByPhotoURL: currentUser?.photoURL || '',
+            });
+
+          } else {
+            // Item bestaat nog niet → nieuw item aanmaken
+            batch.set(ref, {
+              id,
+              productId: ensuredProductId,
+              nameSnapshot: name,
+              categorySnapshot: (ensuredProduct?.category) || cat,
+
+              qty: buyInc,
+              checked: false,
+
+              needsByRecipe: { [r.id]: needObj },
+
+              createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+              createdBy: currentUser?.uid || '',
+              createdByName: currentUser?.displayName || '',
+              createdByPhotoURL: currentUser?.photoURL || '',
+
+              updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+              updatedBy: currentUser?.uid || '',
+              updatedByName: currentUser?.displayName || '',
+              updatedByPhotoURL: currentUser?.photoURL || '',
+
+              source: `recipe:${r.id}`,
+            }, { merge: true });
+          }
+
+          existingByProductId.set(ensuredProductId, { id, productId: ensuredProductId });
         });
 
         await batch.commit();
@@ -1983,21 +2260,13 @@ async function addRecipeToList(r, targetServings, pickState) {
       const productSuggestions = (text) => {
         const q = (text||'').trim().toLowerCase();
         if (q.length < 2) return [];
-        return (products||[]).filter(p => (p.name||'').toLowerCase().includes(q))
-          .sort((a,b)=>(a.name||'').localeCompare(b.name||'', 'nl'))
+        return sortByRelevance((products||[]).filter(p => (p.name||'').toLowerCase().includes(q)), q)
           .slice(0, 8);
       };
 
       
       function parseDefaultQty(ing) {
-        const unit = String(ing?.unit || 'st').toLowerCase();
-        const amtStr = String(ing?.amount ?? '').trim();
-        const num = parseFloat(amtStr.replace(',', '.'));
-        if (DISCRETE_UNITS.includes(unit)) {
-          if (!isNaN(num)) return clamp(Math.round(num), 0, 99);
-          return 1;
-        }
-        return 1;
+        return clamp(parseInt(String(ing?.buyQty ?? 1), 10) || 1, 1, 99);
       }
 
 function ensurePickState(recipe) {
@@ -2118,8 +2387,13 @@ function ensurePickState(recipe) {
                                   {checked ? "✓" : ""}
                                 </button>
 
-                                <div className={"flex-1 min-w-0 text-sm font-semibold truncate " + (checked ? "text-slate-800" : "text-slate-400 line-through")}>
-                                  {disp.name || "(onbekend)"}
+                                <div className="flex-1 min-w-0">
+                                  <div className={"text-sm font-semibold truncate " + (checked ? "text-slate-800" : "text-slate-400 line-through")}>
+                                    {disp.name || "(onbekend)"}
+                                  </div>
+                                  {ing.amount && (
+                                    <div className="text-[11px] text-slate-400 truncate">nodig: {ing.amount} {ing.unit || 'st'}</div>
+                                  )}
                                 </div>
 
                                 <div className="flex items-center gap-1 shrink-0">
@@ -2173,15 +2447,13 @@ function ensurePickState(recipe) {
                       className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white" />
                   </div>
 
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <div className="flex-1">
-                      <div className="text-xs font-semibold text-slate-500 mb-1">Dit recept is voor</div>
-                      <input type="number" min="1" max="99" value={draft.baseServings || 5}
-                        onChange={(e)=>{ const v = parseInt(e.target.value||'5',10)||4; setDraft(d=>({ ...d, baseServings: v }));
+                  <div>
+                    <div className="text-xs font-semibold text-slate-500 mb-1">Dit recept is voor</div>
+                    <input type="number" min="1" max="99" value={draft.baseServings || 5}
+                      onChange={(e)=>{ const v = parseInt(e.target.value||'5',10)||4; setDraft(d=>({ ...d, baseServings: v }));
 }}
-                        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white" />
-                    </div>
-                    </div>
+                      className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white" />
+                  </div>
 
                   
 
@@ -2203,6 +2475,7 @@ function ensurePickState(recipe) {
                               <div className="flex-1 relative">
                                 <div className="text-[11px] font-semibold text-slate-500 mb-1">Product</div>
                                 <input
+                                  ref={el => { if (el && ing._id === newIngId) { el.focus(); setNewIngId(null); } }}
                                   value={disp.name}
                                   onChange={(e)=>updateIng(idx, { productId: null, nameSnapshot: e.target.value })}
                                   placeholder="bijv. Paprika"
@@ -2240,9 +2513,9 @@ function ensurePickState(recipe) {
                               <button onClick={()=>removeIng(idx)} className="w-10 h-10 mt-5 rounded-xl bg-slate-100 text-slate-600">🗑️</button>
                             </div>
 
-                            <div className="mt-2 grid grid-cols-2 gap-2">
+                            <div className="mt-2 grid grid-cols-3 gap-2">
                               <div>
-                                <div className="text-[11px] font-semibold text-slate-500 mb-1">Hoeveelheid</div>
+                                <div className="text-[11px] font-semibold text-slate-500 mb-1">Nodig</div>
                                 <input
                                   value={ing.amount || ''}
                                   onChange={(e)=>updateIng(idx, { amount: e.target.value })}
@@ -2250,21 +2523,55 @@ function ensurePickState(recipe) {
                                   className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-sm"
                                 />
                               </div>
-</div>
+
+                              <div>
+                                <div className="text-[11px] font-semibold text-slate-500 mb-1">Eenheid</div>
+                                <select
+                                  value={ing.unit || 'st'}
+                                  onChange={(e)=>updateIng(idx, { unit: e.target.value })}
+                                  className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-sm"
+                                >
+                                  {['st','g','kg','ml','l','tl','el','snuf','blik','pak','zak','pot','fles'].map(u => (
+                                    <option key={u} value={u}>{u}</option>
+                                  ))}
+                                </select>
+                              </div>
+
+
+                              
+                              <div>
+                                <div className="text-[11px] font-semibold text-slate-500 mb-1">Koop</div>
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={()=>updateIng(idx, { buyQty: Math.max(1, (ing.buyQty ?? 1) - 1) })}
+                                    className="w-10 h-10 rounded-xl border border-slate-200 bg-white text-slate-700 font-bold text-lg"
+                                    aria-label="Minder"
+                                  >
+                                    –
+                                  </button>
+                                  <div className="flex-1 h-10 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-center text-sm font-bold text-slate-700">
+                                    {ing.buyQty ?? 1}
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={()=>updateIng(idx, { buyQty: Math.min(99, (ing.buyQty ?? 1) + 1) })}
+                                    className="w-10 h-10 rounded-xl border border-slate-200 bg-white text-slate-700 font-bold text-lg"
+                                    aria-label="Meer"
+                                  >
+                                    +
+                                  </button>
+                                </div>
+                              </div>
+
+                          </div>
                           </div>
                         );
                       })}
                     </div>
+                    <Button onClick={addIngredientRow} className="w-full mt-2 bg-white border border-slate-200 text-slate-700">+ ingrediënt</Button>
                   </div>
                 </div>
-                <div className="sticky bottom-0 -mx-4 px-4 py-3 bg-white/95 backdrop-blur border-t border-slate-100 mt-4">
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <Button onClick={addIngredientRow} className="bg-white border border-slate-200 text-slate-700 flex-1">+ ingrediënt</Button>
-                    <Button onClick={saveRecipe} className="bg-emerald-600 text-white flex-1">Opslaan</Button>
-                  </div>
-                </div>
-
-
                 <div className="space-y-2">
                   <div className="text-sm font-bold text-slate-800">Bereiding</div>
                   <WysiwygEditor
@@ -2274,6 +2581,9 @@ function ensurePickState(recipe) {
                   <div className="text-[11px] text-slate-400">Tip: plakken vanuit Notities/website werkt prima.</div>
                 </div>
               </div>
+              <div className="sticky bottom-0 -mx-4 px-4 py-3 bg-white/95 backdrop-blur border-t border-slate-100 mt-4">
+                    <Button onClick={saveRecipe} className="w-full bg-emerald-600 text-white">Opslaan</Button>
+                </div>
             </Modal>
           )}
         </div>
@@ -2337,12 +2647,14 @@ function ensurePickState(recipe) {
 
       const [householdInfo, setHouseholdInfo] = useState(null);
       const [tab, setTab] = useState('list');
-      const [storeMode, setStoreMode] = useState(false); // list | products | recipes
+      const [storeMode, setStoreMode] = useState(false);
+      const [showListMenu, setShowListMenu] = useState(false);
 
       useEffect(() => {
         if (storeMode && tab !== 'list') setTab('list');
       }, [storeMode, tab]);
       const [showSignOut, setShowSignOut] = useState(false);
+      const [createdCode, setCreatedCode] = useState(null);
 
       // Load household info (name + code)
       useEffect(() => {
@@ -2509,7 +2821,7 @@ function ensurePickState(recipe) {
         return (
           <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100">
             <div className="max-w-xl mx-auto px-4 pt-10 pb-20">
-              <h1 className="text-2xl font-black text-slate-900 mb-2">Boodschappenlijstjemaker</h1>
+              <h1 className="text-2xl font-black text-slate-900 mb-2">Boodschappenlijstjesmaker</h1>
               <p className="text-slate-600 text-sm mb-6">Log in met Google om samen te werken.</p>
               <Button onClick={handleSignIn} className="bg-emerald-600 text-white w-full">
                 Inloggen met Google
@@ -2520,7 +2832,7 @@ function ensurePickState(recipe) {
       }
 
       if (!householdId) {
-        return <SetupScreen user={user} />;
+        return <SetupScreen user={user} onCreated={setCreatedCode} />;
       }
 
       return (
@@ -2550,10 +2862,38 @@ function ensurePickState(recipe) {
 
             {!storeMode && (
             <div className="flex gap-2 mb-3">
-              <Button onClick={()=>setTab('list')}
-                className={tab==='list' ? 'bg-emerald-600 text-white flex-1' : 'bg-white border border-slate-200 text-slate-700 flex-1'}>
-                🛒 Lijst
-              </Button>
+              <div className="relative flex-1">
+                <Button onClick={()=>setTab('list')}
+                  className={tab==='list' ? 'bg-emerald-600 text-white w-full' : 'bg-white border border-slate-200 text-slate-700 w-full'}>
+                  🛒 Lijst
+                </Button>
+                {tab==='list' && (
+                  <button
+                    onClick={(e)=>{ e.stopPropagation(); setShowListMenu(prev => !prev); }}
+                    className="absolute right-1 top-1/2 -translate-y-1/2 w-6 h-6 rounded-lg text-white/70 hover:text-white text-[10px] flex items-center justify-center"
+                  >▼</button>
+                )}
+                {showListMenu && tab==='list' && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={()=>setShowListMenu(false)} />
+                    <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-50 overflow-hidden">
+                      <button
+                        onClick={async ()=>{
+                          setShowListMenu(false);
+                          if (!confirm('Hele lijst leegmaken?')) return;
+                          const snap = await db.collection(`households/${householdId}/lists/${activeListId}/items`).get();
+                          if (!snap.empty) {
+                            const batch = db.batch();
+                            snap.docs.forEach(d => batch.delete(d.ref));
+                            await batch.commit();
+                          }
+                        }}
+                        className="w-full text-left px-4 py-2.5 text-sm font-semibold text-white bg-red-500 hover:bg-red-600"
+                      >🗑️ Wissen</button>
+                    </div>
+                  </>
+                )}
+              </div>
               <Button onClick={()=>setTab('products')}
                 className={tab==='products' ? 'bg-emerald-600 text-white flex-1' : 'bg-white border border-slate-200 text-slate-700 flex-1'}>
                 📋 Producten
@@ -2594,6 +2934,28 @@ function ensurePickState(recipe) {
             )}
           </div>
 
+          {createdCode && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+              <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 text-center">
+                <div className="text-3xl mb-2">🎉</div>
+                <div className="text-lg font-bold text-slate-900 mb-1">Huishouden aangemaakt!</div>
+                <div className="text-sm text-slate-600 mb-4">
+                  De code voor jouw huishouden is:
+                </div>
+                <div className="font-mono text-2xl font-black tracking-widest text-emerald-700 bg-emerald-50 rounded-xl py-3 mb-4">
+                  {createdCode.code}
+                </div>
+                <div className="text-sm text-slate-500 mb-5">
+                  Je vindt deze code terug onder <strong>Huishouden beheren</strong> als je rechtsboven op je avatar klikt.
+                </div>
+                <Button
+                  onClick={() => setCreatedCode(null)}
+                  className="w-full bg-emerald-600 text-white"
+                >OK</Button>
+              </div>
+            </div>
+          )}
+
           {showSignOut && (
             <Modal title="Uitloggen" onClose={()=>setShowSignOut(false)}>
               <div className="text-sm text-slate-700 mb-4">Wil je uitloggen?</div>
@@ -2607,11 +2969,6 @@ function ensurePickState(recipe) {
       );
     }
 
-    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
-  </script>
+  
 
-  <script>
-    // Service worker disabled (dev)
-  </script>
-</body>
-</html>
+export default App;
