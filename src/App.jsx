@@ -1132,7 +1132,10 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
 
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold text-sm truncate">{p.name}</div>
-                  <div className="text-xs text-slate-400 truncate">{p.category || 'Overig'}</div>
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: categoryColor(p.category || 'Overig') }} />
+                    <div className="text-xs text-slate-400 truncate">{p.category || 'Overig'}</div>
+                  </div>
                 </div>
 
                 {qty <= 0 ? (
@@ -1786,6 +1789,11 @@ async function addItemFromProduct(p) {
 
           <Card>
             <div className="p-3 border-b border-slate-100 text-xs text-slate-500">
+              {storeMode && items.length > 0 && (
+                <div className="text-right text-[11px] text-slate-400 tabular-nums">
+                  {items.filter(it => it.checked).length}/{items.length} gehaald
+                </div>
+              )}
 </div>
             <div className="p-3 space-y-3">
               {byCategory.length === 0 ? (
@@ -1820,7 +1828,7 @@ async function addItemFromProduct(p) {
                             {it._name}
                           </div>
                           {it._needsLine ? (
-                            <div className="text-[11px] text-slate-400 truncate">
+                            <div className={"truncate " + (storeMode ? "text-xs text-slate-500" : "text-[11px] text-slate-400")}>
                               {it._needsLine}
                             </div>
                           ) : null}
