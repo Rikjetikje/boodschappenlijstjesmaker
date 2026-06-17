@@ -1132,10 +1132,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
 
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold text-sm truncate">{p.name}</div>
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: categoryColor(p.category || 'Overig') }} />
-                    <div className="text-xs text-slate-400 truncate">{p.category || 'Overig'}</div>
-                  </div>
+                  <div className="text-xs truncate" style={{ color: categoryColor(p.category || 'Overig') }}>{p.category || 'Overig'}</div>
                 </div>
 
                 {qty <= 0 ? (
@@ -1234,7 +1231,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
       if (c.includes('diepvries')) return '#0284c7';
       if (c.includes('drogist')) return '#4f46e5';
       if (c.includes('huishoud')) return '#64748b';
-      return '#94a3b8';
+      return '#64748b';
     }
 
     function ListTab({ householdId, activeListId, products, items, currentUser, storeMode }) {
@@ -1810,9 +1807,9 @@ async function addItemFromProduct(p) {
                       <div className="h-px flex-1 bg-slate-200" />
                     </div>
                   ) : (
-                    <div className={"flex items-center gap-2 mb-2 " + (storeMode ? "px-2 py-1 rounded-xl bg-slate-100" : "px-1 py-1")}>
-                      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: categoryColor(group.category) }} />
-                      <span className={"font-semibold " + (storeMode ? "text-sm text-slate-600" : "text-xs text-slate-500")}>{group.category}</span>
+                    <div className={"mb-2 rounded-lg " + (storeMode ? "px-3 py-1.5" : "px-2.5 py-1.5")}
+                         style={{ backgroundColor: categoryColor(group.category) + '1f', color: categoryColor(group.category) }}>
+                      <span className={"font-semibold " + (storeMode ? "text-sm" : "text-xs")}>{group.category}</span>
                     </div>
                   )}
                   <div className={storeMode ? "space-y-1" : "divide-y divide-slate-100"}>
