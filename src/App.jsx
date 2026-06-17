@@ -1799,7 +1799,9 @@ async function addItemFromProduct(p) {
                   <div className="text-sm">Je lijst is leeg</div>
                 </div>
               ) : byCategory.map((group, gi) => (
-                <div key={group.category} className={storeMode && group.category !== '__checked__' ? (gi % 2 === 0 ? "bg-white/60 rounded-2xl p-2" : "bg-slate-50 rounded-2xl p-2") : (group.category === '__checked__' ? "mt-2" : "")}>
+                <div key={group.category}
+                  className={storeMode && group.category !== '__checked__' ? "rounded-2xl p-2 border" : (group.category === '__checked__' ? "mt-2" : "")}
+                  style={storeMode && group.category !== '__checked__' ? { borderColor: categoryColor(group.category) + '55', backgroundColor: categoryColor(group.category) + '12' } : undefined}>
                   {group.category === '__checked__' ? (
                     <div className="flex items-center gap-2 px-2 py-1 mb-2">
                       <div className="h-px flex-1 bg-slate-200" />
