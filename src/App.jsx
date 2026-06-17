@@ -1801,7 +1801,7 @@ async function addItemFromProduct(p) {
               ) : byCategory.map((group, gi) => (
                 <div key={group.category}
                   className={storeMode && group.category !== '__checked__' ? "rounded-2xl p-2 border" : (group.category === '__checked__' ? "mt-2" : "")}
-                  style={storeMode && group.category !== '__checked__' ? { borderColor: categoryColor(group.category) + '55', backgroundColor: categoryColor(group.category) + '12' } : undefined}>
+                  style={storeMode && group.category !== '__checked__' ? { borderColor: categoryColor(group.category), borderWidth: '1.5px' } : undefined}>
                   {group.category === '__checked__' ? (
                     <div className="flex items-center gap-2 px-2 py-1 mb-2">
                       <div className="h-px flex-1 bg-slate-200" />
@@ -1809,9 +1809,9 @@ async function addItemFromProduct(p) {
                       <div className="h-px flex-1 bg-slate-200" />
                     </div>
                   ) : (
-                    <div className={"mb-2 rounded-lg " + (storeMode ? "px-3 py-1.5" : "px-2.5 py-1.5")}
-                         style={{ backgroundColor: categoryColor(group.category) + '1f', color: categoryColor(group.category) }}>
-                      <span className={"font-semibold " + (storeMode ? "text-sm" : "text-xs")}>{group.category}</span>
+                    <div className={"mb-2 " + (storeMode ? "px-1 py-0.5" : "px-1 py-1 border-b")}
+                         style={storeMode ? undefined : { borderColor: categoryColor(group.category) }}>
+                      <span className={"font-semibold text-slate-500 " + (storeMode ? "text-sm" : "text-xs")}>{group.category}</span>
                     </div>
                   )}
                   <div className={storeMode ? "space-y-1" : "divide-y divide-slate-100"}>
