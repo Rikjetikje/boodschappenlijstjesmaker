@@ -1952,6 +1952,7 @@ async function addItemFromProduct(p) {
           id,
           name: '',
           baseServings,
+          url: '',
           ingredients: [{
             _id: genId('ing'),
             productId: null,
@@ -1987,6 +1988,7 @@ async function addItemFromProduct(p) {
           id,
           name: (draft.name || '').trim() || 'Recept',
           baseServings,
+          url: (draft.url || '').trim(),
           ingredients: Array.isArray(draft.ingredients) ? draft.ingredients : [],
           preparationHtml: draft.preparationHtml || '',
           updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
@@ -2370,7 +2372,16 @@ function ensurePickState(recipe) {
 
                     {isOpen && st && (
                       <div className="px-3 pb-4">
-                        <div className="text-xs text-slate-500 mb-2">Dit recept is voor <span className="font-bold text-slate-700">{r.baseServings || r.servings || r.persons || 5}</span> personen.</div>
+                        {r.url && r.url.trim() ? (
+                          <a
+                            href={/^https?:\/\//i.test(r.url.trim()) ? r.url.trim() : `https://${r.url.trim()}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-block text-sm font-semibold text-emerald-700 underline mb-2"
+                          >Bekijk hier het recept.</a>
+                        ) : (
+                          <div className="text-xs text-slate-400 mb-2">Nog geen online recept gekoppeld.</div>
+                        )}
 
                         <div className="space-y-1">
                           {(r.ingredients||[]).map((ing, idx) => {
@@ -2455,7 +2466,15 @@ function ensurePickState(recipe) {
                       className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white" />
                   </div>
 
-                  
+                  <div>
+                    <div className="text-xs font-semibold text-slate-500 mb-1">Recept-URL (online)</div>
+                    <input type="url" inputMode="url" value={draft.url || ''}
+                      onChange={(e)=>setDraft(d=>({ ...d, url: e.target.value }))}
+                      placeholder="bijv. https://ah.nl/allerhande/recept/..."
+                      className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white" />
+                  </div>
+
+
 
                   <div className="pt-2 border-t border-slate-100">
                     <div className="flex items-center justify-between mb-2">
