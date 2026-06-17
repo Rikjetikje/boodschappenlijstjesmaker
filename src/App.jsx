@@ -598,7 +598,7 @@ const CART_FULL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADgAAAA4CAYAAAC
         <header className="mb-4">
           <div className="flex items-center justify-between gap-2">
             <div className="min-w-0">
-              <h1 className="text-base font-black text-slate-900 leading-tight">Boodschappenlijstjesmaker</h1>
+              <h1 className="text-base font-bold text-slate-900 leading-tight">Boodschappenlijstjesmaker</h1>
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
@@ -1212,6 +1212,28 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
       });
 
 // ---------------- List tab ----------------
+    function categoryColor(cat) {
+      const c = (cat || '').toLowerCase();
+      if (c.includes('groente') || c.includes('aardappel') || c.includes('fruit')) return '#16a34a';
+      if (c.includes('verse') || c.includes('maaltijd') || c.includes('gemak')) return '#0d9488';
+      if (c.includes('vleeswaren') || c.includes('kaas') || c.includes('tapas')) return '#ea580c';
+      if (c.includes('vlees') || c.includes('vis')) return '#e11d48';
+      if (c.includes('vega') || c.includes('plantaardig')) return '#65a30d';
+      if (c.includes('zuivel') || c.includes('eieren') || c.includes('boter')) return '#2563eb';
+      if (c.includes('ontbijt') || c.includes('broodbeleg')) return '#ca8a04';
+      if (c.includes('brood') || c.includes('gebak')) return '#d97706';
+      if (c.includes('conserven') || c.includes('soep') || c.includes('saus') || c.includes('oli')) return '#7c3aed';
+      if (c.includes('wereldkeuken') || c.includes('kruiden') || c.includes('pasta') || c.includes('rijst')) return '#c026d3';
+      if (c.includes('koek') || c.includes('snoep') || c.includes('chocolade') || c.includes('chips')) return '#db2777';
+      if (c.includes('koffie') || c.includes('thee')) return '#92400e';
+      if (c.includes('frisdrank') || c.includes('sap')) return '#0891b2';
+      if (c.includes('bier') || c.includes('wijn')) return '#b45309';
+      if (c.includes('diepvries')) return '#0284c7';
+      if (c.includes('drogist')) return '#4f46e5';
+      if (c.includes('huishoud')) return '#64748b';
+      return '#94a3b8';
+    }
+
     function ListTab({ householdId, activeListId, products, items, currentUser, storeMode }) {
       const [newText, setNewText] = useState('');
       const [newCategory, setNewCategory] = useState('Overig');
@@ -1780,16 +1802,17 @@ async function addItemFromProduct(p) {
                       <div className="h-px flex-1 bg-slate-200" />
                     </div>
                   ) : (
-                    <div className={"text-[11px] font-semibold uppercase tracking-wide px-2 py-1 mb-2 rounded-xl " + (storeMode ? "bg-slate-100 text-slate-600" : "text-slate-400")}>
-                      {group.category}
+                    <div className={"flex items-center gap-2 mb-2 " + (storeMode ? "px-2 py-1 rounded-xl bg-slate-100" : "px-1 py-1")}>
+                      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: categoryColor(group.category) }} />
+                      <span className={"font-semibold " + (storeMode ? "text-sm text-slate-600" : "text-xs text-slate-500")}>{group.category}</span>
                     </div>
                   )}
-                  <div className="space-y-1">
+                  <div className={storeMode ? "space-y-1" : "divide-y divide-slate-100"}>
                     {group.items.map(it => (
                       <SwipeRow key={it.id} item={it} onSwipeRight={(x)=>toggle(x)} onSwipeLeft={storeMode ? ((x)=>toggle(x)) : ((x)=>remove(x))}>
 
                       <div
-                        className={"relative flex items-center bg-white border border-slate-200 rounded-xl " + (storeMode ? "px-4 py-3 pr-12" : "px-3 py-2")}
+                        className={"relative flex items-center " + (storeMode ? "bg-white border border-slate-200 rounded-xl px-4 py-3 pr-12" : "px-2 py-2.5")}
                         onClick={() => { if (storeMode) { toggle(it); } else { setOpenItemId(openItemId === it.id ? null : it.id); } }}
                       >
                         <div className="flex-1 min-w-0 pr-2">
@@ -1802,7 +1825,7 @@ async function addItemFromProduct(p) {
                             </div>
                           ) : null}
                         </div>
-                        {storeMode ? (
+                        {storeMode && (
                           <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none transform-gpu"
                                style={{ WebkitTransform: "translateZ(0)", transform: "translateZ(0)" }}>
                             <SmallAvatar
@@ -1811,12 +1834,6 @@ async function addItemFromProduct(p) {
                               size={20}
                             />
                           </div>
-                        ) : (
-                          <SmallAvatar
-                            url={it.updatedByPhotoURL || it.createdByPhotoURL || ''}
-                            name={(it.updatedByName || it.createdByName || '').trim()}
-                            size={20}
-                          />
                         )}
                         {!storeMode && (
                         <div
@@ -1830,7 +1847,7 @@ async function addItemFromProduct(p) {
                             onClick={(e)=>{ e.stopPropagation(); toggle(it); }}
                             className={
                               "w-7 h-7 rounded-lg border flex items-center justify-center text-xs " +
-                              (it.checked ? "bg-emerald-600 border-emerald-600 text-white" : "bg-white border-slate-300 text-slate-400")
+                              (it.checked ? "bg-slate-400 border-slate-400 text-white" : "bg-white border-slate-300 text-slate-400")
                             }
                             title="Afvinken"
                           >
@@ -1856,7 +1873,7 @@ async function addItemFromProduct(p) {
                           {!storeMode && (
                           <button
                             onClick={(e)=>{ e.stopPropagation(); remove(it); }}
-                            className="w-7 h-7 rounded-xl bg-slate-100 text-slate-600 text-sm"
+                            className="w-7 h-7 rounded-xl bg-rose-50 text-rose-600 text-sm"
                             title="Verwijderen"
                           >🗑️</button>
                         )}
