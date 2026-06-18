@@ -1846,7 +1846,7 @@ async function addItemFromProduct(p) {
                       <div
                         className={"relative flex items-center " + (storeMode ? "px-3 py-3.5" : "px-2 py-2.5") + (storeMode && flashId === it.id ? " bm-flash" : "")}
                         style={storeMode && flashId === it.id ? { '--flash': categoryColor(it._cat) + '40' } : undefined}
-                        onClick={() => { if (storeMode) { if (!it.checked) { setFlashId(it.id); setTimeout(() => setFlashId(null), 1250); } toggle(it); } else { setOpenItemId(openItemId === it.id ? null : it.id); } }}
+                        onClick={() => { if (storeMode) { if (!it.checked) { setFlashId(it.id); setTimeout(() => setFlashId(null), 1850); } toggle(it); } else { setOpenItemId(openItemId === it.id ? null : it.id); } }}
                       >
                         <div className="flex-1 min-w-0 pr-2">
                           <div className={(storeMode ? "text-[15px]" : "text-sm") + " " + (it.checked ? "line-through text-slate-400" : (storeMode ? "text-[#18211f]" : "text-slate-800"))}>

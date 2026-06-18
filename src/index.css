@@ -18,7 +18,9 @@ button, input, select { -webkit-tap-highlight-color: transparent; }
 }
 
 @keyframes bmflash {
-  from { background-color: var(--flash); }
-  to { background-color: transparent; }
+  0% { background-color: transparent; }
+  14% { background-color: var(--flash); }
+  38% { background-color: var(--flash); }
+  100% { background-color: transparent; }
 }
-.bm-flash { animation: bmflash 1.2s ease-out; }
+.bm-flash { animation: bmflash 1.8s cubic-bezier(.22, .61, .36, 1); }
