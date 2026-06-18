@@ -1559,8 +1559,8 @@ async function addItemFromProduct(p) {
           return next;
         });
         setTimeout(async () => {
-          await toggle(item);
           setFlashId(current => current === item.id ? null : current);
+          await toggle(item);
           setPendingCheckIds(prev => {
             const next = new Set(prev);
             next.delete(item.id);
