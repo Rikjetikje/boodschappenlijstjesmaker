@@ -2932,7 +2932,7 @@ function ensurePickState(recipe) {
       }
 
       return (
-        <div className={"min-h-screen pb-24 " + (storeMode ? "bg-[#f8f6ef]" : "bg-gradient-to-b from-slate-50 to-slate-100")}>
+        <div className="min-h-screen pb-24 bg-gradient-to-b from-slate-50 to-slate-100">
           <div className="max-w-xl mx-auto px-3 pt-4">
             <Header
               user={user}
