@@ -857,6 +857,19 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
     return arr;
   }, [products, query, cycleFlags, sortMode]);
 
+  const groupedFiltered = useMemo(() => {
+    const map = {};
+    filtered.forEach(p => {
+      const cat = p.category || 'Overig';
+      if (!map[cat]) map[cat] = [];
+      map[cat].push(p);
+    });
+    return Object.keys(map).map(category => ({
+      category,
+      items: map[category],
+    }));
+  }, [filtered]);
+
 
   async function createProduct() {
     const name = query.trim();
@@ -913,6 +926,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
     if (!householdId) return;
     if (!confirm(`Verwijder "${p.name}"?`)) return;
     await db.doc(`households/${householdId}/products/${p.id}`).delete();
+    if (editingId === p.id) setEditingId(null);
     // also remove from selection
     setSelectedIds(prev => {
       const next = new Set(prev);
@@ -1046,6 +1060,15 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
   }
 
   const selectedCount = selectedIds.size;
+  const editingProduct = editingId ? (products || []).find(p => p.id === editingId) : null;
+
+  function cycleLabel(cycle) {
+    const c = normCycle(cycle);
+    if (c === 'W') return 'Elke week';
+    if (c === '2W') return 'Elke 2 weken';
+    if (c === '3W') return 'Elke 3 weken';
+    return 'Geen herhaling';
+  }
 
   return (
     <div className="pb-24">
@@ -1105,54 +1128,75 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
         </div>
       </div>
 
-      <Card>
-        <div className="divide-y divide-slate-100">
-          {filtered.length === 0 ? (
-            <div className="p-6 text-center text-slate-400">
-              <div className="text-4xl mb-1">📋</div>
-              <div className="text-sm">Geen producten</div>
+      <div className="space-y-3">
+        {filtered.length === 0 ? (
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 text-center text-slate-400">
+            <div className="text-4xl mb-1">📋</div>
+            <div className="text-sm">Geen producten</div>
+          </div>
+        ) : groupedFiltered.map(group => (
+          <div key={group.category}>
+            <div className="mb-0">
+              <span
+                className="inline-flex items-center text-xs font-semibold px-3 py-1 rounded-tr-lg"
+                style={{
+                  backgroundColor: categoryColor(group.category) + '29',
+                  color: '#33423d'
+                }}
+              >
+                {group.category}
+              </span>
             </div>
-          ) : filtered.map(p => {
-            const existing = findExistingByProductId(p.id);
-            const qty = currentQty(existing);
-            const isSelected = selectedIds.has(p.id);
+            <div
+              className="bg-white divide-y-2 divide-slate-200/80 border-y-2 border-l-[4px] border-slate-200/80"
+              style={{ borderLeftColor: categoryColor(group.category) + '88', paddingLeft: '7px' }}
+            >
+              {group.items.map(p => {
+                const existing = findExistingByProductId(p.id);
+                const qty = currentQty(existing);
+                const isSelected = selectedIds.has(p.id);
 
-            return (
-              <div key={p.id} className="p-3 flex items-center gap-2">
-                <button
-                  onClick={() => toggleSelected(p.id)}
-                  className={
-                    "w-6 h-6 rounded-lg border flex items-center justify-center text-xs shrink-0 " +
-                    (isSelected ? "bg-emerald-600 border-emerald-600 text-white" : "bg-white border-slate-300 text-slate-400")
-                  }
-                  title={isSelected ? "Deselecteren" : "Selecteren"}
-                >
-                  {isSelected ? "✓" : ""}
-                </button>
+                return (
+                  <div key={p.id} className="px-3 py-3 flex items-center gap-2">
+                    <button
+                      onClick={() => toggleSelected(p.id)}
+                      className={
+                        "w-6 h-6 rounded-lg border flex items-center justify-center text-xs shrink-0 " +
+                        (isSelected ? "bg-emerald-600 border-emerald-600 text-white" : "bg-white border-slate-300 text-slate-400")
+                      }
+                      title={isSelected ? "Deselecteren" : "Selecteren"}
+                    >
+                      {isSelected ? "✓" : ""}
+                    </button>
 
-                <div className="flex-1 min-w-0">
-                  <div className="font-semibold text-sm truncate">{p.name}</div>
-                  <div className="text-xs truncate" style={{ color: categoryColor(p.category || 'Overig') }}>{p.category || 'Overig'}</div>
-                </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold text-[15px] text-slate-800 truncate">{p.name}</div>
+                      <div className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-400">
+                        <span>{qty > 0 ? `Op lijst: ${qty}` : 'Niet op lijst'}</span>
+                        {p.cycle ? (
+                          <span className="px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 font-semibold">{p.cycle}</span>
+                        ) : null}
+                      </div>
+                    </div>
 
-                {qty <= 0 ? (
-                  <button onClick={()=>addItemFromProduct(p)} title="Toevoegen aan lijst" className="w-9 h-9 rounded-xl bg-emerald-600 text-white text-sm">＋</button>
-                ) : (
-                  <div className="flex items-center gap-1">
-                    <button onClick={()=>decItemFromProduct(p)} title="Minder" className="w-9 h-9 rounded-xl bg-slate-200 text-slate-700 text-sm">−</button>
-                    <div className="w-8 text-center text-sm font-bold text-slate-700 tabular-nums">{qty}</div>
-                    <button onClick={()=>addItemFromProduct(p)} title="Meer" className="w-9 h-9 rounded-xl bg-emerald-600 text-white text-sm">＋</button>
+                    {qty <= 0 ? (
+                      <button onClick={()=>addItemFromProduct(p)} title="Toevoegen aan lijst" className="w-9 h-9 rounded-full bg-[#17372d] text-[#eaf5ef] text-sm font-semibold">＋</button>
+                    ) : (
+                      <div className="flex items-center gap-1 rounded-full bg-slate-100 p-1">
+                        <button onClick={()=>decItemFromProduct(p)} title="Minder" className="w-7 h-7 rounded-full bg-white text-slate-700 text-sm border border-slate-200">−</button>
+                        <div className="min-w-[22px] text-center text-sm font-bold text-slate-700 tabular-nums">{qty}</div>
+                        <button onClick={()=>addItemFromProduct(p)} title="Meer" className="w-7 h-7 rounded-full bg-[#17372d] text-[#eaf5ef] text-sm">＋</button>
+                      </div>
+                    )}
+
+                    <button onClick={()=>startEdit(p)} className="w-9 h-9 rounded-full bg-slate-100 text-slate-600 text-sm" title="Product bewerken">✎</button>
                   </div>
-                )}
-
-                <button onClick={()=>cycleProduct(p)} title="Herhaal" className="px-2 h-9 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold">{p.cycle || "—"}</button>
-                <button onClick={()=>startEdit(p)} className="w-9 h-9 rounded-xl bg-slate-100 text-slate-600 text-sm">✏️</button>
-                <button onClick={()=>deleteProduct(p)} className="w-9 h-9 rounded-xl bg-slate-100 text-slate-600 text-sm">🗑️</button>
-              </div>
-            );
-          })}
-        </div>
-      </Card>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
 
       {selectedCount > 0 && (
         <div className="fixed left-0 right-0 bottom-0 pb-6 px-4 z-40">
@@ -1182,10 +1226,32 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
                 {CATEGORY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
+            {editingProduct && (
+              <div>
+                <div className="text-xs font-semibold text-slate-500 mb-1">Herhaling</div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={()=>cycleProduct(editingProduct)}
+                    className="px-3 py-2 rounded-xl bg-slate-100 text-slate-700 text-sm font-semibold"
+                  >
+                    {cycleLabel(editingProduct.cycle)}
+                  </button>
+                  <div className="text-xs text-slate-400">Tik om te wisselen tussen W, 2W en 3W.</div>
+                </div>
+              </div>
+            )}
             <div className="flex flex-col sm:flex-row gap-2">
               <Button onClick={()=>setEditingId(null)} className="bg-slate-100 text-slate-700 flex-1">Annuleren</Button>
               <Button onClick={saveEdit} className="bg-emerald-600 text-white flex-1">Opslaan</Button>
             </div>
+            {editingProduct && (
+              <button
+                onClick={()=>deleteProduct(editingProduct)}
+                className="w-full px-4 py-2.5 rounded-xl bg-rose-50 text-rose-700 text-sm font-semibold"
+              >
+                Product verwijderen
+              </button>
+            )}
           </div>
         </Modal>
       )}
