@@ -1698,15 +1698,26 @@ async function addItemFromProduct(p) {
         const cats = Object.keys(map).sort((a,b) => CATEGORY_OPTIONS.indexOf(a) - CATEGORY_OPTIONS.indexOf(b));
         const groups = cats.map(c => ({ category: c, items: map[c].sort((a,b)=> (a._name||'').localeCompare(b._name||'', 'nl')) }));
         if (storeMode) {
-          const checkedItems = [];
-          const uncheckedGroups = groups.map(g => ({
-            ...g,
-            items: g.items.filter(it => { if (it.checked) { checkedItems.push(it); return false; } return true; })
-          })).filter(g => g.items.length > 0);
-          if (checkedItems.length > 0) {
-            uncheckedGroups.push({ category: '__checked__', items: checkedItems.sort((a,b) => (a._name||'').localeCompare(b._name||'', 'nl')) });
-          }
-          return uncheckedGroups;
+          const checkedGroups = [];
+          const uncheckedGroups = groups.map(g => {
+            const checkedItems = [];
+            const uncheckedItems = g.items.filter(it => {
+              if (it.checked) { checkedItems.push(it); return false; }
+              return true;
+            });
+            if (checkedItems.length > 0) {
+              checkedGroups.push({
+                category: g.category,
+                checkedGroup: true,
+                items: checkedItems.sort((a,b) => (a._name||'').localeCompare(b._name||'', 'nl'))
+              });
+            }
+            return {
+              ...g,
+              items: uncheckedItems
+            };
+          }).filter(g => g.items.length > 0);
+          return [...uncheckedGroups, ...checkedGroups];
         }
         return groups;
       }, [items, products, storeMode]);
@@ -1811,18 +1822,15 @@ async function addItemFromProduct(p) {
                   <div className="text-sm">Je lijst is leeg</div>
                 </div>
               ) : byCategory.map((group, gi) => (
-                <div key={group.category}
-                  className={storeMode ? (group.category === '__checked__' ? "mt-3" : "mb-3") : (group.category === '__checked__' ? "mt-2" : "")}>
-                  {group.category === '__checked__' ? (
-                    <div className="flex items-center gap-2 px-2 py-1 mb-2">
-                      <div className="h-px flex-1 bg-slate-200" />
-                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Afgestreept</div>
-                      <div className="h-px flex-1 bg-slate-200" />
-                    </div>
-                  ) : storeMode ? (
+                <div key={`${group.category}-${group.checkedGroup ? 'checked' : 'open'}`}
+                  className={storeMode ? "mb-3" : ""}>
+                  {storeMode ? (
                     <div className="mb-0">
                       <span className="inline-flex items-center text-xs font-semibold px-3 py-1 rounded-tr-lg"
-                            style={{ backgroundColor: categoryColor(group.category) + '29', color: '#33423d' }}>{group.category}</span>
+                            style={{
+                              backgroundColor: group.checkedGroup ? '#eef1ee' : categoryColor(group.category) + '29',
+                              color: group.checkedGroup ? '#647067' : '#33423d'
+                            }}>{group.category}</span>
                     </div>
                   ) : (
                     <div className="mb-2 px-1 py-1 border-b"
@@ -1830,15 +1838,15 @@ async function addItemFromProduct(p) {
                       <span className="font-semibold text-slate-500 text-xs">{group.category}</span>
                     </div>
                   )}
-                  <div className={storeMode ? (group.category === '__checked__' ? "divide-y divide-slate-200/70" : "divide-y divide-slate-200/70 border-l-[4px]") : "divide-y divide-slate-100"}
-                       style={storeMode && group.category !== '__checked__' ? { borderColor: categoryColor(group.category) + '88', paddingLeft: '7px' } : undefined}>
+                  <div className={storeMode ? (group.checkedGroup ? "divide-y-2 divide-slate-200/80 border-y-2 border-slate-200/80" : "divide-y-2 divide-slate-200/80 border-y-2 border-l-[4px] border-slate-200/80") : "divide-y divide-slate-100"}
+                       style={storeMode && !group.checkedGroup ? { borderLeftColor: categoryColor(group.category) + '88', paddingLeft: '7px' } : undefined}>
                     {group.items.map(it => (
                       <SwipeRow key={it.id} item={it} onSwipeRight={(x)=>toggle(x)} onSwipeLeft={storeMode ? ((x)=>toggle(x)) : ((x)=>remove(x))}>
 
                       <div
                         className={"relative flex items-center " + (storeMode ? "px-3 py-3.5" : "px-2 py-2.5") + (storeMode && flashId === it.id ? " bm-flash" : "")}
                         style={storeMode && flashId === it.id ? { '--flash': categoryColor(it._cat) + '40' } : undefined}
-                        onClick={() => { if (storeMode) { if (!it.checked) { setFlashId(it.id); setTimeout(() => setFlashId(null), 520); } toggle(it); } else { setOpenItemId(openItemId === it.id ? null : it.id); } }}
+                        onClick={() => { if (storeMode) { if (!it.checked) { setFlashId(it.id); setTimeout(() => setFlashId(null), 1250); } toggle(it); } else { setOpenItemId(openItemId === it.id ? null : it.id); } }}
                       >
                         <div className="flex-1 min-w-0 pr-2">
                           <div className={(storeMode ? "text-[15px]" : "text-sm") + " " + (it.checked ? "line-through text-slate-400" : (storeMode ? "text-[#18211f]" : "text-slate-800"))}>

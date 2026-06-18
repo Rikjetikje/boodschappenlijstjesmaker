@@ -21,4 +21,4 @@ button, input, select { -webkit-tap-highlight-color: transparent; }
   from { background-color: var(--flash); }
   to { background-color: transparent; }
 }
-.bm-flash { animation: bmflash 0.5s ease; }
+.bm-flash { animation: bmflash 1.2s ease-out; }
