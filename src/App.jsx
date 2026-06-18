@@ -1246,6 +1246,8 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
       const [stickyAdd, setStickyAdd] = useState(false);
       const [vvh, setVvh] = useState(() => (window.visualViewport ? window.visualViewport.height : window.innerHeight));
       const suggestionsRef = useRef(null);
+      const [showAdders, setShowAdders] = useState(false);
+      const [flashId, setFlashId] = useState(null);
 
       const STORE_CATEGORY_ORDER = [
         'Groente & fruit',
@@ -1784,15 +1786,25 @@ async function addItemFromProduct(p) {
           {(!storeMode && stickyAdd) && <div style={{ height: 136 }} />}
 
 
-          <Card>
-            <div className="p-3 border-b border-slate-100 text-xs text-slate-500">
-              {storeMode && items.length > 0 && (
-                <div className="text-right text-[11px] text-slate-400 tabular-nums">
-                  {items.filter(it => it.checked).length}/{items.length} gehaald
-                </div>
-              )}
-</div>
-            <div className="p-3 space-y-3">
+          {storeMode && (
+            <div className="flex items-center mb-3 px-1">
+              <button
+                onClick={()=>setShowAdders(v=>!v)}
+                className={"inline-flex items-center gap-2 text-xs font-semibold rounded-full pl-2.5 pr-3 py-1.5 border transition-colors " + (showAdders ? "bg-[#17372d] text-[#eaf5ef] border-transparent" : "bg-[#e7ece4] text-[#536158] border-[#d3dbcf]")}
+                title={showAdders ? "Verberg wie toevoegde" : "Toon wie toevoegde"}
+              >
+                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" />
+                  <circle cx="12" cy="12" r="2.6" fill="currentColor" stroke="none" />
+                  {!showAdders && <path d="M4.5 4.5 L19.5 19.5" />}
+                </svg>
+                wie voegde toe
+              </button>
+            </div>
+          )}
+          <div className={storeMode ? "" : "bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden"}>
+            {!storeMode && <div className="p-3 border-b border-slate-100 text-xs text-slate-500"></div>}
+            <div className={storeMode ? "" : "p-3 space-y-3"}>
               {byCategory.length === 0 ? (
                 <div className="text-center py-10 text-slate-400">
                   <div className="text-4xl mb-1">🛒</div>
@@ -1800,41 +1812,49 @@ async function addItemFromProduct(p) {
                 </div>
               ) : byCategory.map((group, gi) => (
                 <div key={group.category}
-                  className={storeMode && group.category !== '__checked__' ? "rounded-2xl p-2 border" : (group.category === '__checked__' ? "mt-2" : "")}
-                  style={storeMode && group.category !== '__checked__' ? { borderColor: categoryColor(group.category), borderWidth: '1.5px' } : undefined}>
+                  className={storeMode ? (group.category === '__checked__' ? "mt-3" : "mb-3") : (group.category === '__checked__' ? "mt-2" : "")}>
                   {group.category === '__checked__' ? (
                     <div className="flex items-center gap-2 px-2 py-1 mb-2">
                       <div className="h-px flex-1 bg-slate-200" />
                       <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Afgestreept</div>
                       <div className="h-px flex-1 bg-slate-200" />
                     </div>
+                  ) : storeMode ? (
+                    <div className="mb-0">
+                      <span className="inline-flex items-center text-xs font-semibold px-3 py-1 rounded-tr-lg"
+                            style={{ backgroundColor: categoryColor(group.category) + '29', color: '#33423d' }}>{group.category}</span>
+                    </div>
                   ) : (
-                    <div className={"mb-2 " + (storeMode ? "px-1 py-0.5" : "px-1 py-1 border-b")}
-                         style={storeMode ? undefined : { borderColor: categoryColor(group.category) }}>
-                      <span className={"font-semibold text-slate-500 " + (storeMode ? "text-sm" : "text-xs")}>{group.category}</span>
+                    <div className="mb-2 px-1 py-1 border-b"
+                         style={{ borderColor: categoryColor(group.category) }}>
+                      <span className="font-semibold text-slate-500 text-xs">{group.category}</span>
                     </div>
                   )}
-                  <div className={storeMode ? "space-y-1" : "divide-y divide-slate-100"}>
+                  <div className={storeMode ? (group.category === '__checked__' ? "divide-y divide-slate-200/70" : "divide-y divide-slate-200/70 border-l-[4px]") : "divide-y divide-slate-100"}
+                       style={storeMode && group.category !== '__checked__' ? { borderColor: categoryColor(group.category) + '88', paddingLeft: '7px' } : undefined}>
                     {group.items.map(it => (
                       <SwipeRow key={it.id} item={it} onSwipeRight={(x)=>toggle(x)} onSwipeLeft={storeMode ? ((x)=>toggle(x)) : ((x)=>remove(x))}>
 
                       <div
-                        className={"relative flex items-center " + (storeMode ? "bg-white border border-slate-200 rounded-xl px-4 py-3 pr-12" : "px-2 py-2.5")}
-                        onClick={() => { if (storeMode) { toggle(it); } else { setOpenItemId(openItemId === it.id ? null : it.id); } }}
+                        className={"relative flex items-center " + (storeMode ? "px-3 py-3.5" : "px-2 py-2.5") + (storeMode && flashId === it.id ? " bm-flash" : "")}
+                        style={storeMode && flashId === it.id ? { '--flash': categoryColor(it._cat) + '40' } : undefined}
+                        onClick={() => { if (storeMode) { if (!it.checked) { setFlashId(it.id); setTimeout(() => setFlashId(null), 520); } toggle(it); } else { setOpenItemId(openItemId === it.id ? null : it.id); } }}
                       >
                         <div className="flex-1 min-w-0 pr-2">
-                          <div className={(storeMode ? "text-base" : "text-sm") + " " + (it.checked ? "line-through text-slate-400" : "text-slate-800")}>
+                          <div className={(storeMode ? "text-[15px]" : "text-sm") + " " + (it.checked ? "line-through text-slate-400" : (storeMode ? "text-[#18211f]" : "text-slate-800"))}>
                             {it._name}
                           </div>
                           {it._needsLine ? (
-                            <div className={"truncate " + (storeMode ? "text-xs text-slate-500" : "text-[11px] text-slate-400")}>
+                            <div className={"truncate " + (storeMode ? "text-xs text-[#69766f]" : "text-[11px] text-slate-400")}>
                               {it._needsLine}
                             </div>
                           ) : null}
                         </div>
-                        {storeMode && (
-                          <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none transform-gpu"
-                               style={{ WebkitTransform: "translateZ(0)", transform: "translateZ(0)" }}>
+                        {storeMode && it._qty > 1 && (
+                          <div className="mr-2 min-w-[22px] h-[22px] px-1.5 rounded-full bg-slate-200/60 text-[#536158] text-xs font-semibold flex items-center justify-center tabular-nums">{it._qty}</div>
+                        )}
+                        {storeMode && showAdders && (
+                          <div className="pointer-events-none">
                             <SmallAvatar
                               url={it.updatedByPhotoURL || it.createdByPhotoURL || ''}
                               name={(it.updatedByName || it.createdByName || '').trim()}
@@ -1894,7 +1914,7 @@ async function addItemFromProduct(p) {
                 </div>
               ))}
             </div>
-          </Card>
+          </div>
 
           {undoState && (
             <div className="fixed left-0 right-0 bottom-0 pb-6 px-4 z-50">
@@ -2879,7 +2899,7 @@ function ensurePickState(recipe) {
       }
 
       return (
-        <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100 pb-24">
+        <div className={"min-h-screen pb-24 " + (storeMode ? "bg-[#f8f6ef]" : "bg-gradient-to-b from-slate-50 to-slate-100")}>
           <div className="max-w-xl mx-auto px-3 pt-4">
             <Header
               user={user}
