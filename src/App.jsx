@@ -1248,6 +1248,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
       const suggestionsRef = useRef(null);
       const [showAdders, setShowAdders] = useState(false);
       const [flashId, setFlashId] = useState(null);
+      const [pendingCheckIds, setPendingCheckIds] = useState(() => new Set());
 
       const STORE_CATEGORY_ORDER = [
         'Groente & fruit',
@@ -1542,6 +1543,30 @@ async function addItemFromProduct(p) {
           const allDone = items.every(it => it.id === item.id ? true : it.checked);
           if (allDone) setShowAllDone(true);
         }
+      }
+
+      function toggleInStoreMode(item) {
+        if (!item || pendingCheckIds.has(item.id)) return;
+        if (item.checked) {
+          toggle(item);
+          return;
+        }
+
+        setFlashId(item.id);
+        setPendingCheckIds(prev => {
+          const next = new Set(prev);
+          next.add(item.id);
+          return next;
+        });
+        setTimeout(async () => {
+          await toggle(item);
+          setFlashId(current => current === item.id ? null : current);
+          setPendingCheckIds(prev => {
+            const next = new Set(prev);
+            next.delete(item.id);
+            return next;
+          });
+        }, 950);
       }
 
       async function remove(item) {
@@ -1841,12 +1866,12 @@ async function addItemFromProduct(p) {
                   <div className={storeMode ? (group.checkedGroup ? "divide-y-2 divide-slate-200/80 border-y-2 border-slate-200/80" : "divide-y-2 divide-slate-200/80 border-y-2 border-l-[4px] border-slate-200/80") : "divide-y divide-slate-100"}
                        style={storeMode && !group.checkedGroup ? { borderLeftColor: categoryColor(group.category) + '88', paddingLeft: '7px' } : undefined}>
                     {group.items.map(it => (
-                      <SwipeRow key={it.id} item={it} onSwipeRight={(x)=>toggle(x)} onSwipeLeft={storeMode ? ((x)=>toggle(x)) : ((x)=>remove(x))}>
+                      <SwipeRow key={it.id} item={it} onSwipeRight={(x)=> storeMode ? toggleInStoreMode(x) : toggle(x)} onSwipeLeft={storeMode ? ((x)=>toggleInStoreMode(x)) : ((x)=>remove(x))}>
 
                       <div
                         className={"relative flex items-center " + (storeMode ? "px-3 py-3.5" : "px-2 py-2.5") + (storeMode && flashId === it.id ? " bm-flash" : "")}
                         style={storeMode && flashId === it.id ? { '--flash': categoryColor(it._cat) + '40' } : undefined}
-                        onClick={() => { if (storeMode) { if (!it.checked) { setFlashId(it.id); setTimeout(() => setFlashId(null), 1850); } toggle(it); } else { setOpenItemId(openItemId === it.id ? null : it.id); } }}
+                        onClick={() => { if (storeMode) { toggleInStoreMode(it); } else { setOpenItemId(openItemId === it.id ? null : it.id); } }}
                       >
                         <div className="flex-1 min-w-0 pr-2">
                           <div className={(storeMode ? "text-[15px]" : "text-sm") + " " + (it.checked ? "line-through text-slate-400" : (storeMode ? "text-[#18211f]" : "text-slate-800"))}>
