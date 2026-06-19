@@ -79,6 +79,61 @@ const CART_FULL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADgAAAA4CAYAAAC
       );
     }
 
+    function TrashIcon({ className = "w-5 h-5" }) {
+      return (
+        <svg
+          viewBox="0 0 24 24"
+          className={className}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M4 7h16" />
+          <path d="M9 7V5h6v2" />
+          <path d="M7 7l1 13h8l1-13" />
+          <path d="M10 11v6" />
+          <path d="M14 11v6" />
+        </svg>
+      );
+    }
+
+    function QuantityControl({ qty, onDec, onInc, plusTitle = "Meer", minusTitle = "Minder" }) {
+      const q = clamp(Number(qty) || 0, 0, 99);
+      if (q <= 0) {
+        return (
+          <button
+            onClick={onInc}
+            title={plusTitle}
+            className="w-9 h-9 rounded-full border border-[#17372d]/20 bg-white text-[#17372d] text-sm font-medium flex items-center justify-center"
+          >
+            +
+          </button>
+        );
+      }
+      return (
+        <div className="flex items-center gap-1 rounded-full bg-slate-100 border border-slate-200 p-1">
+          <button
+            onClick={onDec}
+            title={minusTitle}
+            className="w-7 h-7 rounded-full bg-white text-slate-700 text-sm border border-slate-200 flex items-center justify-center"
+          >
+            -
+          </button>
+          <div className="min-w-[22px] text-center text-sm font-medium text-slate-700 tabular-nums">{q}</div>
+          <button
+            onClick={onInc}
+            title={plusTitle}
+            className="w-7 h-7 rounded-full bg-white text-[#17372d] text-sm border border-[#17372d]/20 flex items-center justify-center"
+          >
+            +
+          </button>
+        </div>
+      );
+    }
+
 
     function titleFromLegacyDocId(docId) {
       // best-effort: "aardappelen_kruimig_3_kg" -> "aardappelen kruimig 3 kg"
@@ -1154,7 +1209,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
               <button
                 key={c}
                 onClick={() => toggleCycleChip(c)}
-                className={"px-3 py-2 rounded-xl text-xs font-bold border " + (cycleFlags[c] ? "bg-slate-900 text-white border-slate-900" : "bg-white text-slate-700 border-slate-200")}
+                className={"px-3 py-2 rounded-xl text-xs font-medium border " + (cycleFlags[c] ? "bg-slate-900 text-white border-slate-900" : "bg-white text-slate-700 border-slate-200")}
                 title={cycleFlags[c] ? `Cyclus ${c}: geselecteerd` : `Cyclus ${c}: niet geselecteerd`}
               >
                 {c}
@@ -1164,14 +1219,14 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
 
           <div className="flex items-center gap-1"><button
               onClick={() => setSortMode('az')}
-              className={"px-3 py-2 rounded-xl text-xs font-bold border " + (sortMode === 'az' ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-slate-700 border-slate-200")}
+              className={"px-3 py-2 rounded-xl text-xs font-medium border " + (sortMode === 'az' ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-slate-700 border-slate-200")}
               title="Sorteer alfabetisch"
             >
               A–Z
             </button>
             <button
               onClick={() => setSortMode('category')}
-              className={"px-3 py-2 rounded-xl text-xs font-bold border " + (sortMode === 'category' ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-slate-700 border-slate-200")}
+              className={"px-3 py-2 rounded-xl text-xs font-medium border " + (sortMode === 'category' ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-slate-700 border-slate-200")}
               title="Sorteer op categorie, daarna op naam"
             >
               Categorie
@@ -1180,18 +1235,18 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
         </div>
       </div>
 
-      <div className="space-y-3">
+      <div className="relative left-1/2 w-screen -translate-x-1/2 space-y-3">
         {filtered.length === 0 ? (
-          <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 text-center text-slate-400">
+          <div className="max-w-xl mx-auto bg-white border-y-2 border-slate-200 p-6 text-center text-slate-400">
             <div className="text-4xl mb-1">📋</div>
             <div className="text-sm">Geen producten</div>
           </div>
         ) : groupedFiltered.map(group => (
           <div key={`${group.kind}-${group.category}`}>
             {group.kind !== 'flat' && (
-              <div className="mb-0">
+              <div className="max-w-xl mx-auto px-3 mb-0">
                 <span
-                  className="inline-flex items-center text-xs font-semibold px-3 py-1 rounded-tr-lg"
+                  className="inline-flex items-center text-xs font-medium px-3 py-1 rounded-tr-lg"
                   style={{
                     backgroundColor: group.kind === 'cycle' ? '#e7ece4' : categoryColor(group.category) + '29',
                     color: group.kind === 'cycle' ? '#536158' : '#33423d'
@@ -1202,8 +1257,8 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
               </div>
             )}
             <div
-              className={"bg-white divide-y-2 divide-slate-200/80 border-y-2 border-slate-200/80 " + (group.kind === 'flat' ? "" : "border-l-[4px]")}
-              style={group.kind === 'flat' ? undefined : { borderLeftColor: (group.kind === 'cycle' ? '#d3dbcf' : categoryColor(group.category) + '88'), paddingLeft: '7px' }}
+              className={"bg-white border-y-2 border-slate-200/80 " + (group.kind === 'flat' ? "" : "border-l-[4px]")}
+              style={group.kind === 'flat' ? undefined : { borderLeftColor: (group.kind === 'cycle' ? '#d3dbcf' : categoryColor(group.category) + '88') }}
             >
               {group.items.map(p => {
                 const existing = findExistingByProductId(p.id);
@@ -1211,7 +1266,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
                 const isSelected = selectedIds.has(p.id);
 
                 return (
-                  <div key={p.id} className="px-3 py-3 flex items-center gap-2">
+                  <div key={p.id} className="max-w-xl mx-auto px-3 py-3 flex items-center gap-2 border-b-2 border-slate-200/80 last:border-b-0">
                     <button
                       onClick={() => toggleSelected(p.id)}
                       className={
@@ -1224,20 +1279,17 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
                     </button>
 
                     <div className="flex-1 min-w-0">
-                      <div className="font-semibold text-[15px] text-slate-800 truncate">{p.name}</div>
+                      <div className="font-normal text-[15px] text-slate-800 truncate">{p.name}</div>
                     </div>
 
-                    {qty <= 0 ? (
-                      <button onClick={()=>addItemFromProduct(p)} title="Toevoegen aan lijst" className="w-9 h-9 rounded-full bg-[#17372d] text-[#eaf5ef] text-sm font-semibold">＋</button>
-                    ) : (
-                      <div className="flex items-center gap-1 rounded-full bg-slate-100 p-1">
-                        <button onClick={()=>decItemFromProduct(p)} title="Minder" className="w-7 h-7 rounded-full bg-white text-slate-700 text-sm border border-slate-200">−</button>
-                        <div className="min-w-[22px] text-center text-sm font-bold text-slate-700 tabular-nums">{qty}</div>
-                        <button onClick={()=>addItemFromProduct(p)} title="Meer" className="w-7 h-7 rounded-full bg-[#17372d] text-[#eaf5ef] text-sm">＋</button>
-                      </div>
-                    )}
+                    <QuantityControl
+                      qty={qty}
+                      onDec={()=>decItemFromProduct(p)}
+                      onInc={()=>addItemFromProduct(p)}
+                      plusTitle="Toevoegen aan lijst"
+                    />
 
-                    <button onClick={()=>startEdit(p)} className="w-9 h-9 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center" title="Product bewerken">
+                    <button onClick={()=>startEdit(p)} className="w-9 h-9 rounded-full bg-transparent text-slate-600 flex items-center justify-center" title="Product bewerken">
                       <EditIcon className="w-5 h-5" />
                     </button>
                   </div>
@@ -1354,7 +1406,6 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
       const [newText, setNewText] = useState('');
       const [newCategory, setNewCategory] = useState('Overig');
       const [showSuggestions, setShowSuggestions] = useState(false);
-      const [openItemId, setOpenItemId] = useState(null);
       const [showAllDone, setShowAllDone] = useState(false);
       const addInputRef = useRef(null);
 
@@ -1710,7 +1761,7 @@ async function addItemFromProduct(p) {
         const q = clamp(Number(nextQty)||0, 0, 99);
         await db.doc(`households/${householdId}/lists/${activeListId}/items/${item.id}`).set({
           qty: q,
-          checked: (q===0) ? true : false,
+          checked: storeMode ? (q===0) : false,
           updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
           updatedBy: (currentUser && currentUser.uid) ? currentUser.uid : '',
           updatedByName: (currentUser && currentUser.displayName) ? currentUser.displayName : '',
@@ -1954,9 +2005,8 @@ async function addItemFromProduct(p) {
               </button>
             </div>
           )}
-          <div className={storeMode ? "" : "bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden"}>
-            {!storeMode && <div className="p-3 border-b border-slate-100 text-xs text-slate-500"></div>}
-            <div className={storeMode ? "" : "p-3 space-y-3"}>
+          <div className={storeMode ? "" : "relative left-1/2 w-screen -translate-x-1/2"}>
+            <div className={storeMode ? "" : "space-y-3"}>
               {byCategory.length === 0 ? (
                 <div className="text-center py-10 text-slate-400">
                   <div className="text-4xl mb-1">🛒</div>
@@ -1974,23 +2024,25 @@ async function addItemFromProduct(p) {
                             }}>{group.category}</span>
                     </div>
                   ) : (
-                    <div className="mb-2 px-1 py-1 border-b"
-                         style={{ borderColor: categoryColor(group.category) }}>
-                      <span className="font-semibold text-slate-500 text-xs">{group.category}</span>
+                    <div className="max-w-xl mx-auto px-3 mb-0">
+                      <span className="inline-flex items-center text-xs font-medium px-3 py-1 rounded-tr-lg"
+                            style={{ backgroundColor: categoryColor(group.category) + '29', color: '#33423d' }}>
+                        {group.category}
+                      </span>
                     </div>
                   )}
-                  <div className={storeMode ? (group.checkedGroup ? "divide-y-2 divide-slate-200/80 border-y-2 border-slate-200/80" : "divide-y-2 divide-slate-200/80 border-y-2 border-l-[4px] border-slate-200/80") : "divide-y divide-slate-100"}
-                       style={storeMode && !group.checkedGroup ? { borderLeftColor: categoryColor(group.category) + '88', paddingLeft: '7px' } : undefined}>
+                  <div className={storeMode ? (group.checkedGroup ? "divide-y-2 divide-slate-200/80 border-y-2 border-slate-200/80" : "divide-y-2 divide-slate-200/80 border-y-2 border-l-[4px] border-slate-200/80") : "bg-white border-y-2 border-l-[4px] border-slate-200/80"}
+                       style={storeMode && !group.checkedGroup ? { borderLeftColor: categoryColor(group.category) + '88', paddingLeft: '7px' } : (!storeMode ? { borderLeftColor: categoryColor(group.category) + '88' } : undefined)}>
                     {group.items.map(it => (
-                      <SwipeRow key={it.id} item={it} onSwipeRight={(x)=> storeMode ? toggleInStoreMode(x) : toggle(x)} onSwipeLeft={storeMode ? ((x)=>toggleInStoreMode(x)) : ((x)=>remove(x))}>
+                      <SwipeRow key={it.id} item={it} onSwipeRight={storeMode ? ((x)=>toggleInStoreMode(x)) : undefined} onSwipeLeft={storeMode ? ((x)=>toggleInStoreMode(x)) : ((x)=>remove(x))}>
 
                       <div
-                        className={"relative flex items-center " + (storeMode ? "px-3 py-3.5" : "px-2 py-2.5") + (storeMode && flashId === it.id ? " bm-flash" : "")}
+                        className={"relative flex items-center " + (storeMode ? "px-3 py-3.5" : "max-w-xl mx-auto px-3 py-3 border-b-2 border-slate-200/80 last:border-b-0") + (storeMode && flashId === it.id ? " bm-flash" : "")}
                         style={storeMode && flashId === it.id ? { '--flash': categoryColor(it._cat) + '40' } : undefined}
-                        onClick={() => { if (storeMode) { toggleInStoreMode(it); } else { setOpenItemId(openItemId === it.id ? null : it.id); } }}
+                        onClick={() => { if (storeMode) { toggleInStoreMode(it); } }}
                       >
                         <div className="flex-1 min-w-0 pr-2">
-                          <div className={(storeMode ? "text-[15px]" : "text-sm") + " " + (it.checked ? "line-through text-slate-400" : (storeMode ? "text-[#18211f]" : "text-slate-800"))}>
+                          <div className={(storeMode ? "text-[15px]" : "text-[15px] font-normal") + " " + (it.checked ? "line-through text-slate-400" : (storeMode ? "text-[#18211f]" : "text-slate-800"))}>
                             {it._name}
                           </div>
                           {it._needsLine ? (
@@ -2012,47 +2064,19 @@ async function addItemFromProduct(p) {
                           </div>
                         )}
                         {!storeMode && (
-                        <div
-                          className={
-                            "flex items-center gap-1 ml-2 transition-all duration-150 " +
-                            (openItemId === it.id ? "opacity-100 translate-x-0" : "opacity-0 translate-x-3 pointer-events-none w-0 overflow-hidden") +
-                            " md:opacity-100 md:translate-x-0 md:pointer-events-auto md:w-auto md:overflow-visible"
-                          }
-                        >
-                          <button
-                            onClick={(e)=>{ e.stopPropagation(); toggle(it); }}
-                            className={
-                              "w-7 h-7 rounded-lg border flex items-center justify-center text-xs " +
-                              (it.checked ? "bg-slate-400 border-slate-400 text-white" : "bg-white border-slate-300 text-slate-400")
-                            }
-                            title="Afvinken"
-                          >
-                            {it.checked ? "✓" : ""}
-                          </button>
-
-                          <div className="flex items-center gap-1">
-                            <button
-                              onClick={(e)=>{ e.stopPropagation(); incQty(it, -1); }}
-                              disabled={it._qty <= 0}
-                              className={"w-7 h-7 rounded-xl border text-sm " + (it._qty <= 0 ? "bg-slate-50 border-slate-200 text-slate-300" : "bg-white border-slate-200 text-slate-700")}
-                              title="Minder"
-                            >−</button>
-                            <div className="w-7 text-center text-sm tabular-nums text-slate-700">{it._qty}</div>
-                            <button
-                              onClick={(e)=>{ e.stopPropagation(); incQty(it, +1); }}
-                              disabled={it._qty >= 99}
-                              className={"w-7 h-7 rounded-xl border text-sm " + (it._qty >= 99 ? "bg-slate-50 border-slate-200 text-slate-300" : "bg-white border-slate-200 text-slate-700")}
-                              title="Meer"
-                            >+</button>
-                          </div>
-
-                          {!storeMode && (
+                        <div className="flex items-center gap-1 ml-2">
+                          <QuantityControl
+                            qty={it._qty}
+                            onDec={(e)=>{ e?.stopPropagation?.(); incQty(it, -1); }}
+                            onInc={(e)=>{ e?.stopPropagation?.(); incQty(it, +1); }}
+                          />
                           <button
                             onClick={(e)=>{ e.stopPropagation(); remove(it); }}
-                            className="w-7 h-7 rounded-xl bg-rose-50 text-rose-600 text-sm"
+                            className="w-9 h-9 rounded-full bg-transparent text-rose-700 flex items-center justify-center"
                             title="Verwijderen"
-                          >🗑️</button>
-                        )}
+                          >
+                            <TrashIcon className="w-5 h-5" />
+                          </button>
                         </div>
                         )}
                       </div>
@@ -2536,10 +2560,10 @@ function ensurePickState(recipe) {
             <Button onClick={newRecipe} className="bg-emerald-600 text-white px-3">+ Recept</Button>
           </div>
 
-          <Card>
-            <div className="divide-y divide-slate-100">
+          <div className="relative left-1/2 w-screen -translate-x-1/2">
+            <div className="bg-white border-y-2 border-slate-200/80">
               {filtered.length === 0 ? (
-                <div className="p-6 text-center text-slate-400">
+                <div className="max-w-xl mx-auto p-6 text-center text-slate-400">
                   <div className="text-4xl mb-1">🍲</div>
                   <div className="text-sm">Nog geen recepten</div>
                 </div>
@@ -2547,8 +2571,8 @@ function ensurePickState(recipe) {
                 const isOpen = expandedId === r.id;
                 const st = pickMap[r.id];
                 return (
-                  <div key={r.id} className="border-b border-slate-100 last:border-b-0">
-                    <div className="p-3 flex items-center gap-2">
+                  <div key={r.id} className="border-b-2 border-slate-200/80 last:border-b-0">
+                    <div className="max-w-xl mx-auto px-3 py-3 flex items-center gap-2">
                       <button
                         onClick={() => {
                           if (!isOpen) ensurePickState(r);
@@ -2556,21 +2580,21 @@ function ensurePickState(recipe) {
                         }}
                         className="flex-1 text-left min-w-0"
                       >
-                        <div className="font-semibold text-sm truncate">{r.name || 'Recept'}</div>
+                        <div className="font-medium text-[15px] text-slate-800 truncate">{r.name || 'Recept'}</div>
                         <div className="text-xs text-slate-400 truncate">
                           {(r.ingredients||[]).length} ingrediënten · basis {r.baseServings || 5} pers.
                         </div>
                       </button>
 
-                      <button onClick={() => { if (!isOpen) ensurePickState(r); setExpandedId(isOpen ? null : r.id); }} title="Openen/sluiten" className="w-9 h-9 rounded-xl bg-slate-100 text-slate-700 text-sm">{isOpen ? "▴" : "▾"}</button>
+                      <button onClick={() => { if (!isOpen) ensurePickState(r); setExpandedId(isOpen ? null : r.id); }} title="Openen/sluiten" className="w-9 h-9 rounded-full bg-transparent text-slate-700 text-sm">{isOpen ? "▴" : "▾"}</button>
 
-                      <button onClick={()=>editRecipe(r)} title="Bewerken" className="w-9 h-9 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center">
+                      <button onClick={()=>editRecipe(r)} title="Bewerken" className="w-9 h-9 rounded-full bg-transparent text-slate-600 flex items-center justify-center">
                         <EditIcon className="w-5 h-5" />
                       </button>
                     </div>
 
                     {isOpen && st && (
-                      <div className="px-3 pb-4">
+                      <div className="max-w-xl mx-auto px-3 pb-4">
                         {r.url && r.url.trim() ? (
                           <a
                             href={/^https?:\/\//i.test(r.url.trim()) ? r.url.trim() : `https://${r.url.trim()}`}
@@ -2598,7 +2622,7 @@ function ensurePickState(recipe) {
                                 </button>
 
                                 <div className="flex-1 min-w-0">
-                                  <div className={"text-sm font-semibold truncate " + (checked ? "text-slate-800" : "text-slate-400 line-through")}>
+                                  <div className={"text-sm font-normal truncate " + (checked ? "text-slate-800" : "text-slate-400 line-through")}>
                                     {disp.name || "(onbekend)"}
                                   </div>
                                   {ing.amount && (
@@ -2606,28 +2630,11 @@ function ensurePickState(recipe) {
                                   )}
                                 </div>
 
-                                <div className="flex items-center gap-1 shrink-0">
-                                  <button
-                                    onClick={() => setQty(r.id, key, (Number(st.qtys?.[key] ?? defaultQty) || 0) - 1, defaultQty)}
-                                    className={"w-7 h-7 rounded-lg text-sm flex items-center justify-center " + ((Number(st.qtys?.[key] ?? defaultQty) || 0) <= 0 ? "bg-slate-100 text-slate-300" : "bg-slate-100 text-slate-700")}
-                                    title="Minder"
-                                  >−</button>
-                                  <div className={"w-10 text-center text-sm tabular-nums " + (checked ? "text-slate-800" : "text-slate-400")}>
-                                    {Number(st.qtys?.[key] ?? defaultQty) || 0}
-                                  </div>
-                                  <button
-                                    onClick={() => setQty(r.id, key, (Number(st.qtys?.[key] ?? defaultQty) || 0) + 1, defaultQty)}
-                                    className="w-7 h-7 rounded-lg bg-slate-100 text-slate-700 text-sm flex items-center justify-center"
-                                    title="Meer"
-                                  >+</button>
-                                  <button
-                                    onClick={() => setQty(r.id, key, defaultQty, defaultQty)}
-                                    disabled={(Number(st.qtys?.[key] ?? defaultQty) || 0) === defaultQty}
-                                    style={{ visibility: ((Number(st.qtys?.[key] ?? defaultQty) || 0) !== defaultQty) ? 'visible' : 'hidden' }}
-                                    className="w-7 h-7 rounded-lg bg-slate-100 text-slate-700 text-sm flex items-center justify-center disabled:opacity-50"
-                                    title="Terug naar recept"
-                                  >↺</button>
-                                </div>
+                                <QuantityControl
+                                  qty={Number(st.qtys?.[key] ?? defaultQty) || 0}
+                                  onDec={() => setQty(r.id, key, (Number(st.qtys?.[key] ?? defaultQty) || 0) - 1, defaultQty)}
+                                  onInc={() => setQty(r.id, key, (Number(st.qtys?.[key] ?? defaultQty) || 0) + 1, defaultQty)}
+                                />
                               </div>
                             );
                           })}
@@ -2645,7 +2652,7 @@ function ensurePickState(recipe) {
                 );
               })}
             </div>
-          </Card>
+          </div>
 
           {openId && draft && (
             <Modal title="Recept" onClose={()=>{ setOpenId(null); setDraft(null); }}>
@@ -2728,7 +2735,9 @@ function ensurePickState(recipe) {
                                   </select>
                                 )}
                               </div>
-                              <button onClick={()=>removeIng(idx)} className="w-10 h-10 mt-5 rounded-xl bg-slate-100 text-slate-600">🗑️</button>
+                              <button onClick={()=>removeIng(idx)} className="w-10 h-10 mt-5 rounded-full bg-transparent text-slate-600 flex items-center justify-center" title="Ingrediënt verwijderen">
+                                <TrashIcon className="w-5 h-5" />
+                              </button>
                             </div>
 
                             <div className="mt-2 grid grid-cols-3 gap-2">
@@ -2844,7 +2853,9 @@ function ensurePickState(recipe) {
                       <div className="font-semibold text-sm text-slate-800">{l.name}</div>
                       <div className="text-[11px] text-slate-400">{l.id===activeListId ? "actief" : ""}</div>
                     </button>
-                    <button onClick={()=>onDelete(l.id)} className="w-10 h-10 rounded-xl bg-slate-100 text-slate-600">🗑️</button>
+                    <button onClick={()=>onDelete(l.id)} className="w-10 h-10 rounded-full bg-transparent text-slate-600 flex items-center justify-center" title="Lijst verwijderen">
+                      <TrashIcon className="w-5 h-5" />
+                    </button>
                   </div>
                 ))}
               </div>
@@ -3117,7 +3128,7 @@ function ensurePickState(recipe) {
                           }
                         }}
                         className="w-full text-left px-4 py-2.5 text-sm font-semibold text-white bg-red-500 hover:bg-red-600"
-                      >🗑️ Wissen</button>
+                      ><span className="inline-flex items-center gap-2"><TrashIcon className="w-4 h-4" /> Wissen</span></button>
                     </div>
                   </>
                 )}
