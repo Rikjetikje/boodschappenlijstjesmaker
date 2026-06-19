@@ -1806,14 +1806,19 @@ async function addItemFromProduct(p) {
         const startRef = useRef({ x: 0, y: 0, base: 0, active: false, locked: false, horiz: false });
         const dxRef = useRef(0);
         const rafRef = useRef(null);
+        const prevOpenSideRef = useRef(openSide);
         const rightWidth = 138;
         const leftWidth = 112;
 
         useEffect(() => {
+          const wasOpen = prevOpenSideRef.current === 'right';
+          const isOpen = openSide === 'right';
           const next = openSide === 'right' ? -rightWidth : 0;
+          const softClose = wasOpen && !isOpen;
           dxRef.current = next;
-          applyDx(next, true);
-          const timer = setTimeout(() => applyDx(next, false), 170);
+          applyDx(next, true, softClose ? 'transform 320ms cubic-bezier(0.22, 1, 0.36, 1)' : undefined);
+          prevOpenSideRef.current = openSide;
+          const timer = setTimeout(() => applyDx(next, false), softClose ? 340 : 170);
           return () => clearTimeout(timer);
         }, [openSide]);
 
@@ -1825,10 +1830,10 @@ async function addItemFromProduct(p) {
           }
         }
 
-        function applyDx(dx, withTransition) {
+        function applyDx(dx, withTransition, transition) {
           const el = rowRef.current;
           if (!el) return;
-          el.style.transition = withTransition ? 'transform 150ms ease' : 'none';
+          el.style.transition = withTransition ? (transition || 'transform 150ms ease') : 'none';
           el.style.transform = `translateX(${dx}px)`;
         }
 
