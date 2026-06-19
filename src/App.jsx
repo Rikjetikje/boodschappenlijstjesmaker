@@ -1112,7 +1112,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
       }, { merge: true });
       return;
     }
-    const id = genId('li');
+    const id = itemIdForProduct(p.id);
     await db.doc(`households/${householdId}/lists/${activeListId}/items/${id}`).set({
       id,
       productId: p.id,
@@ -1590,18 +1590,16 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
           <div className="relative overflow-hidden">
             {revealRightColor && (
               <div
-                className="absolute inset-y-0 left-0 w-28 flex items-center"
+                className="absolute inset-y-0 left-0 w-28 flex items-center pl-4"
                 style={{ backgroundColor: revealRightColor }}
                 aria-hidden="true"
               >
-                <div className="w-full px-5">
-                  <div
-                    ref={deleteIconRef}
-                    className="text-white flex items-center justify-center"
-                    style={{ opacity: 0.92, transform: 'scale(0.62)', transition: 'transform 200ms cubic-bezier(0.34, 1.56, 0.64, 1), opacity 150ms ease-out' }}
-                  >
-                    <TrashIcon className="w-6 h-6" />
-                  </div>
+                <div
+                  ref={deleteIconRef}
+                  className="text-white flex items-center justify-center"
+                  style={{ opacity: 0.92, transform: 'scale(0.62)', transition: 'transform 200ms cubic-bezier(0.34, 1.56, 0.64, 1), opacity 150ms ease-out' }}
+                >
+                  <TrashIcon className="w-6 h-6" />
                 </div>
               </div>
             )}
@@ -1848,7 +1846,10 @@ useEffect(() => {
       async function upsertListItemFromProduct(productDoc, qtyInc = 1) {
         if (!householdId || !activeListId) { alert('Maak eerst een lijst aan.'); return; }
         const inc = clamp(Number(qtyInc)||1, 0, 99);
-        const id = itemIdForProduct(productDoc.id);
+        // Bestaand item kan onder een ouder, willekeurig id staan: verhoog dat,
+        // anders een nieuw item met vast id li_<productId> zodat alle paden dedupliceren.
+        const existing = findExistingByProductId(productDoc.id);
+        const id = (existing && existing.id) ? existing.id : itemIdForProduct(productDoc.id);
         const ref = db.doc(`households/${householdId}/lists/${activeListId}/items/${id}`);
 
         // Atomic merge: increment qty for same product
