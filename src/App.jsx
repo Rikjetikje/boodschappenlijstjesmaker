@@ -148,23 +148,28 @@ const CART_FULL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADgAAAA4CAYAAAC
             </button>
           );
         }
-        return (
-          <button
-            onClick={(e)=>{ e.stopPropagation(); onInc(e); }}
-            title="Meer"
-            className="w-9 h-9 rounded-full border border-[#17372d]/20 bg-white text-[#17372d] text-sm font-medium flex items-center justify-center"
-          >
-            +
-          </button>
-        );
+        return null;
       }
       return (
         <div onClick={(e)=>e.stopPropagation()}>
-          <QuantityControl
-            qty={q}
-            onDec={onDec}
-            onInc={onInc}
-          />
+          <div className="flex items-center gap-1 rounded-full bg-slate-100 border border-slate-200 p-1">
+            <button
+              onClick={q <= 1 ? undefined : onDec}
+              disabled={q <= 1}
+              title="Minder"
+              className={"w-7 h-7 rounded-full bg-white text-sm border border-slate-200 flex items-center justify-center " + (q <= 1 ? "text-slate-300" : "text-slate-700")}
+            >
+              -
+            </button>
+            <div className="min-w-[22px] text-center text-sm font-medium text-slate-700 tabular-nums">{q}</div>
+            <button
+              onClick={onInc}
+              title="Meer"
+              className="w-7 h-7 rounded-full bg-white text-[#17372d] text-sm border border-[#17372d]/20 flex items-center justify-center"
+            >
+              +
+            </button>
+          </div>
         </div>
       );
     }
