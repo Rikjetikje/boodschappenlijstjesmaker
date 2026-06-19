@@ -858,17 +858,31 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
   }, [products, query, cycleFlags, sortMode]);
 
   const groupedFiltered = useMemo(() => {
+    const activeCycles = ['W','2W','3W'].filter(c => cycleFlags[c]);
+    const hasActiveCycles = activeCycles.length > 0;
+    const cycleItems = hasActiveCycles ? filtered.filter(p => cycleEnabled(p.cycle)) : [];
+    const categoryItems = hasActiveCycles ? filtered.filter(p => !cycleEnabled(p.cycle)) : filtered;
     const map = {};
-    filtered.forEach(p => {
+    categoryItems.forEach(p => {
       const cat = p.category || 'Overig';
       if (!map[cat]) map[cat] = [];
       map[cat].push(p);
     });
-    return Object.keys(map).map(category => ({
+    const groups = Object.keys(map).map(category => ({
+      kind: 'category',
       category,
       items: map[category],
     }));
-  }, [filtered]);
+    if (!cycleItems.length) return groups;
+    const cycleLabel = activeCycles.length === 1
+      ? (activeCycles[0] === 'W' ? 'Elke week' : (activeCycles[0] === '2W' ? 'Elke 2 weken' : 'Elke 3 weken'))
+      : 'Geselecteerde herhaling';
+    return [{
+      kind: 'cycle',
+      category: cycleLabel,
+      items: cycleItems,
+    }, ...groups];
+  }, [filtered, cycleFlags]);
 
 
   async function createProduct() {
@@ -1135,13 +1149,13 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
             <div className="text-sm">Geen producten</div>
           </div>
         ) : groupedFiltered.map(group => (
-          <div key={group.category}>
+          <div key={`${group.kind}-${group.category}`}>
             <div className="mb-0">
               <span
                 className="inline-flex items-center text-xs font-semibold px-3 py-1 rounded-tr-lg"
                 style={{
-                  backgroundColor: categoryColor(group.category) + '29',
-                  color: '#33423d'
+                  backgroundColor: group.kind === 'cycle' ? '#e7ece4' : categoryColor(group.category) + '29',
+                  color: group.kind === 'cycle' ? '#536158' : '#33423d'
                 }}
               >
                 {group.category}
@@ -1149,12 +1163,13 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
             </div>
             <div
               className="bg-white divide-y-2 divide-slate-200/80 border-y-2 border-l-[4px] border-slate-200/80"
-              style={{ borderLeftColor: categoryColor(group.category) + '88', paddingLeft: '7px' }}
+              style={{ borderLeftColor: (group.kind === 'cycle' ? '#d3dbcf' : categoryColor(group.category) + '88'), paddingLeft: '7px' }}
             >
               {group.items.map(p => {
                 const existing = findExistingByProductId(p.id);
                 const qty = currentQty(existing);
                 const isSelected = selectedIds.has(p.id);
+                const productCategory = p.category || 'Overig';
 
                 return (
                   <div key={p.id} className="px-3 py-3 flex items-center gap-2">
@@ -1172,6 +1187,14 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
                     <div className="flex-1 min-w-0">
                       <div className="font-semibold text-[15px] text-slate-800 truncate">{p.name}</div>
                       <div className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-400">
+                        {group.kind === 'cycle' && (
+                          <span
+                            className="max-w-[150px] truncate px-1.5 py-0.5 rounded-full bg-slate-100 font-semibold"
+                            style={{ color: categoryColor(productCategory) }}
+                          >
+                            {productCategory.split(',')[0]}
+                          </span>
+                        )}
                         <span>{qty > 0 ? `Op lijst: ${qty}` : 'Niet op lijst'}</span>
                         {p.cycle ? (
                           <span className="px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 font-semibold">{p.cycle}</span>
