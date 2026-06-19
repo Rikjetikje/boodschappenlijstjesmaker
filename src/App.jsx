@@ -1431,7 +1431,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
         const leftWidth = 112;
         const deleteThreshold = 60;
         // Zachte "laatje rolt uit"-curve voor alle eindbewegingen (open/dicht/terug).
-        const SWIPE_EASE = 'transform 300ms cubic-bezier(0.22, 0.61, 0.36, 1)';
+        const SWIPE_EASE = 'transform 380ms cubic-bezier(0.22, 0.61, 0.36, 1)';
 
         useEffect(() => {
           const prev = prevOpenSideRef.current;
@@ -1482,8 +1482,10 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
           deleteArmedRef.current = armed;
           const icon = deleteIconRef.current;
           if (icon) {
-            icon.style.transform = armed ? 'scale(1.22)' : 'scale(1)';
-            icon.style.opacity = armed ? '1' : '0.82';
+            // Klein zolang je nog niet ver genoeg bent, dan een duidelijke "pop"
+            // zodra verwijderen scherpstaat ("nu heeft het effect").
+            icon.style.transform = armed ? 'scale(1.32)' : 'scale(0.62)';
+            icon.style.opacity = armed ? '1' : '0.92';
           }
           if (armed) {
             try {
@@ -1595,8 +1597,8 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
                 <div className="w-full px-5">
                   <div
                     ref={deleteIconRef}
-                    className="text-white flex items-center justify-center transition-transform duration-150 ease-out"
-                    style={{ opacity: 0.82 }}
+                    className="text-white flex items-center justify-center"
+                    style={{ opacity: 0.92, transform: 'scale(0.62)', transition: 'transform 200ms cubic-bezier(0.34, 1.56, 0.64, 1), opacity 150ms ease-out' }}
                   >
                     <TrashIcon className="w-6 h-6" />
                   </div>
