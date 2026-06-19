@@ -134,43 +134,17 @@ const CART_FULL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADgAAAA4CAYAAAC
       );
     }
 
-    function ListQuantityControl({ itemId, qty, open, onOpen, onDec, onInc }) {
+    function ListQuantityControl({ itemId, qty, onOpen }) {
       const q = clamp(Number(qty) || 0, 0, 99);
-      if (!open) {
-        if (q > 1) {
-          return (
-            <button
-              onClick={(e)=>{ e.stopPropagation(); onOpen(itemId); }}
-              title="Aantal aanpassen"
-              className="min-w-[34px] h-9 px-2 rounded-full border border-slate-200 bg-white text-slate-700 text-sm font-medium tabular-nums flex items-center justify-center"
-            >
-              {q}
-            </button>
-          );
-        }
-        return null;
-      }
+      if (q <= 1) return null;
       return (
-        <div onClick={(e)=>e.stopPropagation()}>
-          <div className="flex items-center gap-1 rounded-full bg-slate-100 border border-slate-200 p-1">
-            <button
-              onClick={q <= 1 ? undefined : onDec}
-              disabled={q <= 1}
-              title="Minder"
-              className={"w-7 h-7 rounded-full bg-white text-sm border border-slate-200 flex items-center justify-center " + (q <= 1 ? "text-slate-300" : "text-slate-700")}
-            >
-              -
-            </button>
-            <div className="min-w-[22px] text-center text-sm font-medium text-slate-700 tabular-nums">{q}</div>
-            <button
-              onClick={onInc}
-              title="Meer"
-              className="w-7 h-7 rounded-full bg-white text-[#17372d] text-sm border border-[#17372d]/20 flex items-center justify-center"
-            >
-              +
-            </button>
-          </div>
-        </div>
+        <button
+          onClick={(e)=>{ e.stopPropagation(); onOpen(itemId); }}
+          title="Aantal aanpassen"
+          className="min-w-[34px] h-9 px-2 rounded-full border border-slate-200 bg-white text-slate-700 text-sm font-medium tabular-nums flex items-center justify-center"
+        >
+          {q}
+        </button>
       );
     }
 
@@ -1827,11 +1801,13 @@ async function addItemFromProduct(p) {
       }
 
             // --- Swipe (alleen in de winkel / lijst) ---
-      function SwipeRow({ item, children, onSwipeRight, onSwipeLeft, revealRightColor }) {
+      function SwipeRow({ item, children, onSwipeRight, onSwipeLeft, revealRightColor, rightReveal, openSide }) {
         const rowRef = useRef(null);
-        const startRef = useRef({ x: 0, y: 0, active: false, locked: false, horiz: false });
+        const startRef = useRef({ x: 0, y: 0, base: 0, active: false, locked: false, horiz: false });
         const dxRef = useRef(0);
         const rafRef = useRef(null);
+        const rightWidth = 138;
+        const leftWidth = 112;
 
         function isFromControl(target) {
           try {
@@ -1860,9 +1836,10 @@ async function addItemFromProduct(p) {
           if (isFromControl(e.target)) return;
           const t = e.touches && e.touches[0];
           if (!t) return;
-          startRef.current = { x: t.clientX, y: t.clientY, active: true, locked: false, horiz: false };
-          dxRef.current = 0;
-          applyDx(0, false);
+          const base = openSide === 'right' ? -rightWidth : 0;
+          startRef.current = { x: t.clientX, y: t.clientY, base, active: true, locked: false, horiz: false };
+          dxRef.current = base;
+          applyDx(base, false);
         }
 
         function onTouchMove(e) {
@@ -1871,13 +1848,14 @@ async function addItemFromProduct(p) {
           const t = e.touches && e.touches[0];
           if (!t) return;
 
-          const ndx = t.clientX - st.x;
-          const ndy = t.clientY - st.y;
+          const moveX = t.clientX - st.x;
+          const moveY = t.clientY - st.y;
+          const ndx = st.base + moveX;
 
           // lock direction after a small threshold
           if (!st.locked) {
-            const ax = Math.abs(ndx);
-            const ay = Math.abs(ndy);
+            const ax = Math.abs(moveX);
+            const ay = Math.abs(moveY);
             if (ax < 8 && ay < 8) return;
             st.locked = true;
             st.horiz = ax > ay * 1.2;
@@ -1890,7 +1868,7 @@ async function addItemFromProduct(p) {
           if (e.cancelable) e.preventDefault();
 
           // clamp swipe distance
-          const clamped = Math.max(-120, Math.min(120, ndx));
+          const clamped = Math.max(-rightWidth, Math.min(leftWidth, ndx));
           dxRef.current = clamped;
           scheduleApply();
         }
@@ -1904,12 +1882,27 @@ async function addItemFromProduct(p) {
           const dx = dxRef.current;
           const TH = 60;
 
-          // snap back
-          applyDx(0, true);
-          setTimeout(() => applyDx(0, false), 170);
+          if (dx > TH && onSwipeRight) {
+            if (revealRightColor) {
+              applyDx(leftWidth, true);
+              onSwipeRight(item);
+              return;
+            }
+            onSwipeRight(item);
+          }
+          if (dx < -TH && onSwipeLeft) {
+            if (rightReveal) {
+              applyDx(-rightWidth, true);
+              onSwipeLeft(item);
+              return;
+            }
+            onSwipeLeft(item);
+          }
 
-          if (dx > TH && onSwipeRight) onSwipeRight(item);
-          if (dx < -TH && onSwipeLeft) onSwipeLeft(item);
+          // snap back
+          const snap = openSide === 'right' ? -rightWidth : 0;
+          applyDx(snap, true);
+          setTimeout(() => applyDx(snap, false), 170);
         }
 
         return (
@@ -1927,12 +1920,18 @@ async function addItemFromProduct(p) {
                 </div>
               </div>
             )}
+            {rightReveal && (
+              <div className="absolute inset-y-0 right-0 w-[138px] flex items-center justify-end pr-3 bg-slate-50 border-l border-slate-200">
+                {rightReveal}
+              </div>
+            )}
             <div
               ref={rowRef}
               onTouchStart={onTouchStart}
               onTouchMove={onTouchMove}
               onTouchEnd={onTouchEnd}
               className={"relative touch-pan-y " + (revealRightColor ? "bg-white" : "")}
+              style={openSide === 'right' ? { transform: `translateX(-${rightWidth}px)` } : undefined}
             >
               {children}
             </div>
@@ -2099,13 +2098,39 @@ async function addItemFromProduct(p) {
                   )}
                   <div className={storeMode ? (group.checkedGroup ? "divide-y-2 divide-slate-200/80 border-y-2 border-slate-200/80" : "divide-y-2 divide-slate-200/80 border-y-2 border-l-[4px] border-slate-200/80") : "bg-white border-y-2 border-l-[4px] border-slate-200/80"}
                        style={storeMode && !group.checkedGroup ? { borderLeftColor: categoryColor(group.category) + '88', paddingLeft: '7px' } : (!storeMode ? { borderLeftColor: categoryColor(group.category) + '88' } : undefined)}>
-                    {group.items.map(it => (
+                    {group.items.map(it => {
+                      const rowQty = Math.max(1, Number(it._qty) || 1);
+                      return (
                       <SwipeRow
                         key={it.id}
                         item={it}
                         onSwipeRight={storeMode ? ((x)=>toggleInStoreMode(x)) : ((x)=>remove(x))}
                         onSwipeLeft={storeMode ? ((x)=>toggleInStoreMode(x)) : ((x)=>openQtyEditor(x.id))}
                         revealRightColor={!storeMode ? categoryColor(it._cat) + 'cc' : undefined}
+                        openSide={!storeMode && openQtyId === it.id ? 'right' : undefined}
+                        rightReveal={!storeMode ? (
+                          <div
+                            onClick={(e)=>e.stopPropagation()}
+                            className="flex items-center gap-1 rounded-full bg-slate-100 border border-slate-200 p-1"
+                          >
+                            <button
+                              onClick={(e)=>{ e.stopPropagation(); if (rowQty > 1) adjustListQty(it, -1); }}
+                              disabled={rowQty <= 1}
+                              title="Minder"
+                              className={"w-7 h-7 rounded-full bg-white text-sm border border-slate-200 flex items-center justify-center " + (rowQty <= 1 ? "text-slate-300" : "text-slate-700")}
+                            >
+                              -
+                            </button>
+                            <div className="min-w-[22px] text-center text-sm font-medium text-slate-700 tabular-nums">{rowQty}</div>
+                            <button
+                              onClick={(e)=>{ e.stopPropagation(); adjustListQty(it, +1); }}
+                              title="Meer"
+                              className="w-7 h-7 rounded-full bg-white text-[#17372d] text-sm border border-[#17372d]/20 flex items-center justify-center"
+                            >
+                              +
+                            </button>
+                          </div>
+                        ) : undefined}
                       >
 
                       <div
@@ -2139,18 +2164,16 @@ async function addItemFromProduct(p) {
                         <div className="flex items-center gap-1 ml-2">
                           <ListQuantityControl
                             itemId={it.id}
-                            qty={it._qty}
-                            open={openQtyId === it.id}
+                            qty={rowQty}
                             onOpen={openQtyEditor}
-                            onDec={(e)=>{ e?.stopPropagation?.(); adjustListQty(it, -1); }}
-                            onInc={(e)=>{ e?.stopPropagation?.(); adjustListQty(it, +1); }}
                           />
                         </div>
                         )}
                       </div>
 
                     </SwipeRow>
-                    ))}
+                    );
+                    })}
                   </div>
                 </div>
               ))}
