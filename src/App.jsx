@@ -1801,13 +1801,21 @@ async function addItemFromProduct(p) {
       }
 
             // --- Swipe (alleen in de winkel / lijst) ---
-      function SwipeRow({ item, children, onSwipeRight, onSwipeLeft, revealRightColor, rightReveal, openSide }) {
+      function SwipeRow({ item, children, onSwipeRight, onSwipeLeft, revealRightColor, rightReveal, openSide, onCloseReveal }) {
         const rowRef = useRef(null);
         const startRef = useRef({ x: 0, y: 0, base: 0, active: false, locked: false, horiz: false });
         const dxRef = useRef(0);
         const rafRef = useRef(null);
         const rightWidth = 138;
         const leftWidth = 112;
+
+        useEffect(() => {
+          const next = openSide === 'right' ? -rightWidth : 0;
+          dxRef.current = next;
+          applyDx(next, true);
+          const timer = setTimeout(() => applyDx(next, false), 170);
+          return () => clearTimeout(timer);
+        }, [openSide]);
 
         function isFromControl(target) {
           try {
@@ -1882,6 +1890,12 @@ async function addItemFromProduct(p) {
           const dx = dxRef.current;
           const TH = 60;
 
+          if (openSide === 'right' && dx > -rightWidth + 42) {
+            applyDx(0, true);
+            onCloseReveal?.();
+            return;
+          }
+
           if (dx > TH && onSwipeRight) {
             if (revealRightColor) {
               applyDx(leftWidth, true);
@@ -1931,7 +1945,6 @@ async function addItemFromProduct(p) {
               onTouchMove={onTouchMove}
               onTouchEnd={onTouchEnd}
               className={"relative touch-pan-y " + (revealRightColor ? "bg-white" : "")}
-              style={openSide === 'right' ? { transform: `translateX(-${rightWidth}px)` } : undefined}
             >
               {children}
             </div>
@@ -2108,6 +2121,7 @@ async function addItemFromProduct(p) {
                         onSwipeLeft={storeMode ? ((x)=>toggleInStoreMode(x)) : ((x)=>openQtyEditor(x.id))}
                         revealRightColor={!storeMode ? categoryColor(it._cat) + 'cc' : undefined}
                         openSide={!storeMode && openQtyId === it.id ? 'right' : undefined}
+                        onCloseReveal={!storeMode ? (()=>setOpenQtyId(null)) : undefined}
                         rightReveal={!storeMode ? (
                           <div
                             onClick={(e)=>e.stopPropagation()}
