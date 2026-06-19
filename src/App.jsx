@@ -134,6 +134,39 @@ const CART_FULL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADgAAAA4CAYAAAC
       );
     }
 
+    function ListQuantityControl({ itemId, qty, open, onOpen, onDec, onInc }) {
+      const q = clamp(Number(qty) || 0, 0, 99);
+      if (!open) {
+        if (q > 1) {
+          return (
+            <button
+              onClick={(e)=>{ e.stopPropagation(); onOpen(itemId); }}
+              title="Aantal aanpassen"
+              className="min-w-[34px] h-9 px-2 rounded-full border border-slate-200 bg-white text-slate-700 text-sm font-medium tabular-nums flex items-center justify-center"
+            >
+              {q}
+            </button>
+          );
+        }
+        return (
+          <button
+            onClick={(e)=>{ e.stopPropagation(); onInc(e); }}
+            title="Meer"
+            className="w-9 h-9 rounded-full border border-[#17372d]/20 bg-white text-[#17372d] text-sm font-medium flex items-center justify-center"
+          >
+            +
+          </button>
+        );
+      }
+      return (
+        <QuantityControl
+          qty={q}
+          onDec={onDec}
+          onInc={onInc}
+        />
+      );
+    }
+
 
     function titleFromLegacyDocId(docId) {
       // best-effort: "aardappelen_kruimig_3_kg" -> "aardappelen kruimig 3 kg"
@@ -1417,6 +1450,8 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
       const [showAdders, setShowAdders] = useState(false);
       const [flashId, setFlashId] = useState(null);
       const [pendingCheckIds, setPendingCheckIds] = useState(() => new Set());
+      const [openQtyId, setOpenQtyId] = useState(null);
+      const qtyCloseTimerRef = useRef(null);
 
       const STORE_CATEGORY_ORDER = [
         'Groente & fruit',
@@ -1546,6 +1581,12 @@ useEffect(() => {
         if (!stickyAdd) return;
         scrollAddBoxIntoView(true);
       }, [stickyAdd, vvh]);
+
+      useEffect(() => {
+        return () => {
+          if (qtyCloseTimerRef.current) clearTimeout(qtyCloseTimerRef.current);
+        };
+      }, []);
 
 
       // Undo (alleen voor verwijderen)
@@ -1774,6 +1815,31 @@ async function addItemFromProduct(p) {
         const cur = currentQty(item);
         const next = clamp(cur + (Number(delta)||0), 0, 99);
         await setQty(item, next);
+      }
+
+      function openQtyEditor(itemId) {
+        if (!itemId) return;
+        if (qtyCloseTimerRef.current) clearTimeout(qtyCloseTimerRef.current);
+        setOpenQtyId(itemId);
+      }
+
+      function scheduleQtyEditorClose(itemId, delay = 900) {
+        if (qtyCloseTimerRef.current) clearTimeout(qtyCloseTimerRef.current);
+        qtyCloseTimerRef.current = setTimeout(() => {
+          setOpenQtyId(current => current === itemId ? null : current);
+          qtyCloseTimerRef.current = null;
+        }, delay);
+      }
+
+      function revealQtyEditor(itemId) {
+        openQtyEditor(itemId);
+        scheduleQtyEditorClose(itemId, 1800);
+      }
+
+      async function adjustListQty(item, delta) {
+        openQtyEditor(item.id);
+        await incQty(item, delta);
+        scheduleQtyEditorClose(item.id);
       }
 
             // --- Swipe (alleen in de winkel / lijst) ---
@@ -2054,7 +2120,7 @@ async function addItemFromProduct(p) {
                         key={it.id}
                         item={it}
                         onSwipeRight={storeMode ? ((x)=>toggleInStoreMode(x)) : ((x)=>remove(x))}
-                        onSwipeLeft={storeMode ? ((x)=>toggleInStoreMode(x)) : undefined}
+                        onSwipeLeft={storeMode ? ((x)=>toggleInStoreMode(x)) : ((x)=>revealQtyEditor(x.id))}
                         revealRightColor={!storeMode ? categoryColor(it._cat) + 'cc' : undefined}
                       >
 
@@ -2087,11 +2153,13 @@ async function addItemFromProduct(p) {
                         )}
                         {!storeMode && (
                         <div className="flex items-center gap-1 ml-2">
-                          <QuantityControl
+                          <ListQuantityControl
+                            itemId={it.id}
                             qty={it._qty}
-                            onDec={(e)=>{ e?.stopPropagation?.(); incQty(it, -1); }}
-                            onInc={(e)=>{ e?.stopPropagation?.(); incQty(it, +1); }}
-                            collapseAtOne
+                            open={openQtyId === it.id}
+                            onOpen={revealQtyEditor}
+                            onDec={(e)=>{ e?.stopPropagation?.(); adjustListQty(it, -1); }}
+                            onInc={(e)=>{ e?.stopPropagation?.(); adjustListQty(it, +1); }}
                           />
                         </div>
                         )}
