@@ -100,9 +100,9 @@ const CART_FULL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADgAAAA4CAYAAAC
       );
     }
 
-    function QuantityControl({ qty, onDec, onInc, plusTitle = "Meer", minusTitle = "Minder" }) {
+    function QuantityControl({ qty, onDec, onInc, plusTitle = "Meer", minusTitle = "Minder", collapseAtOne = false }) {
       const q = clamp(Number(qty) || 0, 0, 99);
-      if (q <= 0) {
+      if (q <= 0 || (collapseAtOne && q <= 1)) {
         return (
           <button
             onClick={onInc}
@@ -1287,6 +1287,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
                       onDec={()=>decItemFromProduct(p)}
                       onInc={()=>addItemFromProduct(p)}
                       plusTitle="Toevoegen aan lijst"
+                      collapseAtOne
                     />
 
                     <button onClick={()=>startEdit(p)} className="w-9 h-9 rounded-full bg-transparent text-slate-600 flex items-center justify-center" title="Product bewerken">
@@ -1776,7 +1777,7 @@ async function addItemFromProduct(p) {
       }
 
             // --- Swipe (alleen in de winkel / lijst) ---
-      function SwipeRow({ item, children, onSwipeRight, onSwipeLeft }) {
+      function SwipeRow({ item, children, onSwipeRight, onSwipeLeft, revealRightColor }) {
         const rowRef = useRef(null);
         const startRef = useRef({ x: 0, y: 0, active: false, locked: false, horiz: false });
         const dxRef = useRef(0);
@@ -1862,14 +1863,29 @@ async function addItemFromProduct(p) {
         }
 
         return (
-          <div
-            ref={rowRef}
-            onTouchStart={onTouchStart}
-            onTouchMove={onTouchMove}
-            onTouchEnd={onTouchEnd}
-            className="touch-pan-y"
-          >
-            {children}
+          <div className="relative overflow-hidden">
+            {revealRightColor && (
+              <div
+                className="absolute inset-0 flex items-center"
+                style={{ backgroundColor: revealRightColor }}
+                aria-hidden="true"
+              >
+                <div className="max-w-xl w-full mx-auto px-5">
+                  <div className="w-9 h-9 rounded-full bg-black text-white flex items-center justify-center">
+                    <TrashIcon className="w-5 h-5" />
+                  </div>
+                </div>
+              </div>
+            )}
+            <div
+              ref={rowRef}
+              onTouchStart={onTouchStart}
+              onTouchMove={onTouchMove}
+              onTouchEnd={onTouchEnd}
+              className={"relative touch-pan-y " + (revealRightColor ? "bg-white" : "")}
+            >
+              {children}
+            </div>
           </div>
         );
       }
@@ -2034,7 +2050,13 @@ async function addItemFromProduct(p) {
                   <div className={storeMode ? (group.checkedGroup ? "divide-y-2 divide-slate-200/80 border-y-2 border-slate-200/80" : "divide-y-2 divide-slate-200/80 border-y-2 border-l-[4px] border-slate-200/80") : "bg-white border-y-2 border-l-[4px] border-slate-200/80"}
                        style={storeMode && !group.checkedGroup ? { borderLeftColor: categoryColor(group.category) + '88', paddingLeft: '7px' } : (!storeMode ? { borderLeftColor: categoryColor(group.category) + '88' } : undefined)}>
                     {group.items.map(it => (
-                      <SwipeRow key={it.id} item={it} onSwipeRight={storeMode ? ((x)=>toggleInStoreMode(x)) : undefined} onSwipeLeft={storeMode ? ((x)=>toggleInStoreMode(x)) : ((x)=>remove(x))}>
+                      <SwipeRow
+                        key={it.id}
+                        item={it}
+                        onSwipeRight={storeMode ? ((x)=>toggleInStoreMode(x)) : ((x)=>remove(x))}
+                        onSwipeLeft={storeMode ? ((x)=>toggleInStoreMode(x)) : undefined}
+                        revealRightColor={!storeMode ? categoryColor(it._cat) + 'cc' : undefined}
+                      >
 
                       <div
                         className={"relative flex items-center " + (storeMode ? "px-3 py-3.5" : "max-w-xl mx-auto px-3 py-3 border-b-2 border-slate-200/80 last:border-b-0") + (storeMode && flashId === it.id ? " bm-flash" : "")}
@@ -2069,14 +2091,8 @@ async function addItemFromProduct(p) {
                             qty={it._qty}
                             onDec={(e)=>{ e?.stopPropagation?.(); incQty(it, -1); }}
                             onInc={(e)=>{ e?.stopPropagation?.(); incQty(it, +1); }}
+                            collapseAtOne
                           />
-                          <button
-                            onClick={(e)=>{ e.stopPropagation(); remove(it); }}
-                            className="w-9 h-9 rounded-full bg-transparent text-rose-700 flex items-center justify-center"
-                            title="Verwijderen"
-                          >
-                            <TrashIcon className="w-5 h-5" />
-                          </button>
                         </div>
                         )}
                       </div>
