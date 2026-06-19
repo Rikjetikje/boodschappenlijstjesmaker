@@ -59,6 +59,26 @@ const CART_FULL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADgAAAA4CAYAAAC
       });
     }
 
+    function EditIcon({ className = "w-5 h-5" }) {
+      return (
+        <svg
+          viewBox="0 0 24 24"
+          className={className}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M4 20h14a2 2 0 0 0 2-2v-7" />
+          <path d="M4 20V6a2 2 0 0 1 2-2h7" />
+          <path d="m13.5 15.5-4 1 1-4L17.8 5.2a1.8 1.8 0 0 1 2.5 2.5z" />
+          <path d="m16.5 6.5 2 2" />
+        </svg>
+      );
+    }
+
 
     function titleFromLegacyDocId(docId) {
       // best-effort: "aardappelen_kruimig_3_kg" -> "aardappelen kruimig 3 kg"
@@ -544,7 +564,7 @@ const CART_FULL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADgAAAA4CAYAAAC
             >
               <span>🏠</span>
               <span className="truncate max-w-[14rem]">{name || "Mijn huishouden"}</span>
-              <span className="text-[10px] text-slate-400">✏️</span>
+              <EditIcon className="w-3.5 h-3.5 text-slate-400" />
             </button>
           );
         }
@@ -862,6 +882,24 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
     const hasActiveCycles = activeCycles.length > 0;
     const cycleItems = hasActiveCycles ? filtered.filter(p => cycleEnabled(p.cycle)) : [];
     const categoryItems = hasActiveCycles ? filtered.filter(p => !cycleEnabled(p.cycle)) : filtered;
+
+    if (sortMode === 'az') {
+      const flatGroups = categoryItems.length ? [{
+        kind: 'flat',
+        category: '',
+        items: categoryItems,
+      }] : [];
+      if (!cycleItems.length) return flatGroups;
+      const cycleLabel = activeCycles.length === 1
+        ? (activeCycles[0] === 'W' ? 'Elke week' : (activeCycles[0] === '2W' ? 'Elke 2 weken' : 'Elke 3 weken'))
+        : 'Geselecteerde herhaling';
+      return [{
+        kind: 'cycle',
+        category: cycleLabel,
+        items: cycleItems,
+      }, ...flatGroups];
+    }
+
     const map = {};
     categoryItems.forEach(p => {
       const cat = p.category || 'Overig';
@@ -882,7 +920,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
       category: cycleLabel,
       items: cycleItems,
     }, ...groups];
-  }, [filtered, cycleFlags]);
+  }, [filtered, cycleFlags, sortMode]);
 
 
   async function createProduct() {
@@ -1150,20 +1188,22 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
           </div>
         ) : groupedFiltered.map(group => (
           <div key={`${group.kind}-${group.category}`}>
-            <div className="mb-0">
-              <span
-                className="inline-flex items-center text-xs font-semibold px-3 py-1 rounded-tr-lg"
-                style={{
-                  backgroundColor: group.kind === 'cycle' ? '#e7ece4' : categoryColor(group.category) + '29',
-                  color: group.kind === 'cycle' ? '#536158' : '#33423d'
-                }}
-              >
-                {group.category}
-              </span>
-            </div>
+            {group.kind !== 'flat' && (
+              <div className="mb-0">
+                <span
+                  className="inline-flex items-center text-xs font-semibold px-3 py-1 rounded-tr-lg"
+                  style={{
+                    backgroundColor: group.kind === 'cycle' ? '#e7ece4' : categoryColor(group.category) + '29',
+                    color: group.kind === 'cycle' ? '#536158' : '#33423d'
+                  }}
+                >
+                  {group.category}
+                </span>
+              </div>
+            )}
             <div
-              className="bg-white divide-y-2 divide-slate-200/80 border-y-2 border-l-[4px] border-slate-200/80"
-              style={{ borderLeftColor: (group.kind === 'cycle' ? '#d3dbcf' : categoryColor(group.category) + '88'), paddingLeft: '7px' }}
+              className={"bg-white divide-y-2 divide-slate-200/80 border-y-2 border-slate-200/80 " + (group.kind === 'flat' ? "" : "border-l-[4px]")}
+              style={group.kind === 'flat' ? undefined : { borderLeftColor: (group.kind === 'cycle' ? '#d3dbcf' : categoryColor(group.category) + '88'), paddingLeft: '7px' }}
             >
               {group.items.map(p => {
                 const existing = findExistingByProductId(p.id);
@@ -1197,7 +1237,9 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
                       </div>
                     )}
 
-                    <button onClick={()=>startEdit(p)} className="w-9 h-9 rounded-full bg-slate-100 text-slate-600 text-sm" title="Product bewerken">✎</button>
+                    <button onClick={()=>startEdit(p)} className="w-9 h-9 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center" title="Product bewerken">
+                      <EditIcon className="w-5 h-5" />
+                    </button>
                   </div>
                 );
               })}
@@ -2163,6 +2205,11 @@ async function addItemFromProduct(p) {
         if (!householdId) return;
         if (!confirm(`Recept verwijderen: "${r.name}"?`)) return;
         await db.doc(`households/${householdId}/recipes/${r.id}`).delete();
+        if (openId === r.id) {
+          setOpenId(null);
+          setDraft(null);
+        }
+        if (expandedId === r.id) setExpandedId(null);
       }
 
       function addIngredientRow() {
@@ -2517,8 +2564,9 @@ function ensurePickState(recipe) {
 
                       <button onClick={() => { if (!isOpen) ensurePickState(r); setExpandedId(isOpen ? null : r.id); }} title="Openen/sluiten" className="w-9 h-9 rounded-xl bg-slate-100 text-slate-700 text-sm">{isOpen ? "▴" : "▾"}</button>
 
-                      <button onClick={()=>editRecipe(r)} title="Bewerken" className="w-9 h-9 rounded-xl bg-slate-100 text-slate-600 text-sm">✏️</button>
-                      <button onClick={()=>deleteRecipe(r)} title="Verwijderen" className="w-9 h-9 rounded-xl bg-slate-100 text-slate-600 text-sm">🗑️</button>
+                      <button onClick={()=>editRecipe(r)} title="Bewerken" className="w-9 h-9 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center">
+                        <EditIcon className="w-5 h-5" />
+                      </button>
                     </div>
 
                     {isOpen && st && (
@@ -2752,7 +2800,17 @@ function ensurePickState(recipe) {
                 </div>
               </div>
               <div className="sticky bottom-0 -mx-4 px-4 py-3 bg-white/95 backdrop-blur border-t border-slate-100 mt-4">
-                    <Button onClick={saveRecipe} className="w-full bg-emerald-600 text-white">Opslaan</Button>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    {(recipes || []).some(r => r.id === draft.id) && (
+                      <button
+                        onClick={()=>deleteRecipe(draft)}
+                        className="px-4 py-2.5 rounded-xl bg-rose-50 text-rose-700 text-sm font-semibold"
+                      >
+                        Recept verwijderen
+                      </button>
+                    )}
+                    <Button onClick={saveRecipe} className="flex-1 bg-emerald-600 text-white">Opslaan</Button>
+                  </div>
                 </div>
             </Modal>
           )}
