@@ -1418,7 +1418,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
     }
 
             // --- Swipe (alleen in de winkel / lijst) ---
-      function SwipeRow({ item, children, onSwipeRight, onSwipeLeft, revealRightColor, rightReveal, openSide, onCloseReveal }) {
+      function SwipeRow({ item, children, onSwipeRight, onSwipeLeft, revealRightColor, rightReveal, openSide, onCloseReveal, isLastInGroup, getCollapseEl }) {
         const rowRef = useRef(null);
         const deleteIconRef = useRef(null);
         const startRef = useRef({ x: 0, y: 0, base: 0, active: false, locked: false, horiz: false });
@@ -1428,6 +1428,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
         const prevOpenSideRef = useRef(openSide);
         const deleteArmedRef = useRef(false);
         const outerRef = useRef(null);
+        const rightRevealRef = useRef(null);
         const rightWidth = 138;
         const leftWidth = 112;
         const deleteThreshold = 60;
@@ -1560,11 +1561,24 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
             content.style.transition = 'opacity 120ms ease';
             content.style.opacity = '0';
           }
-          const h = outer.offsetHeight;
-          outer.style.height = h + 'px';
-          void outer.offsetWidth;            // reflow: vaste hoogte vastleggen
-          outer.style.transition = 'height 260ms ease';
-          outer.style.height = '0px';
+          // Laat het +/- paneel mee wegvallen, zodat de kleur er overheen valt.
+          const panel = rightRevealRef.current;
+          if (panel) {
+            panel.style.transition = 'opacity 120ms ease';
+            panel.style.opacity = '0';
+          }
+          // Laatste item van een categorie? Klap dan de hele groep (label + band)
+          // in, zodat de lege categorie netjes mee verdwijnt en de rest opschuift.
+          const groupEl = (isLastInGroup && getCollapseEl) ? getCollapseEl() : null;
+          const target = groupEl || outer;
+          const h = target.offsetHeight;
+          target.style.height = h + 'px';
+          target.style.overflow = 'hidden';
+          void target.offsetWidth;           // reflow: vaste hoogte vastleggen
+          target.style.transition = 'height 260ms ease, margin 260ms ease';
+          target.style.height = '0px';
+          target.style.marginTop = '0px';
+          target.style.marginBottom = '0px';
           setTimeout(() => onSwipeRight?.(item), 280);
         }
 
@@ -1623,7 +1637,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
               </div>
             )}
             {rightReveal && (
-              <div className="absolute inset-y-0 right-0 w-[138px] flex items-center justify-end pr-3 bg-slate-50 border-l border-slate-200">
+              <div ref={rightRevealRef} className="absolute inset-y-0 right-0 w-[138px] flex items-center justify-end pr-3 bg-slate-50 border-l border-slate-200">
                 {rightReveal}
               </div>
             )}
@@ -2064,6 +2078,10 @@ async function addItemFromProduct(p) {
         return groups;
       }, [items, products, storeMode]);
 
+      // Verwijzingen naar de groep-containers, zodat een leeg rakende categorie
+      // als geheel kan inklappen bij het verwijderen van het laatste item.
+      const groupRefs = useRef({});
+
       return (
         <div className="pb-24" onClick={() => { if (!storeMode && openQtyId) setOpenQtyId(null); }}>
           {!storeMode && (
@@ -2164,6 +2182,7 @@ async function addItemFromProduct(p) {
                 </div>
               ) : byCategory.map((group, gi) => (
                 <div key={`${group.category}-${group.checkedGroup ? 'checked' : 'open'}`}
+                  ref={el => { groupRefs.current[`${group.category}-${group.checkedGroup ? 'checked' : 'open'}`] = el; }}
                   className={storeMode ? "mb-3" : ""}>
                   {storeMode ? (
                     <div className="mb-0">
@@ -2194,6 +2213,8 @@ async function addItemFromProduct(p) {
                         revealRightColor={!storeMode ? categoryColor(it._cat) + 'cc' : undefined}
                         openSide={!storeMode && openQtyId === it.id ? 'right' : undefined}
                         onCloseReveal={!storeMode ? (()=>setOpenQtyId(null)) : undefined}
+                        isLastInGroup={!storeMode && group.items.length === 1}
+                        getCollapseEl={() => groupRefs.current[`${group.category}-${group.checkedGroup ? 'checked' : 'open'}`]}
                         rightReveal={!storeMode ? (
                           <div
                             onClick={(e)=>e.stopPropagation()}
