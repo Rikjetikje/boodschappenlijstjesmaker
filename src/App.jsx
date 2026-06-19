@@ -107,7 +107,7 @@ const CART_FULL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADgAAAA4CAYAAAC
           <button
             onClick={onInc}
             title={plusTitle}
-            className="w-9 h-9 rounded-full border border-[#17372d]/20 bg-white text-[#17372d] text-sm font-medium flex items-center justify-center"
+            className="relative w-9 h-9 rounded-full border border-[#17372d]/20 bg-white text-[#17372d] text-sm font-medium flex items-center justify-center before:absolute before:content-[''] before:-inset-1.5"
           >
             +
           </button>
@@ -118,7 +118,7 @@ const CART_FULL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADgAAAA4CAYAAAC
           <button
             onClick={onDec}
             title={minusTitle}
-            className="w-7 h-7 rounded-full bg-white text-slate-700 text-sm border border-slate-200 flex items-center justify-center"
+            className="relative w-7 h-7 rounded-full bg-white text-slate-700 text-sm border border-slate-200 flex items-center justify-center before:absolute before:content-[''] before:-inset-y-2.5 before:-inset-x-1"
           >
             -
           </button>
@@ -126,7 +126,7 @@ const CART_FULL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADgAAAA4CAYAAAC
           <button
             onClick={onInc}
             title={plusTitle}
-            className="w-7 h-7 rounded-full bg-white text-[#17372d] text-sm border border-[#17372d]/20 flex items-center justify-center"
+            className="relative w-7 h-7 rounded-full bg-white text-[#17372d] text-sm border border-[#17372d]/20 flex items-center justify-center before:absolute before:content-[''] before:-inset-y-2.5 before:-inset-x-1"
           >
             +
           </button>
@@ -541,7 +541,7 @@ const CART_FULL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADgAAAA4CAYAAAC
       return (
         <div className="max-w-xl mx-auto px-4 pt-6 pb-24">
           <div className="flex items-center justify-between mb-4">
-            <h1 className="text-xl font-black text-slate-900">Boodschappenlijstjesmaker</h1>
+            <h1 className="text-xl font-bold text-slate-900">Boodschappenlijstjesmaker</h1>
             <div className="flex items-center gap-2">
               <img src={user.photoURL || ''} className="w-8 h-8 rounded-full bg-slate-200" />
               <button onClick={() => auth.signOut()} className="text-xs text-slate-500 underline">uitloggen</button>
@@ -569,7 +569,7 @@ const CART_FULL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADgAAAA4CAYAAAC
                     <input value={code} onChange={(e)=>setCode(e.target.value.toUpperCase())}
                       placeholder="bijv. KRDPKY"
                       className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white font-mono tracking-wider" />
-                    <div className="text-[11px] text-slate-400 mt-1">6 tekens (letters/cijfers).</div>
+                    <div className="text-[11px] text-slate-500 mt-1">6 tekens (letters/cijfers).</div>
                   </div>
                   {error && <div className="text-sm text-rose-600">{error}</div>}
                   <Button onClick={joinHousehold} disabled={busy}
@@ -633,7 +633,7 @@ const CART_FULL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADgAAAA4CAYAAAC
             >
               <span>🏠</span>
               <span className="truncate max-w-[14rem]">{name || "Mijn huishouden"}</span>
-              <EditIcon className="w-3.5 h-3.5 text-slate-400" />
+              <EditIcon className="w-3.5 h-3.5 text-slate-500" />
             </button>
           );
         }
@@ -713,7 +713,7 @@ const CART_FULL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADgAAAA4CAYAAAC
                     <div className="absolute right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-50 overflow-hidden w-52">
                       <div className="px-3 py-2 border-b border-slate-100">
                         <div className="text-xs font-semibold text-slate-900 truncate">{user.displayName || user.email}</div>
-                        <div className="text-[10px] text-slate-400 truncate">{user.email}</div>
+                        <div className="text-[10px] text-slate-500 truncate">{user.email}</div>
                       </div>
                       {isOwner && (
                         <button
@@ -1251,7 +1251,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
 
       <div className="relative left-1/2 w-screen -translate-x-1/2 space-y-3">
         {filtered.length === 0 ? (
-          <div className="max-w-xl mx-auto bg-white border-y-2 border-slate-200 p-6 text-center text-slate-400">
+          <div className="max-w-xl mx-auto bg-white border-y border-slate-200 p-6 text-center text-slate-500">
             <div className="text-4xl mb-1">📋</div>
             <div className="text-sm">Geen producten</div>
           </div>
@@ -1271,7 +1271,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
               </div>
             )}
             <div
-              className={"bg-white border-y-2 border-slate-200/80 " + (group.kind === 'flat' ? "" : "border-l-[4px]")}
+              className={"bg-white border-y border-slate-200/80 " + (group.kind === 'flat' ? "" : "border-l-[4px]")}
               style={group.kind === 'flat' ? undefined : { borderLeftColor: (group.kind === 'cycle' ? '#d3dbcf' : categoryColor(group.category) + '88') }}
             >
               {group.items.map(p => {
@@ -1280,12 +1280,12 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
                 const isSelected = selectedIds.has(p.id);
 
                 return (
-                  <div key={p.id} className="max-w-xl mx-auto px-3 py-3 flex items-center gap-2 border-b-2 border-slate-200/80 last:border-b-0">
+                  <div key={p.id} className="max-w-xl mx-auto px-3 py-3 flex items-center gap-2 border-b border-slate-200/80 last:border-b-0">
                     <button
                       onClick={() => toggleSelected(p.id)}
                       className={
-                        "w-6 h-6 rounded-lg border flex items-center justify-center text-xs shrink-0 " +
-                        (isSelected ? "bg-emerald-600 border-emerald-600 text-white" : "bg-white border-slate-300 text-slate-400")
+                        "relative w-6 h-6 rounded-lg border flex items-center justify-center text-xs shrink-0 before:absolute before:content-[''] before:-inset-2.5 " +
+                        (isSelected ? "bg-emerald-600 border-emerald-600 text-white" : "bg-white border-slate-300 text-slate-500")
                       }
                       title={isSelected ? "Deselecteren" : "Selecteren"}
                     >
@@ -1353,7 +1353,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
                   >
                     {cycleLabel(editingProduct.cycle)}
                   </button>
-                  <div className="text-xs text-slate-400">Tik om te wisselen tussen W, 2W en 3W.</div>
+                  <div className="text-xs text-slate-500">Tik om te wisselen tussen W, 2W en 3W.</div>
                 </div>
               </div>
             )}
@@ -1416,6 +1416,210 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
       if (c.includes('huishoud')) return '#64748b';
       return '#64748b';
     }
+
+            // --- Swipe (alleen in de winkel / lijst) ---
+      function SwipeRow({ item, children, onSwipeRight, onSwipeLeft, revealRightColor, rightReveal, openSide, onCloseReveal }) {
+        const rowRef = useRef(null);
+        const deleteIconRef = useRef(null);
+        const startRef = useRef({ x: 0, y: 0, base: 0, active: false, locked: false, horiz: false });
+        const dxRef = useRef(0);
+        const rafRef = useRef(null);
+        const transitionFrameRef = useRef(null);
+        const prevOpenSideRef = useRef(openSide);
+        const deleteArmedRef = useRef(false);
+        const rightWidth = 138;
+        const leftWidth = 112;
+        const deleteThreshold = 60;
+        // Zachte "laatje rolt uit"-curve voor alle eindbewegingen (open/dicht/terug).
+        const SWIPE_EASE = 'transform 300ms cubic-bezier(0.22, 0.61, 0.36, 1)';
+
+        useEffect(() => {
+          const prev = prevOpenSideRef.current;
+          const next = openSide === 'right' ? -rightWidth : 0;
+          dxRef.current = next;
+          if (prev === openSide) {
+            applyDx(next);     // mount of geen wijziging: meteen op z'n plek
+          } else {
+            animateDx(next);   // gewijzigd (bv. tik ergens anders): zacht uitrollen
+          }
+          prevOpenSideRef.current = openSide;
+          return () => {
+            if (transitionFrameRef.current) cancelAnimationFrame(transitionFrameRef.current);
+          };
+        }, [openSide]);
+
+        function isFromControl(target) {
+          try {
+            return !!target.closest('button, input, select, textarea, a, label');
+          } catch (e) {
+            return false;
+          }
+        }
+
+        // Volgt de vinger: direct, zonder transition.
+        function applyDx(dx) {
+          const el = rowRef.current;
+          if (!el) return;
+          el.style.transition = 'none';
+          el.style.transform = `translateX(${dx}px)`;
+        }
+
+        // Rolt zacht naar een eindpositie. De geforceerde reflow (offsetWidth)
+        // zorgt dat de transition echt vanaf de huidige plek animeert i.p.v.
+        // te 'springen' doordat transition net van 'none' kwam.
+        function animateDx(dx) {
+          const el = rowRef.current;
+          if (!el) return;
+          if (transitionFrameRef.current) cancelAnimationFrame(transitionFrameRef.current);
+          el.style.transition = 'none';
+          void el.offsetWidth;
+          el.style.transition = SWIPE_EASE;
+          el.style.transform = `translateX(${dx}px)`;
+        }
+
+        function setDeleteCue(armed) {
+          if (!revealRightColor || deleteArmedRef.current === armed) return;
+          deleteArmedRef.current = armed;
+          const icon = deleteIconRef.current;
+          if (icon) {
+            icon.style.transform = armed ? 'scale(1.22)' : 'scale(1)';
+            icon.style.opacity = armed ? '1' : '0.82';
+          }
+          if (armed) {
+            try {
+              navigator.vibrate?.(12);
+            } catch (e) {
+              // Vibration API: werkt op Android, op iOS Safari een no-op.
+            }
+          }
+        }
+
+        function scheduleApply() {
+          if (rafRef.current) return;
+          rafRef.current = requestAnimationFrame(() => {
+            rafRef.current = null;
+            applyDx(dxRef.current);
+            setDeleteCue(dxRef.current > deleteThreshold);
+          });
+        }
+
+        function onTouchStart(e) {
+          if (isFromControl(e.target)) return;
+          const t = e.touches && e.touches[0];
+          if (!t) return;
+          const base = openSide === 'right' ? -rightWidth : 0;
+          startRef.current = { x: t.clientX, y: t.clientY, base, active: true, locked: false, horiz: false };
+          dxRef.current = base;
+          applyDx(base);
+          setDeleteCue(false);
+        }
+
+        function onTouchMove(e) {
+          const st = startRef.current;
+          if (!st.active) return;
+          const t = e.touches && e.touches[0];
+          if (!t) return;
+
+          const moveX = t.clientX - st.x;
+          const moveY = t.clientY - st.y;
+          const ndx = st.base + moveX;
+
+          // lock direction after a small threshold
+          if (!st.locked) {
+            const ax = Math.abs(moveX);
+            const ay = Math.abs(moveY);
+            if (ax < 8 && ay < 8) return;
+            st.locked = true;
+            st.horiz = ax > ay * 1.2;
+            startRef.current = st;
+          }
+
+          if (!st.horiz) return;
+
+          // prevent scroll while swiping horizontally
+          if (e.cancelable) e.preventDefault();
+
+          // clamp swipe distance
+          const clamped = Math.max(-rightWidth, Math.min(leftWidth, ndx));
+          dxRef.current = clamped;
+          scheduleApply();
+        }
+
+        function onTouchEnd() {
+          const st = startRef.current;
+          if (!st.active) return;
+          st.active = false;
+          startRef.current = st;
+
+          const dx = dxRef.current;
+          const TH = deleteThreshold;
+
+          if (openSide === 'right' && dx > -rightWidth + 42) {
+            animateDx(0);
+            onCloseReveal?.();
+            return;
+          }
+
+          if (dx > TH && onSwipeRight) {
+            if (revealRightColor) {
+              animateDx(leftWidth);
+              setDeleteCue(false);
+              onSwipeRight(item);
+              return;
+            }
+            onSwipeRight(item);
+          }
+          if (dx < -TH && onSwipeLeft) {
+            if (rightReveal) {
+              animateDx(-rightWidth);
+              onSwipeLeft(item);
+              return;
+            }
+            onSwipeLeft(item);
+          }
+
+          // Niet ver genoeg: zacht terugrollen naar de uitgangspositie.
+          const snap = openSide === 'right' ? -rightWidth : 0;
+          setDeleteCue(false);
+          animateDx(snap);
+        }
+
+        return (
+          <div className="relative overflow-hidden">
+            {revealRightColor && (
+              <div
+                className="absolute inset-y-0 left-0 w-28 flex items-center"
+                style={{ backgroundColor: revealRightColor }}
+                aria-hidden="true"
+              >
+                <div className="w-full px-5">
+                  <div
+                    ref={deleteIconRef}
+                    className="text-white flex items-center justify-center transition-transform duration-150 ease-out"
+                    style={{ opacity: 0.82 }}
+                  >
+                    <TrashIcon className="w-6 h-6" />
+                  </div>
+                </div>
+              </div>
+            )}
+            {rightReveal && (
+              <div className="absolute inset-y-0 right-0 w-[138px] flex items-center justify-end pr-3 bg-slate-50 border-l border-slate-200">
+                {rightReveal}
+              </div>
+            )}
+            <div
+              ref={rowRef}
+              onTouchStart={onTouchStart}
+              onTouchMove={onTouchMove}
+              onTouchEnd={onTouchEnd}
+              className={"relative touch-pan-y " + (revealRightColor ? "bg-white" : "")}
+            >
+              {children}
+            </div>
+          </div>
+        );
+      }
 
     function ListTab({ householdId, activeListId, products, items, currentUser, storeMode }) {
       const [newText, setNewText] = useState('');
@@ -1800,211 +2004,6 @@ async function addItemFromProduct(p) {
         await incQty(item, delta);
       }
 
-            // --- Swipe (alleen in de winkel / lijst) ---
-      function SwipeRow({ item, children, onSwipeRight, onSwipeLeft, revealRightColor, rightReveal, openSide, onCloseReveal }) {
-        const rowRef = useRef(null);
-        const deleteIconRef = useRef(null);
-        const startRef = useRef({ x: 0, y: 0, base: 0, active: false, locked: false, horiz: false });
-        const dxRef = useRef(0);
-        const rafRef = useRef(null);
-        const transitionFrameRef = useRef(null);
-        const prevOpenSideRef = useRef(openSide);
-        const deleteArmedRef = useRef(false);
-        const rightWidth = 138;
-        const leftWidth = 112;
-        const deleteThreshold = 60;
-
-        useEffect(() => {
-          const wasOpen = prevOpenSideRef.current === 'right';
-          const isOpen = openSide === 'right';
-          const next = openSide === 'right' ? -rightWidth : 0;
-          const softClose = wasOpen && !isOpen;
-          dxRef.current = next;
-          if (softClose) {
-            animateDx(next, 'transform 720ms cubic-bezier(0.22, 0.61, 0.36, 1)');
-          } else {
-            applyDx(next, true);
-          }
-          prevOpenSideRef.current = openSide;
-          const timer = setTimeout(() => applyDx(next, false), softClose ? 740 : 170);
-          return () => {
-            clearTimeout(timer);
-            if (transitionFrameRef.current) cancelAnimationFrame(transitionFrameRef.current);
-          };
-        }, [openSide]);
-
-        function isFromControl(target) {
-          try {
-            return !!target.closest('button, input, select, textarea, a, label');
-          } catch (e) {
-            return false;
-          }
-        }
-
-        function applyDx(dx, withTransition, transition) {
-          const el = rowRef.current;
-          if (!el) return;
-          el.style.transition = withTransition ? (transition || 'transform 150ms ease') : 'none';
-          el.style.transform = `translateX(${dx}px)`;
-        }
-
-        function animateDx(dx, transition) {
-          const el = rowRef.current;
-          if (!el) return;
-          if (transitionFrameRef.current) cancelAnimationFrame(transitionFrameRef.current);
-          el.style.transition = transition;
-          transitionFrameRef.current = requestAnimationFrame(() => {
-            transitionFrameRef.current = null;
-            el.style.transform = `translateX(${dx}px)`;
-          });
-        }
-
-        function setDeleteCue(armed) {
-          if (!revealRightColor || deleteArmedRef.current === armed) return;
-          deleteArmedRef.current = armed;
-          const icon = deleteIconRef.current;
-          if (icon) {
-            icon.style.transform = armed ? 'scale(1.16)' : 'scale(1)';
-            icon.style.backgroundColor = armed ? '#111827' : '#000';
-          }
-          if (armed) {
-            try {
-              navigator.vibrate?.(12);
-            } catch (e) {
-              // Haptics are optional and browser-dependent.
-            }
-          }
-        }
-
-        function scheduleApply() {
-          if (rafRef.current) return;
-          rafRef.current = requestAnimationFrame(() => {
-            rafRef.current = null;
-            applyDx(dxRef.current, false);
-            setDeleteCue(dxRef.current > deleteThreshold);
-          });
-        }
-
-        function onTouchStart(e) {
-          if (isFromControl(e.target)) return;
-          const t = e.touches && e.touches[0];
-          if (!t) return;
-          const base = openSide === 'right' ? -rightWidth : 0;
-          startRef.current = { x: t.clientX, y: t.clientY, base, active: true, locked: false, horiz: false };
-          dxRef.current = base;
-          applyDx(base, false);
-          setDeleteCue(false);
-        }
-
-        function onTouchMove(e) {
-          const st = startRef.current;
-          if (!st.active) return;
-          const t = e.touches && e.touches[0];
-          if (!t) return;
-
-          const moveX = t.clientX - st.x;
-          const moveY = t.clientY - st.y;
-          const ndx = st.base + moveX;
-
-          // lock direction after a small threshold
-          if (!st.locked) {
-            const ax = Math.abs(moveX);
-            const ay = Math.abs(moveY);
-            if (ax < 8 && ay < 8) return;
-            st.locked = true;
-            st.horiz = ax > ay * 1.2;
-            startRef.current = st;
-          }
-
-          if (!st.horiz) return;
-
-          // prevent scroll while swiping horizontally
-          if (e.cancelable) e.preventDefault();
-
-          // clamp swipe distance
-          const clamped = Math.max(-rightWidth, Math.min(leftWidth, ndx));
-          dxRef.current = clamped;
-          scheduleApply();
-        }
-
-        function onTouchEnd() {
-          const st = startRef.current;
-          if (!st.active) return;
-          st.active = false;
-          startRef.current = st;
-
-          const dx = dxRef.current;
-          const TH = deleteThreshold;
-
-          if (openSide === 'right' && dx > -rightWidth + 42) {
-            applyDx(0, true);
-            onCloseReveal?.();
-            return;
-          }
-
-          if (dx > TH && onSwipeRight) {
-            if (revealRightColor) {
-              applyDx(leftWidth, true);
-              setDeleteCue(false);
-              onSwipeRight(item);
-              return;
-            }
-            onSwipeRight(item);
-          }
-          if (dx < -TH && onSwipeLeft) {
-            if (rightReveal) {
-              applyDx(-rightWidth, true);
-              onSwipeLeft(item);
-              return;
-            }
-            onSwipeLeft(item);
-          }
-
-          // snap back
-          const snap = openSide === 'right' ? -rightWidth : 0;
-          setDeleteCue(false);
-          applyDx(snap, true);
-          setTimeout(() => applyDx(snap, false), 170);
-        }
-
-        return (
-          <div className="relative overflow-hidden">
-            {revealRightColor && (
-              <div
-                className="absolute inset-y-0 left-0 w-28 flex items-center"
-                style={{ backgroundColor: revealRightColor }}
-                aria-hidden="true"
-              >
-                <div className="w-full px-5">
-                  <div
-                    ref={deleteIconRef}
-                    className="w-9 h-9 rounded-full bg-black text-white flex items-center justify-center transition-transform duration-150 ease-out"
-                  >
-                    <TrashIcon className="w-5 h-5" />
-                  </div>
-                </div>
-              </div>
-            )}
-            {rightReveal && (
-              <div className="absolute inset-y-0 right-0 w-[138px] flex items-center justify-end pr-3 bg-slate-50 border-l border-slate-200">
-                {rightReveal}
-              </div>
-            )}
-            <div
-              ref={rowRef}
-              onTouchStart={onTouchStart}
-              onTouchMove={onTouchMove}
-              onTouchEnd={onTouchEnd}
-              className={"relative touch-pan-y " + (revealRightColor ? "bg-white" : "")}
-            >
-              {children}
-            </div>
-          </div>
-        );
-      }
-
-
-
       const byCategory = useMemo(() => {
         const productById = new Map((products || []).map(p => [p.id, p]));
         const map = {};
@@ -2068,7 +2067,7 @@ async function addItemFromProduct(p) {
                     type="button"
                     onMouseDown={(e)=>e.preventDefault()}
                     onClick={() => { setNewText(''); setShowSuggestions(false); setTimeout(()=>addInputRef.current?.focus(), 0); }}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-xl leading-none hover:text-slate-600"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 text-xl leading-none hover:text-slate-600"
                     title="Leegmaken"
                     aria-label="Leegmaken"
                   >
@@ -2105,7 +2104,7 @@ async function addItemFromProduct(p) {
                     onClick={()=>{ addItemFromProduct(s); setNewText(''); setShowSuggestions(false); setStickyAdd(false); }}
                     className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 flex items-center gap-2 border-b border-slate-100 last:border-b-0">
                     <span className="flex-1 truncate">{s.name}</span>
-                    <span className="text-[11px] text-slate-400 shrink-0">{(s.category||'Overig').split(',')[0]}</span>
+                    <span className="text-[11px] text-slate-500 shrink-0">{(s.category||'Overig').split(',')[0]}</span>
                   </button>
                 ))}
               </div>
@@ -2137,7 +2136,7 @@ async function addItemFromProduct(p) {
           <div className={storeMode ? "" : "relative left-1/2 w-screen -translate-x-1/2"}>
             <div className={storeMode ? "" : "space-y-3"}>
               {byCategory.length === 0 ? (
-                <div className="text-center py-10 text-slate-400">
+                <div className="text-center py-10 text-slate-500">
                   <div className="text-4xl mb-1">🛒</div>
                   <div className="text-sm">Je lijst is leeg</div>
                 </div>
@@ -2160,7 +2159,7 @@ async function addItemFromProduct(p) {
                       </span>
                     </div>
                   )}
-                  <div className={storeMode ? (group.checkedGroup ? "divide-y-2 divide-slate-200/80 border-y-2 border-slate-200/80" : "divide-y-2 divide-slate-200/80 border-y-2 border-l-[4px] border-slate-200/80") : "bg-white border-y-2 border-l-[4px] border-slate-200/80"}
+                  <div className={storeMode ? (group.checkedGroup ? "divide-y divide-slate-200/80 border-y border-slate-200/80" : "divide-y divide-slate-200/80 border-y border-l-[4px] border-slate-200/80") : "bg-white border-y border-l-[4px] border-slate-200/80"}
                        style={storeMode && !group.checkedGroup ? { borderLeftColor: categoryColor(group.category) + '88', paddingLeft: '7px' } : (!storeMode ? { borderLeftColor: categoryColor(group.category) + '88' } : undefined)}>
                     {group.items.map(it => {
                       const rowQty = Math.max(1, Number(it._qty) || 1);
@@ -2199,16 +2198,16 @@ async function addItemFromProduct(p) {
                       >
 
                       <div
-                        className={"relative flex items-center " + (storeMode ? "px-3 py-3.5" : "max-w-xl mx-auto px-3 py-3 border-b-2 border-slate-200/80 last:border-b-0") + (storeMode && flashId === it.id ? " bm-flash" : "")}
+                        className={"relative flex items-center " + (storeMode ? "px-3 py-3.5" : "max-w-xl mx-auto px-3 py-3 border-b border-slate-200/80 last:border-b-0") + (storeMode && flashId === it.id ? " bm-flash" : "")}
                         style={storeMode && flashId === it.id ? { '--flash': categoryColor(it._cat) + '40' } : undefined}
                         onClick={() => { if (storeMode) { toggleInStoreMode(it); } }}
                       >
                         <div className="flex-1 min-w-0 pr-2">
-                          <div className={(storeMode ? "text-[15px]" : "text-[15px] font-normal") + " " + (it.checked ? "line-through text-slate-400" : (storeMode ? "text-[#18211f]" : "text-slate-800"))}>
+                          <div className={(storeMode ? "text-[15px]" : "text-[15px] font-normal") + " " + (it.checked ? "line-through text-slate-500" : (storeMode ? "text-[#18211f]" : "text-slate-800"))}>
                             {it._name}
                           </div>
                           {it._needsLine ? (
-                            <div className={"truncate " + (storeMode ? "text-xs text-[#69766f]" : "text-[11px] text-slate-400")}>
+                            <div className={"truncate " + (storeMode ? "text-xs text-[#69766f]" : "text-[11px] text-slate-500")}>
                               {it._needsLine}
                             </div>
                           ) : null}
@@ -2717,9 +2716,9 @@ function ensurePickState(recipe) {
           </div>
 
           <div className="relative left-1/2 w-screen -translate-x-1/2">
-            <div className="bg-white border-y-2 border-slate-200/80">
+            <div className="bg-white border-y border-slate-200/80">
               {filtered.length === 0 ? (
-                <div className="max-w-xl mx-auto p-6 text-center text-slate-400">
+                <div className="max-w-xl mx-auto p-6 text-center text-slate-500">
                   <div className="text-4xl mb-1">🍲</div>
                   <div className="text-sm">Nog geen recepten</div>
                 </div>
@@ -2727,7 +2726,7 @@ function ensurePickState(recipe) {
                 const isOpen = expandedId === r.id;
                 const st = pickMap[r.id];
                 return (
-                  <div key={r.id} className="border-b-2 border-slate-200/80 last:border-b-0">
+                  <div key={r.id} className="border-b border-slate-200/80 last:border-b-0">
                     <div className="max-w-xl mx-auto px-3 py-3 flex items-center gap-2">
                       <button
                         onClick={() => {
@@ -2737,7 +2736,7 @@ function ensurePickState(recipe) {
                         className="flex-1 text-left min-w-0"
                       >
                         <div className="font-medium text-[15px] text-slate-800 truncate">{r.name || 'Recept'}</div>
-                        <div className="text-xs text-slate-400 truncate">
+                        <div className="text-xs text-slate-500 truncate">
                           {(r.ingredients||[]).length} ingrediënten · basis {r.baseServings || 5} pers.
                         </div>
                       </button>
@@ -2759,7 +2758,7 @@ function ensurePickState(recipe) {
                             className="inline-block text-sm font-semibold text-emerald-700 underline mb-2"
                           >Bekijk hier het recept.</a>
                         ) : (
-                          <div className="text-xs text-slate-400 mb-2">Nog geen online recept gekoppeld.</div>
+                          <div className="text-xs text-slate-500 mb-2">Nog geen online recept gekoppeld.</div>
                         )}
 
                         <div className="space-y-1">
@@ -2772,17 +2771,17 @@ function ensurePickState(recipe) {
                               <div key={key} className="flex items-center gap-2 py-2 border-b border-slate-100 last:border-b-0">
                                 <button onClick={()=>togglePick(r.id, key)} className={
                                   "w-6 h-6 rounded-lg border flex items-center justify-center text-xs " +
-                                  (checked ? "bg-emerald-600 border-emerald-600 text-white" : "bg-white border-slate-300 text-slate-400")
+                                  (checked ? "bg-emerald-600 border-emerald-600 text-white" : "bg-white border-slate-300 text-slate-500")
                                 }>
                                   {checked ? "✓" : ""}
                                 </button>
 
                                 <div className="flex-1 min-w-0">
-                                  <div className={"text-sm font-normal truncate " + (checked ? "text-slate-800" : "text-slate-400 line-through")}>
+                                  <div className={"text-sm font-normal truncate " + (checked ? "text-slate-800" : "text-slate-500 line-through")}>
                                     {disp.name || "(onbekend)"}
                                   </div>
                                   {ing.amount && (
-                                    <div className="text-[11px] text-slate-400 truncate">nodig: {ing.amount} {ing.unit || 'st'}</div>
+                                    <div className="text-[11px] text-slate-500 truncate">nodig: {ing.amount} {ing.unit || 'st'}</div>
                                   )}
                                 </div>
 
@@ -2846,7 +2845,7 @@ function ensurePickState(recipe) {
 
                     <div className="space-y-2">
                       {(draft.ingredients||[]).length === 0 ? (
-                        <div className="text-sm text-slate-400">Nog geen ingrediënten.</div>
+                        <div className="text-sm text-slate-500">Nog geen ingrediënten.</div>
                       ) : (draft.ingredients||[]).map((ing, idx) => {
                         const disp = resolveIngDisplay(ing);
                         const sugg = productSuggestions(ing.nameSnapshot || disp.name);
@@ -2873,13 +2872,13 @@ function ensurePickState(recipe) {
                                         })}
                                         className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 flex items-center gap-2 border-b border-slate-100 last:border-b-0">
                                         <span className="flex-1 truncate">{p.name}</span>
-                                        <span className="text-[11px] text-slate-400 shrink-0">{(p.category||'Overig').split(',')[0]}</span>
+                                        <span className="text-[11px] text-slate-500 shrink-0">{(p.category||'Overig').split(',')[0]}</span>
                                       </button>
                                     ))}
                                   </div>
                                 )}
                                 {String(ing.productId || '') ? (
-                                  <div className="text-[11px] text-slate-400 mt-1">{disp.cat}</div>
+                                  <div className="text-[11px] text-slate-500 mt-1">{disp.cat}</div>
                                 ) : (
                                   <select
                                     value={ing.categorySnapshot || 'Overig'}
@@ -2961,7 +2960,7 @@ function ensurePickState(recipe) {
                     valueHtml={draft.preparationHtml || ''}
                     onChangeHtml={(html)=>setDraft(d=>({ ...d, preparationHtml: html }))}
                   />
-                  <div className="text-[11px] text-slate-400">Tip: plakken vanuit Notities/website werkt prima.</div>
+                  <div className="text-[11px] text-slate-500">Tip: plakken vanuit Notities/website werkt prima.</div>
                 </div>
               </div>
               <div className="sticky bottom-0 -mx-4 px-4 py-3 bg-white/95 backdrop-blur border-t border-slate-100 mt-4">
@@ -2994,7 +2993,7 @@ function ensurePickState(recipe) {
         <>
           <div className="flex items-center justify-between mb-3">
             <button onClick={()=>setOpen(true)} className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-semibold text-slate-700">
-              📋 {activeName} <span className="text-[10px] text-slate-400">▼</span>
+              📋 {activeName} <span className="text-[10px] text-slate-500">▼</span>
             </button>
           </div>
 
@@ -3007,7 +3006,7 @@ function ensurePickState(recipe) {
                       className={"flex-1 px-3 py-2.5 rounded-xl text-left border " +
                         (l.id===activeListId ? "bg-emerald-50 border-emerald-200" : "bg-white border-slate-200")}>
                       <div className="font-semibold text-sm text-slate-800">{l.name}</div>
-                      <div className="text-[11px] text-slate-400">{l.id===activeListId ? "actief" : ""}</div>
+                      <div className="text-[11px] text-slate-500">{l.id===activeListId ? "actief" : ""}</div>
                     </button>
                     <button onClick={()=>onDelete(l.id)} className="w-10 h-10 rounded-full bg-transparent text-slate-600 flex items-center justify-center" title="Lijst verwijderen">
                       <TrashIcon className="w-5 h-5" />
@@ -3216,7 +3215,7 @@ function ensurePickState(recipe) {
         return (
           <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100">
             <div className="max-w-xl mx-auto px-4 pt-10 pb-20">
-              <h1 className="text-2xl font-black text-slate-900 mb-2">Boodschappenlijstjesmaker</h1>
+              <h1 className="text-2xl font-bold text-slate-900 mb-2">Boodschappenlijstjesmaker</h1>
               <p className="text-slate-600 text-sm mb-6">Log in met Google om samen te werken.</p>
               <Button onClick={handleSignIn} className="bg-emerald-600 text-white w-full">
                 Inloggen met Google
@@ -3337,7 +3336,7 @@ function ensurePickState(recipe) {
                 <div className="text-sm text-slate-600 mb-4">
                   De code voor jouw huishouden is:
                 </div>
-                <div className="font-mono text-2xl font-black tracking-widest text-emerald-700 bg-emerald-50 rounded-xl py-3 mb-4">
+                <div className="font-mono text-2xl font-bold tracking-widest text-emerald-700 bg-emerald-50 rounded-xl py-3 mb-4">
                   {createdCode.code}
                 </div>
                 <div className="text-sm text-slate-500 mb-5">
