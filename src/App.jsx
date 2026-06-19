@@ -1807,6 +1807,7 @@ async function addItemFromProduct(p) {
         const startRef = useRef({ x: 0, y: 0, base: 0, active: false, locked: false, horiz: false });
         const dxRef = useRef(0);
         const rafRef = useRef(null);
+        const transitionFrameRef = useRef(null);
         const prevOpenSideRef = useRef(openSide);
         const deleteArmedRef = useRef(false);
         const rightWidth = 138;
@@ -1819,10 +1820,17 @@ async function addItemFromProduct(p) {
           const next = openSide === 'right' ? -rightWidth : 0;
           const softClose = wasOpen && !isOpen;
           dxRef.current = next;
-          applyDx(next, true, softClose ? 'transform 520ms cubic-bezier(0.16, 1, 0.3, 1)' : undefined);
+          if (softClose) {
+            animateDx(next, 'transform 720ms cubic-bezier(0.22, 0.61, 0.36, 1)');
+          } else {
+            applyDx(next, true);
+          }
           prevOpenSideRef.current = openSide;
-          const timer = setTimeout(() => applyDx(next, false), softClose ? 540 : 170);
-          return () => clearTimeout(timer);
+          const timer = setTimeout(() => applyDx(next, false), softClose ? 740 : 170);
+          return () => {
+            clearTimeout(timer);
+            if (transitionFrameRef.current) cancelAnimationFrame(transitionFrameRef.current);
+          };
         }, [openSide]);
 
         function isFromControl(target) {
@@ -1838,6 +1846,17 @@ async function addItemFromProduct(p) {
           if (!el) return;
           el.style.transition = withTransition ? (transition || 'transform 150ms ease') : 'none';
           el.style.transform = `translateX(${dx}px)`;
+        }
+
+        function animateDx(dx, transition) {
+          const el = rowRef.current;
+          if (!el) return;
+          if (transitionFrameRef.current) cancelAnimationFrame(transitionFrameRef.current);
+          el.style.transition = transition;
+          transitionFrameRef.current = requestAnimationFrame(() => {
+            transitionFrameRef.current = null;
+            el.style.transform = `translateX(${dx}px)`;
+          });
         }
 
         function setDeleteCue(armed) {
