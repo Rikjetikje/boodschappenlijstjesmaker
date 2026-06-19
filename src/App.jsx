@@ -1803,12 +1803,15 @@ async function addItemFromProduct(p) {
             // --- Swipe (alleen in de winkel / lijst) ---
       function SwipeRow({ item, children, onSwipeRight, onSwipeLeft, revealRightColor, rightReveal, openSide, onCloseReveal }) {
         const rowRef = useRef(null);
+        const deleteIconRef = useRef(null);
         const startRef = useRef({ x: 0, y: 0, base: 0, active: false, locked: false, horiz: false });
         const dxRef = useRef(0);
         const rafRef = useRef(null);
         const prevOpenSideRef = useRef(openSide);
+        const deleteArmedRef = useRef(false);
         const rightWidth = 138;
         const leftWidth = 112;
+        const deleteThreshold = 60;
 
         useEffect(() => {
           const wasOpen = prevOpenSideRef.current === 'right';
@@ -1816,9 +1819,9 @@ async function addItemFromProduct(p) {
           const next = openSide === 'right' ? -rightWidth : 0;
           const softClose = wasOpen && !isOpen;
           dxRef.current = next;
-          applyDx(next, true, softClose ? 'transform 320ms cubic-bezier(0.22, 1, 0.36, 1)' : undefined);
+          applyDx(next, true, softClose ? 'transform 520ms cubic-bezier(0.16, 1, 0.3, 1)' : undefined);
           prevOpenSideRef.current = openSide;
-          const timer = setTimeout(() => applyDx(next, false), softClose ? 340 : 170);
+          const timer = setTimeout(() => applyDx(next, false), softClose ? 540 : 170);
           return () => clearTimeout(timer);
         }, [openSide]);
 
@@ -1837,11 +1840,29 @@ async function addItemFromProduct(p) {
           el.style.transform = `translateX(${dx}px)`;
         }
 
+        function setDeleteCue(armed) {
+          if (!revealRightColor || deleteArmedRef.current === armed) return;
+          deleteArmedRef.current = armed;
+          const icon = deleteIconRef.current;
+          if (icon) {
+            icon.style.transform = armed ? 'scale(1.16)' : 'scale(1)';
+            icon.style.backgroundColor = armed ? '#111827' : '#000';
+          }
+          if (armed) {
+            try {
+              navigator.vibrate?.(12);
+            } catch (e) {
+              // Haptics are optional and browser-dependent.
+            }
+          }
+        }
+
         function scheduleApply() {
           if (rafRef.current) return;
           rafRef.current = requestAnimationFrame(() => {
             rafRef.current = null;
             applyDx(dxRef.current, false);
+            setDeleteCue(dxRef.current > deleteThreshold);
           });
         }
 
@@ -1853,6 +1874,7 @@ async function addItemFromProduct(p) {
           startRef.current = { x: t.clientX, y: t.clientY, base, active: true, locked: false, horiz: false };
           dxRef.current = base;
           applyDx(base, false);
+          setDeleteCue(false);
         }
 
         function onTouchMove(e) {
@@ -1893,7 +1915,7 @@ async function addItemFromProduct(p) {
           startRef.current = st;
 
           const dx = dxRef.current;
-          const TH = 60;
+          const TH = deleteThreshold;
 
           if (openSide === 'right' && dx > -rightWidth + 42) {
             applyDx(0, true);
@@ -1904,6 +1926,7 @@ async function addItemFromProduct(p) {
           if (dx > TH && onSwipeRight) {
             if (revealRightColor) {
               applyDx(leftWidth, true);
+              setDeleteCue(false);
               onSwipeRight(item);
               return;
             }
@@ -1920,6 +1943,7 @@ async function addItemFromProduct(p) {
 
           // snap back
           const snap = openSide === 'right' ? -rightWidth : 0;
+          setDeleteCue(false);
           applyDx(snap, true);
           setTimeout(() => applyDx(snap, false), 170);
         }
@@ -1933,7 +1957,10 @@ async function addItemFromProduct(p) {
                 aria-hidden="true"
               >
                 <div className="w-full px-5">
-                  <div className="w-9 h-9 rounded-full bg-black text-white flex items-center justify-center">
+                  <div
+                    ref={deleteIconRef}
+                    className="w-9 h-9 rounded-full bg-black text-white flex items-center justify-center transition-transform duration-150 ease-out"
+                  >
                     <TrashIcon className="w-5 h-5" />
                   </div>
                 </div>
