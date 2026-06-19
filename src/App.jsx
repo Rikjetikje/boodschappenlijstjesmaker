@@ -1427,6 +1427,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
         const transitionFrameRef = useRef(null);
         const prevOpenSideRef = useRef(openSide);
         const deleteArmedRef = useRef(false);
+        const outerRef = useRef(null);
         const rightWidth = 138;
         const leftWidth = 112;
         const deleteThreshold = 60;
@@ -1547,6 +1548,26 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
           scheduleApply();
         }
 
+        // Gmail-stijl: hele rij krijgt de categoriekleur en klapt van onder naar
+        // boven dicht; items eronder schuiven mee omhoog. Pas ná de animatie echt
+        // verwijderen, zodat er geen sprong is.
+        function collapseAndDelete() {
+          const outer = outerRef.current;
+          if (!outer) { onSwipeRight?.(item); return; }
+          outer.style.backgroundColor = revealRightColor;
+          const content = rowRef.current;
+          if (content) {
+            content.style.transition = 'opacity 120ms ease';
+            content.style.opacity = '0';
+          }
+          const h = outer.offsetHeight;
+          outer.style.height = h + 'px';
+          void outer.offsetWidth;            // reflow: vaste hoogte vastleggen
+          outer.style.transition = 'height 260ms ease';
+          outer.style.height = '0px';
+          setTimeout(() => onSwipeRight?.(item), 280);
+        }
+
         function onTouchEnd() {
           const st = startRef.current;
           if (!st.active) return;
@@ -1564,9 +1585,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
 
           if (dx > TH && onSwipeRight) {
             if (revealRightColor) {
-              animateDx(leftWidth);
-              setDeleteCue(false);
-              onSwipeRight(item);
+              collapseAndDelete();
               return;
             }
             onSwipeRight(item);
@@ -1587,7 +1606,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
         }
 
         return (
-          <div className="relative overflow-hidden">
+          <div ref={outerRef} className="relative overflow-hidden">
             {revealRightColor && (
               <div
                 className="absolute inset-y-0 left-0 w-28 flex items-center pl-4"
