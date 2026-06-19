@@ -2163,7 +2163,7 @@ async function addItemFromProduct(p) {
                   )}
                   <div className={storeMode ? (group.checkedGroup ? "divide-y divide-slate-200/80 border-y border-slate-200/80" : "divide-y divide-slate-200/80 border-y border-l-[4px] border-slate-200/80") : "bg-white border-y border-l-[4px] border-slate-200/80"}
                        style={storeMode && !group.checkedGroup ? { borderLeftColor: categoryColor(group.category) + '88', paddingLeft: '7px' } : (!storeMode ? { borderLeftColor: categoryColor(group.category) + '88' } : undefined)}>
-                    {group.items.map(it => {
+                    {group.items.map((it, idx) => {
                       const rowQty = Math.max(1, Number(it._qty) || 1);
                       return (
                       <SwipeRow
@@ -2200,7 +2200,7 @@ async function addItemFromProduct(p) {
                       >
 
                       <div
-                        className={"relative flex items-center " + (storeMode ? "px-3 py-3.5" : "max-w-xl mx-auto px-3 py-3 border-b border-slate-200/80 last:border-b-0") + (storeMode && flashId === it.id ? " bm-flash" : "")}
+                        className={"relative flex items-center " + (storeMode ? "px-3 py-3.5" : "max-w-xl mx-auto px-3 py-3" + (idx < group.items.length - 1 ? " border-b border-slate-200/80" : "")) + (storeMode && flashId === it.id ? " bm-flash" : "")}
                         style={storeMode && flashId === it.id ? { '--flash': categoryColor(it._cat) + '40' } : undefined}
                         onClick={() => { if (storeMode) { toggleInStoreMode(it); } }}
                       >
