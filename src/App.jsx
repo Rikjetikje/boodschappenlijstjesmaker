@@ -965,6 +965,27 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
     return arr.find(x => x.productId === productId && !x.checked) || arr.find(x => x.productId === productId) || null;
   }
 
+  async function decItemFromProduct(p) {
+    if (!activeListId) { alert('Maak eerst een lijst aan.'); return; }
+    const existing = findExistingByProductId(p.id);
+    if (!existing) return;
+    const next = clamp(currentQty(existing) - 1, 0, 99);
+    const ref = db.doc(`households/${householdId}/lists/${activeListId}/items/${existing.id}`);
+    if (next <= 0) { await ref.delete(); return; }
+    await ref.set({
+      qty: next,
+      amount: String(next),
+      unit: 'st',
+      checked: false,
+      nameSnapshot: p.name || existing.nameSnapshot || '',
+      categorySnapshot: p.category || existing.categorySnapshot || 'Overig',
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedBy: currentUser?.uid || '',
+      updatedByName: currentUser?.displayName || '',
+      updatedByPhotoURL: currentUser?.photoURL || '',
+    }, { merge: true });
+  }
+
   async function addItemFromProduct(p) {
     if (!activeListId) { alert('Maak eerst een lijst aan.'); return; }
     const existing = findExistingByProductId(p.id);
@@ -1169,7 +1190,8 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
                     {qty <= 0 ? (
                       <button onClick={()=>addItemFromProduct(p)} title="Toevoegen aan lijst" className="w-9 h-9 rounded-full bg-[#17372d] text-[#eaf5ef] text-sm font-semibold">＋</button>
                     ) : (
-                      <div className="flex items-center gap-1 rounded-full bg-slate-100 py-1 pl-3 pr-1">
+                      <div className="flex items-center gap-1 rounded-full bg-slate-100 p-1">
+                        <button onClick={()=>decItemFromProduct(p)} title="Minder" className="w-7 h-7 rounded-full bg-white text-slate-700 text-sm border border-slate-200">−</button>
                         <div className="min-w-[22px] text-center text-sm font-bold text-slate-700 tabular-nums">{qty}</div>
                         <button onClick={()=>addItemFromProduct(p)} title="Meer" className="w-7 h-7 rounded-full bg-[#17372d] text-[#eaf5ef] text-sm">＋</button>
                       </div>
