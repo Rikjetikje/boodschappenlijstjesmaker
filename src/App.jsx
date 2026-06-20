@@ -3040,8 +3040,10 @@ async function addRecipeToList(r, targetServings, pickState) {
           }
 
           if (existing) {
-            // Item bestaat al → needs bijwerken via update (dot-notation werkt bij update)
+            // Item bestaat al → aantal ophogen en needs bijwerken (dot-notation werkt bij update)
             batch.update(ref, {
+              qty: firebase.firestore.FieldValue.increment(buyInc),
+              checked: false,
               [`needsByRecipe.${r.id}`]: needObj,
               updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
               updatedBy: currentUser?.uid || '',
