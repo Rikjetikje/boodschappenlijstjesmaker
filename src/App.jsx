@@ -710,6 +710,52 @@ const CART_FULL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADgAAAA4CAYAAAC
         setShowMenu(false);
       }
 
+      function TabIcon({ type }) {
+        const cls = "w-5 h-5";
+        if (type === 'list') {
+          return (
+            <svg viewBox="0 0 24 24" className={cls} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M8 6h13" />
+              <path d="M8 12h13" />
+              <path d="M8 18h13" />
+              <path d="m3 6 1 1 2-2" />
+              <path d="m3 12 1 1 2-2" />
+              <path d="m3 18 1 1 2-2" />
+            </svg>
+          );
+        }
+        if (type === 'recipes') {
+          return (
+            <svg viewBox="0 0 24 24" className={cls} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M4 19.5V5.8A2.8 2.8 0 0 1 6.8 3H20v16H6.8A2.8 2.8 0 0 0 4 21.8" />
+              <path d="M8 7h8" />
+              <path d="M8 11h6" />
+            </svg>
+          );
+        }
+        return (
+          <svg viewBox="0 0 24 24" className={cls} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M21 8.5 12 3 3 8.5l9 5.5 9-5.5Z" />
+            <path d="M3 8.5V16l9 5 9-5V8.5" />
+            <path d="M12 14v7" />
+          </svg>
+        );
+      }
+
+      function HeaderTab({ id, label }) {
+        const active = tab === id;
+        return (
+          <Button
+            onClick={()=>setTab(id)}
+            title={label}
+            aria-label={label}
+            className={(active ? 'bg-emerald-600 text-white' : 'bg-white border border-slate-200 text-slate-700') + ' h-10 w-full px-0 py-0 flex items-center justify-center'}
+          >
+            <TabIcon type={id} />
+          </Button>
+        );
+      }
+
       return (
         <header className="mb-3">
           <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2">
@@ -824,18 +870,9 @@ const CART_FULL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADgAAAA4CAYAAAC
 
             {!storeMode ? (
               <div className="grid grid-cols-3 gap-2 min-w-0">
-                <Button onClick={()=>setTab('list')}
-                  className={tab==='list' ? 'bg-emerald-600 text-white px-2 w-full' : 'bg-white border border-slate-200 text-slate-700 px-2 w-full'}>
-                  Lijst
-                </Button>
-                <Button onClick={()=>setTab('recipes')}
-                  className={tab==='recipes' ? 'bg-emerald-600 text-white px-2 w-full' : 'bg-white border border-slate-200 text-slate-700 px-2 w-full'}>
-                  Recepten
-                </Button>
-                <Button onClick={()=>setTab('products')}
-                  className={tab==='products' ? 'bg-emerald-600 text-white px-2 w-full' : 'bg-white border border-slate-200 text-slate-700 px-2 w-full'}>
-                  Producten
-                </Button>
+                <HeaderTab id="list" label="Lijst" />
+                <HeaderTab id="recipes" label="Recepten" />
+                <HeaderTab id="products" label="Producten" />
               </div>
             ) : (
               <div className="min-w-0">
