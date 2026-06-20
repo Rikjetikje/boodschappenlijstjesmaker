@@ -112,8 +112,8 @@ const CART_FULL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADgAAAA4CAYAAAC
           strokeLinejoin="round"
           aria-hidden="true"
         >
-          <path d="M9 9H4V4" />
-          <path d="M4.5 9.5A8 8 0 1 0 7 5" />
+          <path d="M9 7H4V2" />
+          <path d="M5.5 7.5A8 8 0 1 1 4 12" />
         </svg>
       );
     }
