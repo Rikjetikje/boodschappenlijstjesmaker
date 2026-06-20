@@ -3048,14 +3048,9 @@ async function addRecipeToList(r, targetServings, pickState) {
           });
           setExpandedId(null);
           setPickMap(prev => {
-            const picks = {};
-            const qtys = {};
-            (r.ingredients || []).forEach((ing, i) => {
-              const key = ing._id || String(i);
-              picks[key] = false;
-              qtys[key] = 0;
-            });
-            return { ...prev, [r.id]: { picks, qtys } };
+            const next = { ...prev };
+            delete next[r.id];
+            return next;
           });
           if (addFeedbackTimerRef.current) clearTimeout(addFeedbackTimerRef.current);
           addFeedbackTimerRef.current = setTimeout(() => {
@@ -3098,7 +3093,6 @@ async function addRecipeToList(r, targetServings, pickState) {
 
 function ensurePickState(recipe) {
         setPickMap(prev => {
-          if (prev[recipe.id]) return prev;
           const picks = {};
           const qtys = {};
           (recipe.ingredients || []).forEach((ing, i) => {
