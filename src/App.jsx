@@ -1022,6 +1022,7 @@ const CART_FULL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADgAAAA4CAYAAAC
 function ProductsTab({ householdId, products, items, currentUser, activeListId }) {
   const [query, setQuery] = useState('');
   const [newProductCategory, setNewProductCategory] = useState('Overig');
+  const [showCreateOptions, setShowCreateOptions] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [editName, setEditName] = useState('');
   const [editCategory, setEditCategory] = useState('Overig');
@@ -1091,6 +1092,12 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
     return arr;
   }, [products, query, cycleFlags, sortMode]);
 
+  const exactProduct = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return null;
+    return (products || []).find(p => (p.name||'').toLowerCase() === q) || null;
+  }, [products, query]);
+
   const groupedFiltered = useMemo(() => {
     const activeCycles = ['W','2W','3W'].filter(c => cycleFlags[c]);
     const hasActiveCycles = activeCycles.length > 0;
@@ -1140,8 +1147,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
   async function createProduct() {
     const name = query.trim();
     if (!name || !householdId) return;
-    const exists = (products||[]).some(p => (p.name||'').toLowerCase() === name.toLowerCase());
-    if (exists) { alert('Dit product bestaat al (op naam).'); return; }
+    if (exactProduct) { alert('Dit product bestaat al (op naam).'); return; }
 
     const id = genId('p');
     const product = {
@@ -1158,6 +1164,26 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
     await db.doc(`households/${householdId}/products/${id}`).set(product);
     setQuery('');
     setNewProductCategory('Overig');
+    setShowCreateOptions(false);
+  }
+
+  function clearProductSearch() {
+    setQuery('');
+    setNewProductCategory('Overig');
+    setShowCreateOptions(false);
+  }
+
+  async function handleProductCreateAction() {
+    if (!query.trim()) return;
+    if (showCreateOptions) {
+      await createProduct();
+      return;
+    }
+    if (exactProduct) {
+      alert('Dit product bestaat al (op naam).');
+      return;
+    }
+    setShowCreateOptions(true);
   }
 
   function startEdit(p) {
@@ -1339,26 +1365,64 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
   return (
     <div className="pb-24">
       <div className="mb-3 space-y-2">
-        <div className="flex flex-col sm:flex-row gap-2">
-          <input value={query} onChange={(e)=>setQuery(e.target.value)}
-            onKeyDown={(e)=>{ if (e.key === 'Enter' && query.trim()) { e.preventDefault(); createProduct(); } if (e.key === 'Escape') { e.preventDefault(); setQuery(''); setNewProductCategory('Overig'); } }}
-            placeholder="Zoek of maak product…"
-            className="w-full sm:flex-1 px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm" />
-          <select
-            value={newProductCategory || 'Overig'}
-            onChange={(e)=>setNewProductCategory(e.target.value)}
-            className="w-full sm:w-56 px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm"
-            title="Categorie voor nieuw product"
-          >
-            {CATEGORY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
-          {query.trim() ? (
-            <>
-              <Button onClick={createProduct} className="bg-emerald-600 text-white w-full sm:w-12 px-0" title="Product aanmaken">✓</Button>
-              <Button onClick={()=>{ setQuery(''); setNewProductCategory('Overig'); }} className="bg-rose-500 text-white w-full sm:w-12 px-0" title="Annuleren">✕</Button>
-            </>
-          ) : (
-            <Button onClick={createProduct} className="bg-emerald-600 text-white w-full sm:w-12 px-0" title="Product aanmaken">+</Button>
+        <div className="relative left-1/2 w-screen -translate-x-1/2 px-3">
+          <div className={"bg-white border-2 rounded-2xl shadow-sm h-14 flex items-center gap-2 px-3 transition-colors " + (query.trim() ? "border-emerald-500 ring-4 ring-emerald-500/10" : "border-slate-300")}>
+            <svg viewBox="0 0 24 24" className="w-5 h-5 text-slate-500 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+              <path d="m21 21-4.3-4.3" />
+              <circle cx="10.8" cy="10.8" r="7.2" />
+            </svg>
+            <input value={query} onChange={(e)=>{ setQuery(e.target.value); setShowCreateOptions(false); }}
+              onKeyDown={(e)=>{
+                if (e.key === 'Enter' && query.trim()) { e.preventDefault(); handleProductCreateAction(); }
+                if (e.key === 'Escape') { e.preventDefault(); clearProductSearch(); }
+              }}
+              placeholder="Zoek product of typ iets nieuws..."
+              className="min-w-0 flex-1 bg-transparent outline-none text-[15px] text-slate-900 placeholder:text-slate-500 font-medium" />
+            {query.trim() && (
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleProductCreateAction}
+                  className="w-9 h-9 rounded-full bg-emerald-50 border border-emerald-100 text-emerald-700 flex items-center justify-center"
+                  title={showCreateOptions ? "Product aanmaken" : "Nieuw product"}
+                  aria-label={showCreateOptions ? "Product aanmaken" : "Nieuw product"}
+                >
+                  {showCreateOptions ? (
+                    <span className="text-sm font-bold">✓</span>
+                  ) : (
+                    <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                      <path d="M12 5v14" />
+                      <path d="M5 12h14" />
+                    </svg>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={clearProductSearch}
+                  className="w-9 h-9 rounded-full bg-white border border-slate-200 text-slate-500 text-xl leading-none flex items-center justify-center"
+                  title="Leegmaken"
+                  aria-label="Leegmaken"
+                >
+                  ×
+                </button>
+              </div>
+            )}
+          </div>
+
+          {query.trim() && showCreateOptions && !exactProduct && (
+            <div className="mt-2">
+              <select
+                value={newProductCategory || 'Overig'}
+                onChange={(e)=>setNewProductCategory(e.target.value)}
+                className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm"
+                title="Categorie voor nieuw product"
+              >
+                {CATEGORY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+              <div className="mt-1 text-[11px] text-slate-500 px-1">
+                Tik op ✓ om dit product aan te maken.
+              </div>
+            </div>
           )}
         </div>
 
@@ -2553,12 +2617,12 @@ async function addItemFromProduct(p) {
         return rs;
       }, [recipes, query]);
 
-      function newRecipe() {
+      function newRecipe(initialName = '') {
         const id = genId('r');
         const baseServings = 5;
         const rec = {
           id,
-          name: '',
+          name: (initialName || '').trim(),
           baseServings,
           url: '',
           ingredients: [{
@@ -2580,6 +2644,15 @@ async function addItemFromProduct(p) {
         };
         setOpenId(id);
         setDraft(rec);
+      }
+
+      function clearRecipeSearch() {
+        setQuery('');
+      }
+
+      function handleRecipeCreateAction() {
+        newRecipe(query.trim());
+        setQuery('');
       }
 
       function editRecipe(r) {
@@ -2944,11 +3017,45 @@ function ensurePickState(recipe) {
       
       return (
         <div className="pb-24">
-          <div className="mb-3 flex gap-2">
-            <input value={query} onChange={(e)=>setQuery(e.target.value)}
-              placeholder="Zoek recept…"
-              className="w-full sm:flex-1 px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm" />
-            <Button onClick={newRecipe} className="bg-emerald-600 text-white px-3">+ Recept</Button>
+          <div className="mb-3 relative left-1/2 w-screen -translate-x-1/2 px-3">
+            <div className={"bg-white border-2 rounded-2xl shadow-sm h-14 flex items-center gap-2 px-3 transition-colors " + (query.trim() ? "border-emerald-500 ring-4 ring-emerald-500/10" : "border-slate-300")}>
+              <svg viewBox="0 0 24 24" className="w-5 h-5 text-slate-500 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                <path d="m21 21-4.3-4.3" />
+                <circle cx="10.8" cy="10.8" r="7.2" />
+              </svg>
+              <input value={query} onChange={(e)=>setQuery(e.target.value)}
+                onKeyDown={(e)=>{
+                  if (e.key === 'Enter' && query.trim()) { e.preventDefault(); handleRecipeCreateAction(); }
+                  if (e.key === 'Escape') { e.preventDefault(); clearRecipeSearch(); }
+                }}
+                placeholder="Zoek recept of typ iets nieuws..."
+                className="min-w-0 flex-1 bg-transparent outline-none text-[15px] text-slate-900 placeholder:text-slate-500 font-medium" />
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleRecipeCreateAction}
+                  className="w-9 h-9 rounded-full bg-emerald-50 border border-emerald-100 text-emerald-700 flex items-center justify-center"
+                  title="Nieuw recept"
+                  aria-label="Nieuw recept"
+                >
+                  <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                    <path d="M12 5v14" />
+                    <path d="M5 12h14" />
+                  </svg>
+                </button>
+                {query.trim() && (
+                  <button
+                    type="button"
+                    onClick={clearRecipeSearch}
+                    className="w-9 h-9 rounded-full bg-white border border-slate-200 text-slate-500 text-xl leading-none flex items-center justify-center"
+                    title="Leegmaken"
+                    aria-label="Leegmaken"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
 
           <div className="relative left-1/2 w-screen -translate-x-1/2">
