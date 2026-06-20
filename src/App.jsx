@@ -1379,33 +1379,74 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
     const ids = Array.from(selectedIds);
     if (ids.length === 0) return;
     const byId = new Map((products||[]).map(p => [p.id, p]));
-    let added = 0;
+    const stamp = {
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedBy: currentUser?.uid || '',
+      updatedByName: currentUser?.displayName || '',
+      updatedByPhotoURL: currentUser?.photoURL || '',
+    };
+    // Bundel alle toevoegingen in één batch: één commit -> één snapshot -> één
+    // render, in plaats van een sequentiële write (en re-render) per product.
+    const batch = db.batch();
     const undoItems = [];
+    let added = 0;
     for (const id of ids) {
       const p = byId.get(id);
-      if (p) {
-        const existing = findExistingByProductId(p.id);
-        undoItems.push({
-          id: existing?.id || itemIdForProduct(p.id),
-          before: existing ? { ...existing } : null,
+      if (!p) continue;
+      const existing = findExistingByProductId(p.id);
+      if (existing) {
+        const next = clamp(currentQty(existing) + 1, 0, 99);
+        const ref = db.doc(`households/${householdId}/lists/${activeListId}/items/${existing.id}`);
+        batch.set(ref, {
+          qty: next,
+          amount: String(next),
+          unit: 'st',
+          checked: false,
+          nameSnapshot: p.name || existing.nameSnapshot || '',
+          categorySnapshot: p.category || existing.categorySnapshot || 'Overig',
+          ...stamp,
+        }, { merge: true });
+        undoItems.push({ id: existing.id, before: { ...existing } });
+      } else {
+        const itemId = itemIdForProduct(p.id);
+        const ref = db.doc(`households/${householdId}/lists/${activeListId}/items/${itemId}`);
+        batch.set(ref, {
+          id: itemId,
+          productId: p.id,
+          nameSnapshot: p.name || '',
+          categorySnapshot: p.category || 'Overig',
+          qty: 1,
+          amount: '1',
+          unit: 'st',
+          checked: false,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+          createdBy: currentUser?.uid || '',
+          createdByName: currentUser?.displayName || '',
+          createdByPhotoURL: currentUser?.photoURL || '',
+          ...stamp,
+          source: 'product',
         });
-        await addItemFromProduct(p);
-        added += 1;
+        undoItems.push({ id: itemId, before: null });
       }
+      added += 1;
     }
-    // Clear selection after adding
+    if (added === 0) return;
+    // Wis selectie meteen (optimistisch); de batch synct op de achtergrond.
     setSelectedIds(new Set());
-    if (added > 0) {
-      setAddFeedback({
-        message: `${added} product${added === 1 ? '' : 'en'} toegevoegd aan je lijst.`,
-        listId: activeListId,
-        undoItems,
-      });
-      if (addFeedbackTimerRef.current) clearTimeout(addFeedbackTimerRef.current);
-      addFeedbackTimerRef.current = setTimeout(() => {
-        setAddFeedback(null);
-        addFeedbackTimerRef.current = null;
-      }, 5000);
+    setAddFeedback({
+      message: `${added} product${added === 1 ? '' : 'en'} toegevoegd aan je lijst.`,
+      listId: activeListId,
+      undoItems,
+    });
+    if (addFeedbackTimerRef.current) clearTimeout(addFeedbackTimerRef.current);
+    addFeedbackTimerRef.current = setTimeout(() => {
+      setAddFeedback(null);
+      addFeedbackTimerRef.current = null;
+    }, 5000);
+    try {
+      await batch.commit();
+    } catch (e) {
+      console.error('addSelection batch commit failed', e);
     }
   }
 
