@@ -606,6 +606,8 @@ const CART_FULL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADgAAAA4CAYAAAC
       syncing,
       storeMode,
       setStoreMode,
+      showAdders,
+      setShowAdders,
       tab,
       setTab,
       lists,
@@ -701,8 +703,6 @@ const CART_FULL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADgAAAA4CAYAAAC
       const maxShow = 10;
       const show = membersSorted.slice(0, maxShow);
       const extra = Math.max(0, membersSorted.length - show.length);
-      const activeListName = (lists || []).find(l => l.id === activeListId)?.name || 'Geen lijst';
-
       async function createListFromMenu() {
         const name = newListName.trim();
         await onCreateList?.(name);
@@ -875,9 +875,19 @@ const CART_FULL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADgAAAA4CAYAAAC
                 <HeaderTab id="products" label="Producten" />
               </div>
             ) : (
-              <div className="min-w-0">
-                <div className="text-sm font-bold text-slate-900 truncate">Winkelmodus</div>
-                <div className="text-xs text-slate-500 truncate">{activeListName}</div>
+              <div className="min-w-0 flex items-center">
+                <button
+                  onClick={()=>setShowAdders?.(v=>!v)}
+                  className={"w-10 h-10 rounded-full border flex items-center justify-center transition-colors " + (showAdders ? "bg-[#17372d] text-[#eaf5ef] border-transparent" : "bg-[#e7ece4] text-[#536158] border-[#d3dbcf]")}
+                  title={showAdders ? "Verberg wie toevoegde" : "Toon wie toevoegde"}
+                  aria-label={showAdders ? "Verberg wie toevoegde" : "Toon wie toevoegde"}
+                >
+                  <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" />
+                    <circle cx="12" cy="12" r="2.6" fill="currentColor" stroke="none" />
+                    {!showAdders && <path d="M4.5 4.5 L19.5 19.5" />}
+                  </svg>
+                </button>
               </div>
             )}
 
@@ -1863,7 +1873,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
         );
       }
 
-    function ListTab({ householdId, activeListId, products, items, currentUser, storeMode }) {
+    function ListTab({ householdId, activeListId, products, items, currentUser, storeMode, showAdders }) {
       const [newText, setNewText] = useState('');
       const [newCategory, setNewCategory] = useState('Overig');
       const [showSuggestions, setShowSuggestions] = useState(false);
@@ -1875,7 +1885,6 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
       const [stickyAdd, setStickyAdd] = useState(false);
       const [vvh, setVvh] = useState(() => (window.visualViewport ? window.visualViewport.height : window.innerHeight));
       const suggestionsRef = useRef(null);
-      const [showAdders, setShowAdders] = useState(false);
       const [flashId, setFlashId] = useState(null);
       const [pendingCheckIds, setPendingCheckIds] = useState(() => new Set());
       const [openQtyId, setOpenQtyId] = useState(null);
@@ -2414,22 +2423,6 @@ async function addItemFromProduct(p) {
           {(!storeMode && stickyAdd) && <div style={{ height: showCreateOptions ? 138 : 82 }} />}
 
 
-          {storeMode && (
-            <div className="flex items-center mb-3 px-1">
-              <button
-                onClick={()=>setShowAdders(v=>!v)}
-                className={"inline-flex items-center gap-2 text-xs font-semibold rounded-full pl-2.5 pr-3 py-1.5 border transition-colors " + (showAdders ? "bg-[#17372d] text-[#eaf5ef] border-transparent" : "bg-[#e7ece4] text-[#536158] border-[#d3dbcf]")}
-                title={showAdders ? "Verberg wie toevoegde" : "Toon wie toevoegde"}
-              >
-                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" />
-                  <circle cx="12" cy="12" r="2.6" fill="currentColor" stroke="none" />
-                  {!showAdders && <path d="M4.5 4.5 L19.5 19.5" />}
-                </svg>
-                wie voegde toe
-              </button>
-            </div>
-          )}
           <div className={storeMode ? "" : "relative left-1/2 w-screen -translate-x-1/2"}>
             <div className={storeMode ? "" : "space-y-3"}>
               {byCategory.length === 0 ? (
@@ -3385,6 +3378,7 @@ function ensurePickState(recipe) {
       const [householdInfo, setHouseholdInfo] = useState(null);
       const [tab, setTab] = useState('list');
       const [storeMode, setStoreMode] = useState(false);
+      const [showAdders, setShowAdders] = useState(false);
 
       useEffect(() => {
         if (storeMode && tab !== 'list') setTab('list');
@@ -3593,6 +3587,8 @@ function ensurePickState(recipe) {
               syncing={syncing}
               storeMode={storeMode}
               setStoreMode={setStoreMode}
+              showAdders={showAdders}
+              setShowAdders={setShowAdders}
               tab={tab}
               setTab={setTab}
               lists={lists}
@@ -3613,6 +3609,7 @@ function ensurePickState(recipe) {
                 items={items}
                 currentUser={user}
                 storeMode={storeMode}
+                showAdders={showAdders}
               />
             ) : tab === 'products' ? (
               <ProductsTab
