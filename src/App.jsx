@@ -1362,9 +1362,15 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
     if (ids.length === 0) return;
     const byId = new Map((products||[]).map(p => [p.id, p]));
     let added = 0;
+    const undoItems = [];
     for (const id of ids) {
       const p = byId.get(id);
       if (p) {
+        const existing = findExistingByProductId(p.id);
+        undoItems.push({
+          id: existing?.id || itemIdForProduct(p.id),
+          before: existing ? { ...existing } : null,
+        });
         await addItemFromProduct(p);
         added += 1;
       }
@@ -1372,13 +1378,37 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
     // Clear selection after adding
     setSelectedIds(new Set());
     if (added > 0) {
-      setAddFeedback(`${added} product${added === 1 ? '' : 'en'} toegevoegd aan je lijst.`);
+      setAddFeedback({
+        message: `${added} product${added === 1 ? '' : 'en'} toegevoegd aan je lijst.`,
+        listId: activeListId,
+        undoItems,
+      });
       if (addFeedbackTimerRef.current) clearTimeout(addFeedbackTimerRef.current);
       addFeedbackTimerRef.current = setTimeout(() => {
         setAddFeedback(null);
         addFeedbackTimerRef.current = null;
       }, 2500);
     }
+  }
+
+  async function undoAddFeedback() {
+    const listId = addFeedback?.listId || activeListId;
+    if (!householdId || !listId || !addFeedback?.undoItems?.length) {
+      setAddFeedback(null);
+      return;
+    }
+    if (addFeedbackTimerRef.current) {
+      clearTimeout(addFeedbackTimerRef.current);
+      addFeedbackTimerRef.current = null;
+    }
+    const batch = db.batch();
+    addFeedback.undoItems.forEach(({ id, before }) => {
+      const ref = db.doc(`households/${householdId}/lists/${listId}/items/${id}`);
+      if (before) batch.set(ref, before);
+      else batch.delete(ref);
+    });
+    await batch.commit();
+    setAddFeedback(null);
   }
 
   const selectedCount = selectedIds.size;
@@ -1557,13 +1587,27 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
       {(selectedCount > 0 || addFeedback) && (
         <div className="fixed left-0 right-0 bottom-0 pb-6 px-4 z-40">
           <div className="max-w-xl mx-auto">
-            <Button
-              onClick={addSelection}
-              disabled={!!addFeedback}
-              className="w-full bg-slate-900 text-white shadow-lg disabled:opacity-100"
-            >
-              {addFeedback || 'Voeg geselecteerde producten toe'}
-            </Button>
+            {addFeedback ? (
+              <div className="bg-slate-900 text-white rounded-xl shadow-lg px-4 py-3 flex items-center gap-3">
+                <div className="flex-1 text-sm font-semibold truncate">{addFeedback.message}</div>
+                <button
+                  type="button"
+                  onClick={undoAddFeedback}
+                  className="w-8 h-8 rounded-full bg-white/10 text-white flex items-center justify-center text-xl leading-none"
+                  aria-label="Toevoegen ongedaan maken"
+                  title="Ongedaan maken"
+                >
+                  ×
+                </button>
+              </div>
+            ) : (
+              <Button
+                onClick={addSelection}
+                className="w-full bg-slate-900 text-white shadow-lg"
+              >
+                Voeg geselecteerde producten toe
+              </Button>
+            )}
           </div>
         </div>
       )}
@@ -2845,6 +2889,8 @@ async function addRecipeToList(r, targetServings, pickState) {
         const batch = db.batch();
         const ings = (r.ingredients || []);
         let added = 0;
+        const undoItems = [];
+        const undoItemIds = new Set();
 
         ings.forEach((ing, idx) => {
           const key = ing._id || String(idx);
@@ -2925,6 +2971,13 @@ async function addRecipeToList(r, targetServings, pickState) {
 
           // bestaat het item al op de lijst?
           const existing = existingByProductId.get(ensuredProductId);
+          if (!undoItemIds.has(id)) {
+            undoItems.push({
+              id,
+              before: existing ? { ...existing } : null,
+            });
+            undoItemIds.add(id);
+          }
 
           if (existing) {
             // Item bestaat al → needs bijwerken via update (dot-notation werkt bij update)
@@ -2971,6 +3024,19 @@ async function addRecipeToList(r, targetServings, pickState) {
           setAddFeedback({
             recipeId: r.id,
             message: `${added} product${added === 1 ? '' : 'en'} toegevoegd aan je lijst.`,
+            listId: activeListId,
+            undoItems,
+          });
+          setExpandedId(null);
+          setPickMap(prev => {
+            const picks = {};
+            const qtys = {};
+            (r.ingredients || []).forEach((ing, i) => {
+              const key = ing._id || String(i);
+              picks[key] = false;
+              qtys[key] = 0;
+            });
+            return { ...prev, [r.id]: { picks, qtys } };
           });
           if (addFeedbackTimerRef.current) clearTimeout(addFeedbackTimerRef.current);
           addFeedbackTimerRef.current = setTimeout(() => {
@@ -2978,6 +3044,26 @@ async function addRecipeToList(r, targetServings, pickState) {
             addFeedbackTimerRef.current = null;
           }, 2500);
         }
+      }
+
+      async function undoAddFeedback() {
+        const listId = addFeedback?.listId || activeListId;
+        if (!householdId || !listId || !addFeedback?.undoItems?.length) {
+          setAddFeedback(null);
+          return;
+        }
+        if (addFeedbackTimerRef.current) {
+          clearTimeout(addFeedbackTimerRef.current);
+          addFeedbackTimerRef.current = null;
+        }
+        const batch = db.batch();
+        addFeedback.undoItems.forEach(({ id, before }) => {
+          const ref = db.doc(`households/${householdId}/lists/${listId}/items/${id}`);
+          if (before) batch.set(ref, before);
+          else batch.delete(ref);
+        });
+        await batch.commit();
+        setAddFeedback(null);
       }
       const productSuggestions = (text) => {
         const q = (text||'').trim().toLowerCase();
@@ -3173,10 +3259,9 @@ function ensurePickState(recipe) {
 
                           <Button
                             onClick={() => addRecipeToList(r, null, st)}
-                            disabled={addFeedback?.recipeId === r.id}
-                            className="w-full bg-slate-900 text-white disabled:opacity-100"
+                            className="w-full bg-slate-900 text-white"
                           >
-                            {addFeedback?.recipeId === r.id ? addFeedback.message : 'Voeg geselecteerde producten toe'}
+                            Voeg geselecteerde producten toe
                           </Button>
                         </div>
                       </div>
@@ -3186,6 +3271,25 @@ function ensurePickState(recipe) {
               })}
             </div>
           </div>
+
+          {addFeedback && (
+            <div className="fixed left-0 right-0 bottom-0 pb-6 px-4 z-40">
+              <div className="max-w-xl mx-auto">
+                <div className="bg-slate-900 text-white rounded-xl shadow-lg px-4 py-3 flex items-center gap-3">
+                  <div className="flex-1 text-sm font-semibold truncate">{addFeedback.message}</div>
+                  <button
+                    type="button"
+                    onClick={undoAddFeedback}
+                    className="w-8 h-8 rounded-full bg-white/10 text-white flex items-center justify-center text-xl leading-none"
+                    aria-label="Toevoegen ongedaan maken"
+                    title="Ongedaan maken"
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {openId && draft && (
             <Modal title="Recept" onClose={()=>{ setOpenId(null); setDraft(null); }}>
