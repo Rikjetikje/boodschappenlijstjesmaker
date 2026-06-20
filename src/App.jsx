@@ -3261,7 +3261,11 @@ function ensurePickState(recipe) {
                         </div>
                       </button>
 
-                      <button onClick={() => { if (!isOpen) ensurePickState(r); setExpandedId(isOpen ? null : r.id); }} title="Openen/sluiten" className="w-9 h-9 rounded-full bg-transparent text-slate-700 text-sm">{isOpen ? "▴" : "▾"}</button>
+                      <button onClick={() => { if (!isOpen) ensurePickState(r); setExpandedId(isOpen ? null : r.id); }} title="Openen/sluiten" aria-label="Openen/sluiten" className="w-9 h-9 rounded-full bg-transparent text-slate-600 flex items-center justify-center">
+                        <svg viewBox="0 0 24 24" className={"w-5 h-5 transition-transform " + (isOpen ? "rotate-180" : "")} fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <path d="m6 9 6 6 6-6" />
+                        </svg>
+                      </button>
 
                       <button onClick={()=>editRecipe(r)} title="Bewerken" className="w-9 h-9 rounded-full bg-transparent text-slate-600 flex items-center justify-center">
                         <EditIcon className="w-5 h-5" />
