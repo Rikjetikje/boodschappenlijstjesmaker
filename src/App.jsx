@@ -2548,7 +2548,7 @@ async function addItemFromProduct(p) {
           {(!storeMode && stickyAdd) && <div style={{ height: showCreateOptions ? 138 : 82 }} />}
 
 
-          <div className={storeMode ? "" : "relative left-1/2 w-screen -translate-x-1/2"}>
+          <div className="relative left-1/2 w-screen -translate-x-1/2">
             <div className={storeMode ? "" : "space-y-3"}>
               {byCategory.length === 0 ? (
                 <div className="text-center py-10 text-slate-500">
@@ -2560,7 +2560,7 @@ async function addItemFromProduct(p) {
                   ref={el => { groupRefs.current[`${group.category}-${group.checkedGroup ? 'checked' : 'open'}`] = el; }}
                   className={storeMode ? "mb-3" : ""}>
                   {storeMode ? (
-                    <div className="mb-0">
+                    <div className="px-3 mb-0">
                       <span className="inline-flex items-center text-xs font-semibold px-3 py-1 rounded-tr-lg"
                             style={{
                               backgroundColor: group.checkedGroup ? '#eef1ee' : categoryColor(group.category) + '29',
