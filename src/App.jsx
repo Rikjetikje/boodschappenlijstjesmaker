@@ -2621,7 +2621,7 @@ async function addItemFromProduct(p) {
                         onClick={() => { if (storeMode) { toggleInStoreMode(it); } }}
                       >
                         <div className="flex-1 min-w-0 pr-2">
-                          <div className={(storeMode ? "text-[15px]" : "text-[15px] font-normal") + " " + (it.checked ? "line-through text-slate-500" : (storeMode ? "text-[#18211f]" : "text-slate-800"))}>
+                          <div title={it._name} className={"truncate " + (storeMode ? "text-[15px]" : "text-[15px] font-normal") + " " + (it.checked ? "line-through text-slate-500" : (storeMode ? "text-[#18211f]" : "text-slate-800"))}>
                             {it._name}
                           </div>
                           {it._needsLine ? (
