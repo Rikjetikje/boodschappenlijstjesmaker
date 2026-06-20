@@ -100,6 +100,24 @@ const CART_FULL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADgAAAA4CAYAAAC
       );
     }
 
+    function UndoCircleIcon({ className = "w-5 h-5" }) {
+      return (
+        <svg
+          viewBox="0 0 24 24"
+          className={className}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M9 9H4V4" />
+          <path d="M4.5 9.5A8 8 0 1 0 7 5" />
+        </svg>
+      );
+    }
+
     function QuantityControl({ qty, onDec, onInc, plusTitle = "Meer", minusTitle = "Minder", collapseAtOne = false }) {
       const q = clamp(Number(qty) || 0, 0, 99);
       if (q <= 0 || (collapseAtOne && q <= 1)) {
@@ -1597,7 +1615,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
                   aria-label="Toevoegen ongedaan maken"
                   title="Ongedaan maken"
                 >
-                  <span aria-hidden="true" className="text-lg leading-none">↶</span>
+                  <UndoCircleIcon className="w-4 h-4" />
                   Annuleren
                 </button>
               </div>
@@ -3282,7 +3300,7 @@ function ensurePickState(recipe) {
                       aria-label="Toevoegen ongedaan maken"
                       title="Ongedaan maken"
                     >
-                      <span aria-hidden="true" className="text-lg leading-none">↶</span>
+                      <UndoCircleIcon className="w-4 h-4" />
                       Annuleren
                     </button>
                   </div>
