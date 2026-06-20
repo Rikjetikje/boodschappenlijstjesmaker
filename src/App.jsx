@@ -1387,7 +1387,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
       addFeedbackTimerRef.current = setTimeout(() => {
         setAddFeedback(null);
         addFeedbackTimerRef.current = null;
-      }, 2500);
+      }, 5000);
     }
   }
 
@@ -1585,7 +1585,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
       </div>
 
       {(selectedCount > 0 || addFeedback) && (
-        <div className="fixed left-0 right-0 bottom-0 pb-6 px-4 z-40">
+        <div className="fixed left-0 right-0 bottom-0 z-40 bg-slate-50/95 border-t border-slate-200 px-3 pt-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)]">
           <div className="max-w-xl mx-auto">
             {addFeedback ? (
               <div className="bg-slate-900 text-white rounded-xl shadow-lg px-4 py-3 flex items-center gap-3">
@@ -1593,11 +1593,12 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
                 <button
                   type="button"
                   onClick={undoAddFeedback}
-                  className="w-8 h-8 rounded-full bg-white/10 text-white flex items-center justify-center text-xl leading-none"
+                  className="shrink-0 h-9 px-3 rounded-full bg-white/10 text-white flex items-center gap-1.5 text-sm font-semibold"
                   aria-label="Toevoegen ongedaan maken"
                   title="Ongedaan maken"
                 >
-                  ×
+                  <span aria-hidden="true" className="text-lg leading-none">↶</span>
+                  Annuleren
                 </button>
               </div>
             ) : (
@@ -3042,7 +3043,7 @@ async function addRecipeToList(r, targetServings, pickState) {
           addFeedbackTimerRef.current = setTimeout(() => {
             setAddFeedback(null);
             addFeedbackTimerRef.current = null;
-          }, 2500);
+          }, 5000);
         }
       }
 
@@ -3132,6 +3133,9 @@ function ensurePickState(recipe) {
         });
       }
 
+
+      const expandedRecipe = expandedId ? (recipes || []).find(r => r.id === expandedId) : null;
+      const expandedPickState = expandedId ? pickMap[expandedId] : null;
 
       
       
@@ -3256,13 +3260,6 @@ function ensurePickState(recipe) {
                               </div>
                             );
                           })}
-
-                          <Button
-                            onClick={() => addRecipeToList(r, null, st)}
-                            className="w-full bg-slate-900 text-white"
-                          >
-                            Voeg geselecteerde producten toe
-                          </Button>
                         </div>
                       </div>
                     )}
@@ -3272,21 +3269,31 @@ function ensurePickState(recipe) {
             </div>
           </div>
 
-          {addFeedback && (
-            <div className="fixed left-0 right-0 bottom-0 pb-6 px-4 z-40">
+          {(addFeedback || (expandedRecipe && expandedPickState)) && (
+            <div className="fixed left-0 right-0 bottom-0 z-40 bg-slate-50/95 border-t border-slate-200 px-3 pt-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)]">
               <div className="max-w-xl mx-auto">
-                <div className="bg-slate-900 text-white rounded-xl shadow-lg px-4 py-3 flex items-center gap-3">
-                  <div className="flex-1 text-sm font-semibold truncate">{addFeedback.message}</div>
-                  <button
-                    type="button"
-                    onClick={undoAddFeedback}
-                    className="w-8 h-8 rounded-full bg-white/10 text-white flex items-center justify-center text-xl leading-none"
-                    aria-label="Toevoegen ongedaan maken"
-                    title="Ongedaan maken"
+                {addFeedback ? (
+                  <div className="bg-slate-900 text-white rounded-xl shadow-lg px-4 py-3 flex items-center gap-3">
+                    <div className="flex-1 text-sm font-semibold truncate">{addFeedback.message}</div>
+                    <button
+                      type="button"
+                      onClick={undoAddFeedback}
+                      className="shrink-0 h-9 px-3 rounded-full bg-white/10 text-white flex items-center gap-1.5 text-sm font-semibold"
+                      aria-label="Toevoegen ongedaan maken"
+                      title="Ongedaan maken"
+                    >
+                      <span aria-hidden="true" className="text-lg leading-none">↶</span>
+                      Annuleren
+                    </button>
+                  </div>
+                ) : (
+                  <Button
+                    onClick={() => addRecipeToList(expandedRecipe, null, expandedPickState)}
+                    className="w-full bg-slate-900 text-white shadow-lg"
                   >
-                    ×
-                  </button>
-                </div>
+                    Voeg geselecteerde producten toe
+                  </Button>
+                )}
               </div>
             </div>
           )}
