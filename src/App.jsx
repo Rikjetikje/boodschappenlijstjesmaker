@@ -1029,13 +1029,15 @@ const CART_FULL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADgAAAA4CAYAAAC
 
     // ---------------- Products tab ----------------
     
-function ProductsTab({ householdId, products, items, currentUser, activeListId, onNotify }) {
+function ProductsTab({ householdId, products, items, currentUser, activeListId }) {
   const [query, setQuery] = useState('');
   const [newProductCategory, setNewProductCategory] = useState('Overig');
   const [showCreateOptions, setShowCreateOptions] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [editName, setEditName] = useState('');
   const [editCategory, setEditCategory] = useState('Overig');
+  const [addFeedback, setAddFeedback] = useState(null);
+  const addFeedbackTimerRef = useRef(null);
 
   // Cycle chips (W / 2W / 3W): clicking a chip puts those products on top AND selects them.
   const [cycleFlags, setCycleFlags] = useState(() => ({ W: false, '2W': false, '3W': false }));
@@ -1057,6 +1059,12 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId, 
 
   // Selection for quick add
   const [selectedIds, setSelectedIds] = useState(() => new Set());
+
+  useEffect(() => {
+    return () => {
+      if (addFeedbackTimerRef.current) clearTimeout(addFeedbackTimerRef.current);
+    };
+  }, []);
 
   function cycleRank(cycle) {
     const c = String(cycle || '').toUpperCase();
@@ -1364,7 +1372,12 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId, 
     // Clear selection after adding
     setSelectedIds(new Set());
     if (added > 0) {
-      onNotify?.(`${added} product${added === 1 ? '' : 'en'} toegevoegd aan je lijst.`);
+      setAddFeedback(`${added} product${added === 1 ? '' : 'en'} toegevoegd aan je lijst.`);
+      if (addFeedbackTimerRef.current) clearTimeout(addFeedbackTimerRef.current);
+      addFeedbackTimerRef.current = setTimeout(() => {
+        setAddFeedback(null);
+        addFeedbackTimerRef.current = null;
+      }, 2500);
     }
   }
 
@@ -1541,15 +1554,16 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId, 
         ))}
       </div>
 
-      {selectedCount > 0 && (
+      {(selectedCount > 0 || addFeedback) && (
         <div className="fixed left-0 right-0 bottom-0 pb-6 px-4 z-40">
           <div className="max-w-xl mx-auto">
-            <div className="bg-white border border-slate-200 rounded-2xl shadow-lg px-3 py-3 flex items-center gap-2">
-              <div className="flex-1 text-sm text-slate-700">
-                Selectie: <span className="font-bold">{selectedCount}</span>
-              </div>
-              <Button onClick={addSelection} className="bg-emerald-600 text-white">Selectie toevoegen</Button>
-            </div>
+            <Button
+              onClick={addSelection}
+              disabled={!!addFeedback}
+              className="w-full bg-slate-900 text-white shadow-lg disabled:opacity-100"
+            >
+              {addFeedback || 'Voeg geselecteerde producten toe'}
+            </Button>
           </div>
         </div>
       )}
@@ -2600,7 +2614,7 @@ async function addItemFromProduct(p) {
     }
 
     // ---------------- Recipes tab ----------------
-    function RecipesTab({ householdId, recipes, products, items, activeListId, currentUser, onNotify }) {
+    function RecipesTab({ householdId, recipes, products, items, activeListId, currentUser }) {
       const [query, setQuery] = useState('');
       const [openId, setOpenId] = useState(null); // recipe id in modal
       const [draft, setDraft] = useState(null);   // editable recipe
@@ -2608,6 +2622,14 @@ async function addItemFromProduct(p) {
       const [expandedId, setExpandedId] = useState(null);
       const [pickMap, setPickMap] = useState({});
       const [newIngId, setNewIngId] = useState(null);
+      const [addFeedback, setAddFeedback] = useState(null);
+      const addFeedbackTimerRef = useRef(null);
+
+      useEffect(() => {
+        return () => {
+          if (addFeedbackTimerRef.current) clearTimeout(addFeedbackTimerRef.current);
+        };
+      }, []);
 
       const filtered = useMemo(() => {
         const q = query.trim().toLowerCase();
@@ -2822,6 +2844,7 @@ async function addRecipeToList(r, targetServings, pickState) {
 
         const batch = db.batch();
         const ings = (r.ingredients || []);
+        let added = 0;
 
         ings.forEach((ing, idx) => {
           const key = ing._id || String(idx);
@@ -2832,6 +2855,7 @@ async function addRecipeToList(r, targetServings, pickState) {
           const name = (p?.name) || ing.nameSnapshot || '';
           if (!name) return;
           const cat = (p?.category) || ing.categorySnapshot || 'Overig';
+          added += 1;
 
           // Ensure this ingredient exists as a product so it appears in the product list
           let ensuredProductId = (p?.id) || ing.productId || null;
@@ -2943,7 +2967,17 @@ async function addRecipeToList(r, targetServings, pickState) {
         });
 
         await batch.commit();
-        onNotify?.('Recept toegevoegd aan je lijst.');
+        if (added > 0) {
+          setAddFeedback({
+            recipeId: r.id,
+            message: `${added} product${added === 1 ? '' : 'en'} toegevoegd aan je lijst.`,
+          });
+          if (addFeedbackTimerRef.current) clearTimeout(addFeedbackTimerRef.current);
+          addFeedbackTimerRef.current = setTimeout(() => {
+            setAddFeedback(null);
+            addFeedbackTimerRef.current = null;
+          }, 2500);
+        }
       }
       const productSuggestions = (text) => {
         const q = (text||'').trim().toLowerCase();
@@ -3139,9 +3173,10 @@ function ensurePickState(recipe) {
 
                           <Button
                             onClick={() => addRecipeToList(r, null, st)}
-                            className="w-full bg-slate-900 text-white"
+                            disabled={addFeedback?.recipeId === r.id}
+                            className="w-full bg-slate-900 text-white disabled:opacity-100"
                           >
-                            Voeg geselecteerde ingrediënten toe
+                            {addFeedback?.recipeId === r.id ? addFeedback.message : 'Voeg geselecteerde producten toe'}
                           </Button>
                         </div>
                       </div>
@@ -3386,8 +3421,6 @@ function ensurePickState(recipe) {
       const [tab, setTab] = useState('list');
       const [storeMode, setStoreMode] = useState(false);
       const [showAdders, setShowAdders] = useState(false);
-      const [toast, setToast] = useState(null);
-      const toastTimerRef = useRef(null);
 
       useEffect(() => {
         if (storeMode && tab !== 'list') setTab('list');
@@ -3559,21 +3592,6 @@ function ensurePickState(recipe) {
         if (householdInfo?.code) navigator.clipboard.writeText(householdInfo.code).catch(()=>{});
       }
 
-      function showToast(message) {
-        if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-        setToast({ message });
-        toastTimerRef.current = setTimeout(() => {
-          setToast(null);
-          toastTimerRef.current = null;
-        }, 3500);
-      }
-
-      useEffect(() => {
-        return () => {
-          if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-        };
-      }, []);
-
       if (loading || (user && profileLoading)) {
         return (
           <div className="min-h-screen flex items-center justify-center text-slate-500">
@@ -3642,7 +3660,6 @@ function ensurePickState(recipe) {
                 items={items}
                 currentUser={user}
                 activeListId={activeListId}
-                onNotify={showToast}
               />
 ) : (
               <RecipesTab
@@ -3652,29 +3669,9 @@ function ensurePickState(recipe) {
                 items={items}
                 activeListId={activeListId}
                 currentUser={user}
-                onNotify={showToast}
               />
             )}
           </div>
-
-          {toast && (
-            <div className="fixed left-0 right-0 bottom-0 pb-6 px-4 z-50 pointer-events-none">
-              <div className="max-w-xl mx-auto">
-                <div className="bg-slate-900 text-white rounded-2xl shadow-lg px-4 py-3 flex items-center gap-3">
-                  <div className="flex-1 text-sm truncate">{toast.message}</div>
-                  <button
-                    type="button"
-                    onClick={() => setToast(null)}
-                    className="pointer-events-auto text-white/70 hover:text-white text-sm leading-none"
-                    aria-label="Notificatie sluiten"
-                    title="Sluiten"
-                  >
-                    ✕
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
 
           {createdCode && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
