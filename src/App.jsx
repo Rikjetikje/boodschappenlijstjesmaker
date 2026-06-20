@@ -598,11 +598,30 @@ const CART_FULL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADgAAAA4CAYAAAC
     }
 
     // ---------------- Header ----------------
-    function Header({ user, householdId, householdInfo, members, syncing, storeMode, setStoreMode, onCopyCode, onSignOut }) {
+    function Header({
+      user,
+      householdId,
+      householdInfo,
+      members,
+      syncing,
+      storeMode,
+      setStoreMode,
+      tab,
+      setTab,
+      lists,
+      activeListId,
+      onPickList,
+      onCreateList,
+      onDeleteList,
+      onClearList,
+      onCopyCode,
+      onSignOut
+    }) {
       const [editingName, setEditingName] = useState(false);
       const [draftName, setDraftName] = useState(householdInfo?.name || '');
       const [showMenu, setShowMenu] = useState(false);
       const [showManage, setShowManage] = useState(false);
+      const [newListName, setNewListName] = useState('');
 
       const isOwner = householdInfo?.createdBy === user?.uid;
 
@@ -682,13 +701,148 @@ const CART_FULL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADgAAAA4CAYAAAC
       const maxShow = 10;
       const show = membersSorted.slice(0, maxShow);
       const extra = Math.max(0, membersSorted.length - show.length);
+      const activeListName = (lists || []).find(l => l.id === activeListId)?.name || 'Geen lijst';
+
+      async function createListFromMenu() {
+        const name = newListName.trim();
+        await onCreateList?.(name);
+        setNewListName('');
+        setShowMenu(false);
+      }
 
       return (
-        <header className="mb-4">
-          <div className="flex items-center justify-between gap-2">
-            <div className="min-w-0">
-              <h1 className="text-base font-bold text-slate-900 leading-tight">Boodschappenlijstjesmaker</h1>
+        <header className="mb-3">
+          <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2">
+            <div className="relative">
+              <button
+                onClick={() => setShowMenu(!showMenu)}
+                className="w-10 h-10 rounded-xl bg-white border border-slate-200 text-slate-700 shadow-sm flex items-center justify-center"
+                title="Menu"
+                aria-label="Menu"
+              >
+                <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                  <path d="M4 7h16" />
+                  <path d="M4 12h16" />
+                  <path d="M4 17h16" />
+                </svg>
+              </button>
+
+              {showMenu && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)} />
+                  <div className="absolute left-0 top-full mt-2 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 overflow-hidden w-[min(22rem,calc(100vw-1.5rem))]">
+                    <div className="px-3 py-3 border-b border-slate-100">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-sm font-bold text-slate-900 truncate">Boodschappenlijstjesmaker</div>
+                          <HouseholdNameLine />
+                        </div>
+                        {syncing ? <span className="mt-1 w-2 h-2 rounded-full bg-amber-400 animate-pulse" title="Synchroniseren"></span>
+                                  : <span className="mt-1 w-2 h-2 rounded-full bg-emerald-400" title="Gesynchroniseerd"></span>}
+                      </div>
+                      <div className="inline-flex items-center -space-x-2 mt-2" aria-label="Leden">
+                        {show.map((m, idx) => <Avatar key={(m && (m.uid || m.id)) || idx} m={m} i={idx} />)}
+                        {extra > 0 && (
+                          <div
+                            className="w-5 h-5 rounded-full ring-2 ring-white bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-600"
+                            style={{ zIndex: 0 }}
+                            title={`${extra} meer`}
+                          >
+                            +{extra}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="px-2 py-2 border-b border-slate-100">
+                      <div className="px-2 pb-1 text-[11px] font-bold uppercase tracking-wide text-slate-500">Lijstjes</div>
+                      <div className="space-y-1">
+                        {(lists || []).map(l => (
+                          <div key={l.id} className="flex items-center gap-1">
+                            <button
+                              onClick={() => { onPickList?.(l.id); setShowMenu(false); }}
+                              className={"flex-1 min-w-0 px-3 py-2.5 rounded-xl text-left border " +
+                                (l.id === activeListId ? "bg-emerald-50 border-emerald-200" : "bg-white border-slate-200")}
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="font-semibold text-sm text-slate-800 truncate">{l.name}</div>
+                                {l.id === activeListId && <div className="text-[10px] font-bold text-emerald-700 bg-emerald-100 rounded-full px-2 py-0.5">actief</div>}
+                              </div>
+                            </button>
+                            <button
+                              onClick={() => onDeleteList?.(l.id)}
+                              className="w-9 h-9 rounded-full bg-transparent text-slate-500 flex items-center justify-center"
+                              title="Lijst verwijderen"
+                            >
+                              <TrashIcon className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="mt-3 grid grid-cols-[1fr_auto] gap-2">
+                        <input
+                          value={newListName}
+                          onChange={(e)=>setNewListName(e.target.value)}
+                          onKeyDown={(e)=>{ if (e.key === 'Enter') { e.preventDefault(); createListFromMenu(); } }}
+                          placeholder="Nieuw lijstje"
+                          className="min-w-0 px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-sm"
+                        />
+                        <Button onClick={createListFromMenu} className="bg-emerald-600 text-white px-3">+</Button>
+                      </div>
+                    </div>
+
+                    <div className="px-2 py-2 border-b border-slate-100">
+                      {tab === 'list' && activeListId && (
+                        <button
+                          onClick={() => { setShowMenu(false); onClearList?.(); }}
+                          className="w-full text-left px-3 py-2.5 text-sm text-red-600 hover:bg-red-50 rounded-xl flex items-center gap-2 font-semibold"
+                        >
+                          <TrashIcon className="w-4 h-4" /> Actieve lijst wissen
+                        </button>
+                      )}
+                      {isOwner && (
+                        <button
+                          onClick={() => { setShowMenu(false); setShowManage(true); }}
+                          className="w-full text-left px-3 py-2.5 text-sm text-slate-700 hover:bg-slate-50 rounded-xl flex items-center gap-2"
+                        >⚙️ Huishouden beheren</button>
+                      )}
+                    </div>
+
+                    <div className="px-3 py-2 border-b border-slate-100">
+                      <div className="text-xs font-semibold text-slate-900 truncate">{user.displayName || user.email}</div>
+                      <div className="text-[10px] text-slate-500 truncate">{user.email}</div>
+                    </div>
+                    <button
+                      onClick={() => { setShowMenu(false); onSignOut(); }}
+                      className="w-full text-left px-3 py-2.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                    >🚪 Uitloggen</button>
+                  </div>
+                </>
+              )}
             </div>
+
+            {!storeMode ? (
+              <div className="grid grid-cols-3 gap-2 min-w-0">
+                <Button onClick={()=>setTab('list')}
+                  className={tab==='list' ? 'bg-emerald-600 text-white px-2 w-full' : 'bg-white border border-slate-200 text-slate-700 px-2 w-full'}>
+                  Lijst
+                </Button>
+                <Button onClick={()=>setTab('recipes')}
+                  className={tab==='recipes' ? 'bg-emerald-600 text-white px-2 w-full' : 'bg-white border border-slate-200 text-slate-700 px-2 w-full'}>
+                  Recepten
+                </Button>
+                <Button onClick={()=>setTab('products')}
+                  className={tab==='products' ? 'bg-emerald-600 text-white px-2 w-full' : 'bg-white border border-slate-200 text-slate-700 px-2 w-full'}>
+                  Producten
+                </Button>
+              </div>
+            ) : (
+              <div className="min-w-0">
+                <div className="text-sm font-bold text-slate-900 truncate">Winkelmodus</div>
+                <div className="text-xs text-slate-500 truncate">{activeListName}</div>
+              </div>
+            )}
 
             <div className="flex items-center gap-2 shrink-0">
               <div
@@ -701,54 +855,8 @@ const CART_FULL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADgAAAA4CAYAAAC
                   <div className={"absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 " + (storeMode ? "translate-x-5" : "translate-x-0")} />
                 </div>
               </div>
-              {syncing ? <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" title="Synchroniseren"></span>
-                        : <span className="w-2 h-2 rounded-full bg-emerald-400" title="Gesynchroniseerd"></span>}
-              <div className="relative">
-                <button onClick={() => setShowMenu(!showMenu)} className="flex items-center gap-2 transform-gpu" style={{ WebkitTransform: "translateZ(0)", transform: "translateZ(0)" }}>
-                  {user.photoURL ? <img src={user.photoURL} className="w-7 h-7 rounded-full transform-gpu" /> : <div className="w-7 h-7 rounded-full bg-slate-200 transform-gpu"></div>}
-                </button>
-                {showMenu && (
-                  <>
-                    <div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)} />
-                    <div className="absolute right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-50 overflow-hidden w-52">
-                      <div className="px-3 py-2 border-b border-slate-100">
-                        <div className="text-xs font-semibold text-slate-900 truncate">{user.displayName || user.email}</div>
-                        <div className="text-[10px] text-slate-500 truncate">{user.email}</div>
-                      </div>
-                      {isOwner && (
-                        <button
-                          onClick={() => { setShowMenu(false); setShowManage(true); }}
-                          className="w-full text-left px-3 py-2.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
-                        >⚙️ Huishouden beheren</button>
-                      )}
-                      <button
-                        onClick={() => { setShowMenu(false); onSignOut(); }}
-                        className="w-full text-left px-3 py-2.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2 border-t border-slate-100"
-                      >🚪 Uitloggen</button>
-                    </div>
-                  </>
-                )}
-              </div>
             </div>
           </div>
-
-          {!storeMode && (
-            <div className="flex items-center gap-3 flex-wrap mt-1">
-              <HouseholdNameLine />
-              <div className="inline-flex items-center -space-x-2" aria-label="Leden">
-                {show.map((m, idx) => <Avatar key={(m && (m.uid || m.id)) || idx} m={m} i={idx} />)}
-                {extra > 0 && (
-                  <div
-                    className="w-5 h-5 rounded-full ring-2 ring-white bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-600"
-                    style={{ zIndex: 0 }}
-                    title={`${extra} meer`}
-                  >
-                    +{extra}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
 
           {showManage && (
             <Modal title="Huishouden beheren" onClose={() => setShowManage(false)}>
@@ -1658,6 +1766,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
       const [newText, setNewText] = useState('');
       const [newCategory, setNewCategory] = useState('Overig');
       const [showSuggestions, setShowSuggestions] = useState(false);
+      const [showCreateOptions, setShowCreateOptions] = useState(false);
       const [showAllDone, setShowAllDone] = useState(false);
       const addInputRef = useRef(null);
 
@@ -1845,6 +1954,12 @@ useEffect(() => {
           .slice(0, 30);
       }, [products, newText]);
 
+      const exactProduct = useMemo(() => {
+        const q = newText.trim().toLowerCase();
+        if (!q) return null;
+        return (products || []).find(x => (x.name||'').toLowerCase() === q) || null;
+      }, [products, newText]);
+
       useEffect(() => {
         const q = newText.trim().toLowerCase();
         if (!q) return;
@@ -1921,7 +2036,7 @@ async function addItemFromProduct(p) {
         if (!text) return;
 
         // If the text matches an existing product (exact), just add it
-        const existing = (products || []).find(x => (x.name||'').toLowerCase() === text.toLowerCase());
+        const existing = exactProduct;
         if (existing) {
           await addItemFromProduct(existing);
         } else {
@@ -1947,7 +2062,26 @@ async function addItemFromProduct(p) {
 
         setNewText('');
         setShowSuggestions(false);
+        setShowCreateOptions(false);
         setStickyAdd(false);
+      }
+
+      function clearSearch() {
+        setNewText('');
+        setShowSuggestions(false);
+        setShowCreateOptions(false);
+        setStickyAdd(false);
+      }
+
+      async function handleCreateAction() {
+        if (!newText.trim()) return;
+        if (exactProduct || showCreateOptions) {
+          await addFreeText();
+          return;
+        }
+        setShowCreateOptions(true);
+        setShowSuggestions(false);
+        setTimeout(()=>addInputRef.current?.focus(), 0);
       }
 
       async function toggle(item) {
@@ -2086,75 +2220,97 @@ async function addItemFromProduct(p) {
         <div className="pb-24" onClick={() => { if (!storeMode && openQtyId) setOpenQtyId(null); }}>
           {!storeMode && (
           <div className={"mb-3 relative " + (stickyAdd ? "fixed top-0 left-0 right-0 z-40 bg-slate-50 pt-2 pb-2 shadow-sm" : "")}>
-            <div className="max-w-xl mx-auto px-3">
-            <div className="flex flex-col sm:flex-row gap-2">
-              <div className="relative w-full sm:flex-1">
+            <div className={stickyAdd ? "relative w-full px-3" : "relative left-1/2 w-screen -translate-x-1/2 px-3"}>
+              <div className={"bg-white border-2 rounded-2xl shadow-sm h-14 flex items-center gap-2 px-3 transition-colors " + (newText.trim() ? "border-emerald-500 ring-4 ring-emerald-500/10" : "border-slate-300")}>
+                <svg viewBox="0 0 24 24" className="w-5 h-5 text-slate-500 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                  <path d="m21 21-4.3-4.3" />
+                  <circle cx="10.8" cy="10.8" r="7.2" />
+                </svg>
                 <input
                   ref={addInputRef}
                   type="text"
                   inputMode="search"
                   value={newText}
-                  onChange={(e)=>{ setNewText(e.target.value); setShowSuggestions(true); }}
-                  onFocus={()=>{ setStickyAdd(true); scrollAddBoxIntoView(true); if (newText.trim().length>=2) setShowSuggestions(true); }}
+                  onChange={(e)=>{ setNewText(e.target.value); setShowSuggestions(true); setShowCreateOptions(false); }}
+                  onFocus={()=>{ setStickyAdd(true); scrollAddBoxIntoView(true); if (newText.trim().length>=2 && !showCreateOptions) setShowSuggestions(true); }}
                   onBlur={()=> { setTimeout(()=>{ setShowSuggestions(false); if (!newText.trim()) setStickyAdd(false); }, 150); }}
-                  onKeyDown={(e)=>{ if (e.key === 'Enter') { e.preventDefault(); addFreeText(); }
-                    if (e.key === 'Escape') { e.preventDefault(); setNewText(''); setShowSuggestions(false); setStickyAdd(false); } }}
+                  onKeyDown={(e)=>{
+                    if (e.key === 'Enter') { e.preventDefault(); handleCreateAction(); }
+                    if (e.key === 'Escape') { e.preventDefault(); clearSearch(); }
+                  }}
                   placeholder="Zoek product of typ iets nieuws…"
-                  className="w-full pr-10 px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm"
+                  className="min-w-0 flex-1 bg-transparent outline-none text-[15px] text-slate-900 placeholder:text-slate-500 font-medium"
                 />
-                {newText && newText.length > 0 && (
-                  <button
-                    type="button"
-                    onMouseDown={(e)=>e.preventDefault()}
-                    onClick={() => { setNewText(''); setShowSuggestions(false); setTimeout(()=>addInputRef.current?.focus(), 0); }}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 text-xl leading-none hover:text-slate-600"
-                    title="Leegmaken"
-                    aria-label="Leegmaken"
-                  >
-                    ×
-                  </button>
+                {newText.trim() && (
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      onMouseDown={(e)=>e.preventDefault()}
+                      onClick={handleCreateAction}
+                      className="w-9 h-9 rounded-full bg-emerald-50 border border-emerald-100 text-emerald-700 flex items-center justify-center"
+                      title={exactProduct ? "Toevoegen" : (showCreateOptions ? "Product aanmaken" : "Nieuw product")}
+                      aria-label={exactProduct ? "Toevoegen" : (showCreateOptions ? "Product aanmaken" : "Nieuw product")}
+                    >
+                      {showCreateOptions && !exactProduct ? (
+                        <span className="text-sm font-bold">✓</span>
+                      ) : (
+                        <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                          <path d="M12 5v14" />
+                          <path d="M5 12h14" />
+                        </svg>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onMouseDown={(e)=>e.preventDefault()}
+                      onClick={()=>{ clearSearch(); setTimeout(()=>addInputRef.current?.focus(), 0); }}
+                      className="w-9 h-9 rounded-full bg-white border border-slate-200 text-slate-500 text-xl leading-none flex items-center justify-center"
+                      title="Leegmaken"
+                      aria-label="Leegmaken"
+                    >
+                      ×
+                    </button>
+                  </div>
                 )}
               </div>
 
-              <select
-                value={newCategory || 'Overig'}
-                onChange={(e)=>setNewCategory(e.target.value)}
-                className="w-full sm:w-56 px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm"
-                title="Categorie (voor nieuwe producten)"
-              >
-                {CATEGORY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
+              {newText.trim() && showCreateOptions && !exactProduct && (
+                <div className="mt-2">
+                  <select
+                    value={newCategory || 'Overig'}
+                    onChange={(e)=>setNewCategory(e.target.value)}
+                    className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm"
+                    title="Categorie voor nieuw product"
+                  >
+                    {CATEGORY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                  <div className="mt-1 text-[11px] text-slate-500 px-1">
+                    Tik op ✓ om dit product aan te maken en toe te voegen.
+                  </div>
+                </div>
+              )}
 
-              {newText.trim() && (
-                <>
-                  <Button onClick={addFreeText} className="bg-emerald-600 text-white w-full sm:w-12 px-0" title="Toevoegen">✓</Button>
-                  <Button onClick={()=>{ setNewText(''); setShowSuggestions(false); setStickyAdd(false); }} className="bg-rose-500 text-white w-full sm:w-12 px-0" title="Annuleren">✕</Button>
-                </>
+              {showSuggestions && !showCreateOptions && suggestions.length > 0 && (
+                <div
+                  ref={suggestionsRef}
+                  className="absolute left-3 right-3 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-30 overflow-y-auto overscroll-contain"
+                  style={{ maxHeight: "240px", WebkitOverflowScrolling: "touch" }}
+                >
+                  {suggestions.map(s => (
+                    <button key={s.id} onMouseDown={(e)=>e.preventDefault()}
+                      onClick={()=>{ addItemFromProduct(s); clearSearch(); }}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 flex items-center gap-2 border-b border-slate-100 last:border-b-0">
+                      <span className="flex-1 truncate">{s.name}</span>
+                      <span className="text-[11px] text-slate-500 shrink-0">{(s.category||'Overig').split(',')[0]}</span>
+                    </button>
+                  ))}
+                </div>
               )}
             </div>
-
-            {showSuggestions && suggestions.length > 0 && (
-              <div
-                ref={suggestionsRef}
-                className="absolute left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-30 overflow-y-auto overscroll-contain"
-                style={{ maxHeight: "240px", WebkitOverflowScrolling: "touch" }}
-              >
-                {suggestions.map(s => (
-                  <button key={s.id} onMouseDown={(e)=>e.preventDefault()}
-                    onClick={()=>{ addItemFromProduct(s); setNewText(''); setShowSuggestions(false); setStickyAdd(false); }}
-                    className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 flex items-center gap-2 border-b border-slate-100 last:border-b-0">
-                    <span className="flex-1 truncate">{s.name}</span>
-                    <span className="text-[11px] text-slate-500 shrink-0">{(s.category||'Overig').split(',')[0]}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
           </div>
           )}
 
-          {(!storeMode && stickyAdd) && <div style={{ height: 136 }} />}
+          {(!storeMode && stickyAdd) && <div style={{ height: showCreateOptions ? 138 : 82 }} />}
 
 
           {storeMode && (
@@ -3085,7 +3241,6 @@ function ensurePickState(recipe) {
       const [householdInfo, setHouseholdInfo] = useState(null);
       const [tab, setTab] = useState('list');
       const [storeMode, setStoreMode] = useState(false);
-      const [showListMenu, setShowListMenu] = useState(false);
 
       useEffect(() => {
         if (storeMode && tab !== 'list') setTab('list');
@@ -3237,6 +3392,17 @@ function ensurePickState(recipe) {
         }
       }
 
+      async function handleClearActiveList() {
+        if (!householdId || !activeListId) return;
+        if (!confirm('Hele lijst leegmaken?')) return;
+        const snap = await db.collection(`households/${householdId}/lists/${activeListId}/items`).get();
+        if (!snap.empty) {
+          const batch = db.batch();
+          snap.docs.forEach(d => batch.delete(d.ref));
+          await batch.commit();
+        }
+      }
+
       function handleSignIn() {
         const provider = new firebase.auth.GoogleAuthProvider();
         auth.signInWithPopup(provider).catch(e => console.error('Sign in error:', e));
@@ -3283,64 +3449,17 @@ function ensurePickState(recipe) {
               syncing={syncing}
               storeMode={storeMode}
               setStoreMode={setStoreMode}
+              tab={tab}
+              setTab={setTab}
+              lists={lists}
+              activeListId={activeListId}
+              onPickList={(id)=>setActiveListId(id)}
+              onCreateList={handleCreateList}
+              onDeleteList={handleDeleteList}
+              onClearList={handleClearActiveList}
               onCopyCode={handleCopyCode}
               onSignOut={()=> setShowSignOut(true)}
             />
-
-            {!storeMode && (
-            <ListsMenu
-              lists={lists}
-              activeListId={activeListId}
-              onPick={(id)=>setActiveListId(id)}
-              onCreate={handleCreateList}
-              onDelete={handleDeleteList}
-            />
-            )}
-
-            {!storeMode && (
-            <div className="flex gap-2 mb-3">
-              <div className="relative flex-1">
-                <Button onClick={()=>setTab('list')}
-                  className={tab==='list' ? 'bg-emerald-600 text-white w-full' : 'bg-white border border-slate-200 text-slate-700 w-full'}>
-                  🛒 Lijst
-                </Button>
-                {tab==='list' && (
-                  <button
-                    onClick={(e)=>{ e.stopPropagation(); setShowListMenu(prev => !prev); }}
-                    className="absolute right-1 top-1/2 -translate-y-1/2 w-6 h-6 rounded-lg text-white/70 hover:text-white text-[10px] flex items-center justify-center"
-                  >▼</button>
-                )}
-                {showListMenu && tab==='list' && (
-                  <>
-                    <div className="fixed inset-0 z-40" onClick={()=>setShowListMenu(false)} />
-                    <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-50 overflow-hidden">
-                      <button
-                        onClick={async ()=>{
-                          setShowListMenu(false);
-                          if (!confirm('Hele lijst leegmaken?')) return;
-                          const snap = await db.collection(`households/${householdId}/lists/${activeListId}/items`).get();
-                          if (!snap.empty) {
-                            const batch = db.batch();
-                            snap.docs.forEach(d => batch.delete(d.ref));
-                            await batch.commit();
-                          }
-                        }}
-                        className="w-full text-left px-4 py-2.5 text-sm font-semibold text-white bg-red-500 hover:bg-red-600"
-                      ><span className="inline-flex items-center gap-2"><TrashIcon className="w-4 h-4" /> Wissen</span></button>
-                    </div>
-                  </>
-                )}
-              </div>
-              <Button onClick={()=>setTab('products')}
-                className={tab==='products' ? 'bg-emerald-600 text-white flex-1' : 'bg-white border border-slate-200 text-slate-700 flex-1'}>
-                📋 Producten
-              </Button>
-              <Button onClick={()=>setTab('recipes')}
-                className={tab==='recipes' ? 'bg-emerald-600 text-white flex-1' : 'bg-white border border-slate-200 text-slate-700 flex-1'}>
-                🍲 Recepten
-              </Button>
-            </div>
-            )}
 
             {tab === 'list' ? (
               <ListTab
