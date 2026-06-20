@@ -1029,7 +1029,7 @@ const CART_FULL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADgAAAA4CAYAAAC
 
     // ---------------- Products tab ----------------
     
-function ProductsTab({ householdId, products, items, currentUser, activeListId }) {
+function ProductsTab({ householdId, products, items, currentUser, activeListId, onNotify }) {
   const [query, setQuery] = useState('');
   const [newProductCategory, setNewProductCategory] = useState('Overig');
   const [showCreateOptions, setShowCreateOptions] = useState(false);
@@ -1353,12 +1353,19 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
     const ids = Array.from(selectedIds);
     if (ids.length === 0) return;
     const byId = new Map((products||[]).map(p => [p.id, p]));
+    let added = 0;
     for (const id of ids) {
       const p = byId.get(id);
-      if (p) await addItemFromProduct(p);
+      if (p) {
+        await addItemFromProduct(p);
+        added += 1;
+      }
     }
     // Clear selection after adding
     setSelectedIds(new Set());
+    if (added > 0) {
+      onNotify?.(`${added} product${added === 1 ? '' : 'en'} toegevoegd aan je lijst.`);
+    }
   }
 
   const selectedCount = selectedIds.size;
@@ -2593,7 +2600,7 @@ async function addItemFromProduct(p) {
     }
 
     // ---------------- Recipes tab ----------------
-    function RecipesTab({ householdId, recipes, products, items, activeListId, currentUser }) {
+    function RecipesTab({ householdId, recipes, products, items, activeListId, currentUser, onNotify }) {
       const [query, setQuery] = useState('');
       const [openId, setOpenId] = useState(null); // recipe id in modal
       const [draft, setDraft] = useState(null);   // editable recipe
@@ -2936,7 +2943,7 @@ async function addRecipeToList(r, targetServings, pickState) {
         });
 
         await batch.commit();
-        alert('Toegevoegd aan je lijst.');
+        onNotify?.('Recept toegevoegd aan je lijst.');
       }
       const productSuggestions = (text) => {
         const q = (text||'').trim().toLowerCase();
@@ -3379,6 +3386,8 @@ function ensurePickState(recipe) {
       const [tab, setTab] = useState('list');
       const [storeMode, setStoreMode] = useState(false);
       const [showAdders, setShowAdders] = useState(false);
+      const [toast, setToast] = useState(null);
+      const toastTimerRef = useRef(null);
 
       useEffect(() => {
         if (storeMode && tab !== 'list') setTab('list');
@@ -3550,6 +3559,21 @@ function ensurePickState(recipe) {
         if (householdInfo?.code) navigator.clipboard.writeText(householdInfo.code).catch(()=>{});
       }
 
+      function showToast(message) {
+        if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+        setToast({ message });
+        toastTimerRef.current = setTimeout(() => {
+          setToast(null);
+          toastTimerRef.current = null;
+        }, 3500);
+      }
+
+      useEffect(() => {
+        return () => {
+          if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+        };
+      }, []);
+
       if (loading || (user && profileLoading)) {
         return (
           <div className="min-h-screen flex items-center justify-center text-slate-500">
@@ -3618,6 +3642,7 @@ function ensurePickState(recipe) {
                 items={items}
                 currentUser={user}
                 activeListId={activeListId}
+                onNotify={showToast}
               />
 ) : (
               <RecipesTab
@@ -3627,9 +3652,29 @@ function ensurePickState(recipe) {
                 items={items}
                 activeListId={activeListId}
                 currentUser={user}
+                onNotify={showToast}
               />
             )}
           </div>
+
+          {toast && (
+            <div className="fixed left-0 right-0 bottom-0 pb-6 px-4 z-50 pointer-events-none">
+              <div className="max-w-xl mx-auto">
+                <div className="bg-slate-900 text-white rounded-2xl shadow-lg px-4 py-3 flex items-center gap-3">
+                  <div className="flex-1 text-sm truncate">{toast.message}</div>
+                  <button
+                    type="button"
+                    onClick={() => setToast(null)}
+                    className="pointer-events-auto text-white/70 hover:text-white text-sm leading-none"
+                    aria-label="Notificatie sluiten"
+                    title="Sluiten"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {createdCode && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
