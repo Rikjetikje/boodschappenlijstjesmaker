@@ -3023,20 +3023,20 @@ function ensurePickState(recipe) {
                 }}
                 placeholder="Zoek recept of typ iets nieuws..."
                 className="min-w-0 flex-1 bg-transparent outline-none text-[15px] text-slate-900 placeholder:text-slate-500 font-medium" />
-              <div className="flex items-center gap-1 shrink-0">
-                <button
-                  type="button"
-                  onClick={handleRecipeCreateAction}
-                  className="w-9 h-9 rounded-full bg-emerald-50 border border-emerald-100 text-emerald-700 flex items-center justify-center"
-                  title="Nieuw recept"
-                  aria-label="Nieuw recept"
-                >
-                  <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-                    <path d="M12 5v14" />
-                    <path d="M5 12h14" />
-                  </svg>
-                </button>
-                {query.trim() && (
+              {query.trim() && (
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleRecipeCreateAction}
+                    className="w-9 h-9 rounded-full bg-emerald-50 border border-emerald-100 text-emerald-700 flex items-center justify-center"
+                    title="Nieuw recept"
+                    aria-label="Nieuw recept"
+                  >
+                    <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                      <path d="M12 5v14" />
+                      <path d="M5 12h14" />
+                    </svg>
+                  </button>
                   <button
                     type="button"
                     onClick={clearRecipeSearch}
@@ -3046,8 +3046,8 @@ function ensurePickState(recipe) {
                   >
                     ×
                   </button>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           </div>
 
