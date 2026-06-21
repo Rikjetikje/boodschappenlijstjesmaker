@@ -756,7 +756,7 @@ const APP_ICONS = {
             onClick={()=>setTab(id)}
             title={label}
             aria-label={label}
-            className={(active ? 'bg-emerald-600 text-white' : 'bg-white border border-slate-200 text-slate-700') + ' h-10 w-12 px-0 py-0 flex items-center justify-center'}
+            className={(active ? 'bg-emerald-600 text-white' : 'bg-white border border-slate-200 text-slate-700') + ' h-10 w-full px-0 py-0 flex items-center justify-center'}
           >
             <TabIcon type={id} active={active} />
           </Button>
@@ -876,7 +876,7 @@ const APP_ICONS = {
             </div>
 
             {!storeMode ? (
-              <div className="inline-grid grid-cols-3 gap-2 min-w-0 justify-self-center">
+              <div className="grid grid-cols-3 gap-2 min-w-0">
                 <HeaderTab id="list" label="Lijst" />
                 <HeaderTab id="recipes" label="Recepten" />
                 <HeaderTab id="products" label="Producten" />
@@ -904,7 +904,7 @@ const APP_ICONS = {
                 onClick={() => setStoreMode?.(!storeMode)}
                 title={storeMode ? "Winkelmodus uit" : "Winkelmodus aan"}
               >
-                <img src={storeMode ? APP_ICONS.cartFull : APP_ICONS.cartEmpty} alt="" aria-hidden="true" className="w-10 h-10 object-contain" />
+                <img src={storeMode ? CART_FULL : CART_EMPTY} alt="" aria-hidden="true" className="w-6 h-6 object-contain" />
                 <div className={"relative w-11 h-6 rounded-full transition-colors duration-200 " + (storeMode ? "bg-emerald-500" : "bg-slate-300")}>
                   <div className={"absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 " + (storeMode ? "translate-x-5" : "translate-x-0")} />
                 </div>
