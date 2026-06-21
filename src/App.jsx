@@ -732,30 +732,37 @@ const CART_FULL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADgAAAA4CAYAAAC
         const cls = "w-5 h-5";
         if (type === 'list') {
           return (
-            <svg viewBox="0 0 24 24" className={cls} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M8 6h13" />
-              <path d="M8 12h13" />
-              <path d="M8 18h13" />
-              <path d="m3 6 1 1 2-2" />
-              <path d="m3 12 1 1 2-2" />
-              <path d="m3 18 1 1 2-2" />
+            <svg viewBox="0 0 24 24" className={cls} fill="none" stroke="currentColor" strokeWidth="2.15" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M6 3.5h8l4 4V20a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 6 20V3.5Z" />
+              <path d="M14 3.5V8h4" />
+              <path d="M9 11h5.5" />
+              <path d="M9 15h3.5" />
+              <path d="m13.5 18.5 4.7-4.7a1.35 1.35 0 0 1 1.9 1.9l-4.7 4.7-2.5.6.6-2.5Z" />
+              <path d="m17.2 14.8 1.9 1.9" />
             </svg>
           );
         }
         if (type === 'recipes') {
           return (
-            <svg viewBox="0 0 24 24" className={cls} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M4 19.5V5.8A2.8 2.8 0 0 1 6.8 3H20v16H6.8A2.8 2.8 0 0 0 4 21.8" />
-              <path d="M8 7h8" />
-              <path d="M8 11h6" />
+            <svg viewBox="0 0 24 24" className={cls} fill="none" stroke="currentColor" strokeWidth="2.15" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M4.5 12.5h15l-.7 3.1a5 5 0 0 1-4.9 3.9h-3.8a5 5 0 0 1-4.9-3.9l-.7-3.1Z" />
+              <path d="M7.8 19.5h8.4" />
+              <path d="M8 12.5 4.6 5.2" />
+              <path d="M5.4 6.8 8.7 12.5" />
+              <path d="M6.3 4.4 9.9 12.5" />
+              <path d="M14 12.5c.6-2.4 2.1-4.4 4.5-6" />
+              <path d="M15.8 5.1c1.6-1.2 3.6-.1 3.9 1.5.4 1.9-1.1 3.6-3.5 4.8" />
             </svg>
           );
         }
         return (
-          <svg viewBox="0 0 24 24" className={cls} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M21 8.5 12 3 3 8.5l9 5.5 9-5.5Z" />
-            <path d="M3 8.5V16l9 5 9-5V8.5" />
-            <path d="M12 14v7" />
+          <svg viewBox="0 0 24 24" className={cls} fill="none" stroke="currentColor" strokeWidth="2.15" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M4 4.5h1.5c.8 0 1.5.6 1.6 1.4l1 7.6a2.9 2.9 0 0 0 2.9 2.5h6a2.9 2.9 0 0 0 2.9-2.5l1-6.9" />
+            <path d="M8 8h12.3" />
+            <circle cx="11" cy="20" r="1.45" fill="currentColor" stroke="none" />
+            <circle cx="17" cy="20" r="1.45" fill="currentColor" stroke="none" />
+            <path d="M16.6 6.9a3.85 3.85 0 1 0 .6 5" />
+            <path d="M16.8 6.9h-3V4" />
           </svg>
         );
       }
