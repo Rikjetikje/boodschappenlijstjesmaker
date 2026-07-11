@@ -390,6 +390,11 @@ const APP_ICONS = {
         };
       }, []);
 
+      const keyboardOpen = viewport.height < window.innerHeight - 120;
+      const footerStyle = {
+        paddingBottom: keyboardOpen ? 0 : 'calc(env(safe-area-inset-bottom) + 0.75rem)',
+      };
+
       return (
         <div
           ref={ref}
@@ -403,7 +408,10 @@ const APP_ICONS = {
             </div>
             <div className="flex-1 overflow-auto p-4">{children}</div>
             {footer ? (
-              <div className="shrink-0 px-4 pt-3 pb-[env(safe-area-inset-bottom)] bg-white/95 backdrop-blur border-t border-slate-100">
+              <div
+                className="shrink-0 px-4 pt-3 bg-white/95 backdrop-blur border-t border-slate-100"
+                style={footerStyle}
+              >
                 {footer}
               </div>
             ) : null}
