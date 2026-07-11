@@ -1,10 +1,22 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+import { execSync } from 'node:child_process';
+
+function getGitCommit() {
+  try {
+    return execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+  } catch {
+    return 'local';
+  }
+}
 
 // base must match the GitHub Pages sub-path: https://<user>.github.io/boodschappenlijstjesmaker/
 export default defineConfig({
   base: '/boodschappenlijstjesmaker/',
+  define: {
+    __APP_COMMIT__: JSON.stringify(getGitCommit()),
+  },
   plugins: [
     react(),
     VitePWA({
