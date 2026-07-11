@@ -2895,6 +2895,7 @@ useEffect(() => {
 
       function addIngredientRow() {
         const id = genId('ing');
+        document.activeElement?.blur?.();
         setDraft(d => ({
           ...d,
           ingredients: [...(d.ingredients||[]), {
@@ -2908,7 +2909,6 @@ useEffect(() => {
           }]
         }));
         setNewIngId(id);
-        setTimeout(scrollIngredientsToTop, 0);
       }
 
       function updateIng(idx, patch) {
@@ -3500,7 +3500,17 @@ function ensurePickState(recipe) {
                               <div className="flex-1 min-w-0 relative">
                                 <div className="text-[11px] font-semibold text-slate-500 mb-1">Product</div>
                                 <input
-                                  ref={el => { if (el && ing._id === newIngId) { el.focus(); setNewIngId(null); } }}
+                                  ref={el => {
+                                    if (el && ing._id === newIngId) {
+                                      try {
+                                        el.focus({ preventScroll: true });
+                                      } catch (e) {
+                                        el.focus();
+                                      }
+                                      setNewIngId(null);
+                                      scrollIngredientsToTop();
+                                    }
+                                  }}
                                   value={disp.name}
                                   onChange={(e)=>updateIng(idx, { productId: null, nameSnapshot: e.target.value })}
                                   placeholder="bijv. Paprika"
