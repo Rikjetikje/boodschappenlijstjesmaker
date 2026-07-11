@@ -2443,7 +2443,7 @@ async function addItemFromProduct(p) {
       return (
         <div className="pb-24" onClick={() => { if (!storeMode && openQtyId) setOpenQtyId(null); }}>
           {!storeMode && (
-          <div className={"mb-3 relative " + (stickyAdd ? "fixed top-0 left-0 right-0 z-40 bg-slate-50 pt-2 pb-2 shadow-sm" : "")}>
+          <div className={stickyAdd ? "mb-3 fixed top-0 left-0 right-0 z-40 bg-slate-50 pt-2 pb-2 shadow-sm" : "mb-3 relative z-30"}>
             <div className={stickyAdd ? "relative w-full px-3" : "relative left-1/2 w-screen -translate-x-1/2 px-3"}>
               <div className={"bg-white border-2 rounded-2xl shadow-sm h-14 flex items-center gap-2 px-3 transition-colors " + (newText.trim() ? "border-emerald-500 ring-4 ring-emerald-500/10" : "border-slate-300")}>
                 <svg viewBox="0 0 24 24" className="w-5 h-5 text-slate-500 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
@@ -2537,7 +2537,7 @@ async function addItemFromProduct(p) {
           {(!storeMode && stickyAdd) && <div style={{ height: showCreateOptions ? 138 : 82 }} />}
 
 
-          <div className="relative left-1/2 w-screen -translate-x-1/2">
+          <div className="relative z-0 left-1/2 w-screen -translate-x-1/2">
             <div className={storeMode ? "" : "space-y-3"}>
               {byCategory.length === 0 ? (
                 <div className="text-center py-10 text-slate-500">
