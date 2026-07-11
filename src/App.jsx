@@ -1619,9 +1619,14 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
                       {isSelected ? "✓" : ""}
                     </button>
 
-                    <div className="flex-1 min-w-0">
+                    <button
+                      type="button"
+                      onClick={() => toggleSelected(p.id)}
+                      className="flex-1 min-w-0 text-left"
+                      title={isSelected ? "Deselecteren" : "Selecteren"}
+                    >
                       <div className="font-normal text-[15px] text-slate-800 truncate">{p.name}</div>
-                    </div>
+                    </button>
 
                     <QuantityControl
                       qty={qty}
@@ -2012,6 +2017,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
       const [flashId, setFlashId] = useState(null);
       const [pendingCheckIds, setPendingCheckIds] = useState(() => new Set());
       const [openQtyId, setOpenQtyId] = useState(null);
+      const pickingSuggestionRef = useRef(false);
 
       const STORE_CATEGORY_ORDER = [
         'Groente & fruit',
@@ -2263,8 +2269,21 @@ useEffect(() => {
         }
       }
 
-async function addItemFromProduct(p) {
+      async function addItemFromProduct(p) {
         await upsertListItemFromProduct(p, 1);
+      }
+
+      async function pickSuggestionProduct(product) {
+        if (!product || pickingSuggestionRef.current) return;
+        pickingSuggestionRef.current = true;
+        clearSearch();
+        try {
+          await addItemFromProduct(product);
+        } finally {
+          setTimeout(() => {
+            pickingSuggestionRef.current = false;
+          }, 300);
+        }
       }
 
       async function addFreeText() {
@@ -2533,8 +2552,8 @@ async function addItemFromProduct(p) {
                   style={{ maxHeight: "240px", WebkitOverflowScrolling: "touch" }}
                 >
                   {suggestions.map(s => (
-                    <button key={s.id} onMouseDown={(e)=>e.preventDefault()}
-                      onClick={()=>{ addItemFromProduct(s); clearSearch(); }}
+                    <button key={s.id} onMouseDown={(e)=>{ e.preventDefault(); pickSuggestionProduct(s); }}
+                      onClick={(e)=>{ e.preventDefault(); pickSuggestionProduct(s); }}
                       className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 flex items-center gap-2 border-b border-slate-100 last:border-b-0">
                       <span className="flex-1 truncate">{s.name}</span>
                       <span className="text-[11px] text-slate-500 shrink-0">{(s.category||'Overig').split(',')[0]}</span>
@@ -2849,6 +2868,15 @@ async function addItemFromProduct(p) {
           const arr = [...(d.ingredients||[])];
           arr[idx] = { ...arr[idx], ...patch };
           return { ...d, ingredients: arr };
+        });
+      }
+
+      function selectIngredientProduct(idx, product) {
+        if (!product) return;
+        updateIng(idx, {
+          productId: product.id,
+          nameSnapshot: product.name || '',
+          categorySnapshot: product.category || 'Overig',
         });
       }
 
@@ -3413,12 +3441,8 @@ function ensurePickState(recipe) {
                                 {(String(ing.productId || '')==='' && (ing.nameSnapshot||'').trim().length>=2 && sugg.length>0) && (
                                   <div className="absolute left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-30 overflow-hidden">
                                     {sugg.map(p => (
-                                      <button key={p.id} onMouseDown={(e)=>e.preventDefault()}
-                                        onClick={() => updateIng(idx, {
-                                          productId: p.id,
-                                          nameSnapshot: p.name || '',
-                                          categorySnapshot: p.category || 'Overig',
-                                        })}
+                                      <button key={p.id} onMouseDown={(e)=>{ e.preventDefault(); selectIngredientProduct(idx, p); }}
+                                        onClick={(e) => { e.preventDefault(); selectIngredientProduct(idx, p); }}
                                         className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 flex items-center gap-2 border-b border-slate-100 last:border-b-0">
                                         <span className="flex-1 truncate">{p.name}</span>
                                         <span className="text-[11px] text-slate-500 shrink-0">{(p.category||'Overig').split(',')[0]}</span>
@@ -3500,7 +3524,12 @@ function ensurePickState(recipe) {
                         );
                       })}
                     </div>
-                    <Button onClick={addIngredientRow} className="w-full mt-2 bg-white border border-slate-200 text-slate-700">+ ingrediënt</Button>
+                    <Button
+                      onClick={addIngredientRow}
+                      className="w-full mt-2 bg-emerald-50/70 border-2 border-dashed border-emerald-300 text-emerald-800 hover:bg-emerald-50 hover:border-emerald-400"
+                    >
+                      + Ingrediënt toevoegen
+                    </Button>
                   </div>
                 </div>
                 <div className="space-y-2">
