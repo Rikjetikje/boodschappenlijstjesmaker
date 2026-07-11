@@ -2524,8 +2524,8 @@ useEffect(() => {
                   inputMode="search"
                   value={newText}
                   onChange={(e)=>{ setNewText(e.target.value); setShowSuggestions(true); setShowCreateOptions(false); }}
-                  onFocus={()=>{ setStickyAdd(true); scrollAddBoxIntoView(true); if (newText.trim().length>=2 && !showCreateOptions) setShowSuggestions(true); }}
-                  onBlur={()=> { setTimeout(()=>{ setShowSuggestions(false); if (!newText.trim()) setStickyAdd(false); }, 150); }}
+                  onFocus={()=>{ if (newText.trim().length>=2 && !showCreateOptions) setShowSuggestions(true); }}
+                  onBlur={()=> { setTimeout(()=>{ setShowSuggestions(false); }, 150); }}
                   onKeyDown={(e)=>{
                     if (e.key === 'Enter') { e.preventDefault(); handleCreateAction(); }
                     if (e.key === 'Escape') { e.preventDefault(); clearSearch(); }
