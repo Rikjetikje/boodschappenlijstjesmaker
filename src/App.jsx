@@ -2068,8 +2068,9 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
           if (e?.value != null && isFinite(Number(e.value))) {
             const cur = byUnit.get(unit) || 0;
             byUnit.set(unit, cur + Number(e.value));
-          } else if (e?.valueText) {
-            textBits.push(`${e.valueText} ${unit}`.trim());
+          } else {
+            const valueText = String(e?.valueText || "").trim();
+            if (valueText) textBits.push(`${valueText} ${unit}`.trim());
           }
         });
 
@@ -2079,6 +2080,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
           parts.push(`${nice} ${unit}`.trim());
         }
         parts.push(...textBits);
+        if (!parts.length) return "";
 
         const label = "nodig:";
         return `${label} ${parts.join(" + ")}`;
