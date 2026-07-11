@@ -3495,8 +3495,8 @@ function ensurePickState(recipe) {
                         const sugg = productSuggestions(ing.nameSnapshot || disp.name);
                         return (
                           <div key={ing._id || idx} className="p-3 bg-white border border-slate-200 rounded-2xl">
-                            <div className="flex flex-col sm:flex-row gap-2">
-                              <div className="flex-1 relative">
+                            <div className="flex items-start gap-2">
+                              <div className="flex-1 min-w-0 relative">
                                 <div className="text-[11px] font-semibold text-slate-500 mb-1">Product</div>
                                 <input
                                   ref={el => { if (el && ing._id === newIngId) { el.focus(); setNewIngId(null); } }}
@@ -3530,7 +3530,7 @@ function ensurePickState(recipe) {
                                   </select>
                                 )}
                               </div>
-                              <button onClick={()=>removeIng(idx)} className="w-10 h-10 mt-5 rounded-full bg-transparent text-slate-600 flex items-center justify-center" title="Ingrediënt verwijderen">
+                              <button type="button" onClick={()=>removeIng(idx)} className="w-10 h-10 mt-5 rounded-full bg-transparent text-slate-600 flex items-center justify-center shrink-0" title="Ingrediënt verwijderen">
                                 <TrashIcon className="w-5 h-5" />
                               </button>
                             </div>
