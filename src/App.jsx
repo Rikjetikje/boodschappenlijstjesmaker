@@ -2786,6 +2786,7 @@ useEffect(() => {
       const [addFeedback, setAddFeedback] = useState(null);
       const addFeedbackTimerRef = useRef(null);
       const ingredientsSectionRef = useRef(null);
+      const skipNextIngredientFocusScrollRef = useRef(false);
 
       useEffect(() => {
         return () => {
@@ -2800,6 +2801,23 @@ useEffect(() => {
         window.requestAnimationFrame(scroll);
         setTimeout(scroll, 90);
         setTimeout(scroll, 220);
+      }
+
+      function scrollNewIngredientIntoView(inputEl) {
+        const row = inputEl?.closest?.('[data-ingredient-row]') || inputEl;
+        if (!row) return;
+        const scroll = () => row.scrollIntoView({ block: 'start', inline: 'nearest', behavior: 'smooth' });
+        window.requestAnimationFrame(scroll);
+        setTimeout(scroll, 90);
+        setTimeout(scroll, 220);
+      }
+
+      function handleIngredientFocusCapture() {
+        if (skipNextIngredientFocusScrollRef.current) {
+          skipNextIngredientFocusScrollRef.current = false;
+          return;
+        }
+        scrollIngredientsToTop();
       }
 
       const filtered = useMemo(() => {
@@ -2896,6 +2914,7 @@ useEffect(() => {
       function addIngredientRow() {
         const id = genId('ing');
         document.activeElement?.blur?.();
+        skipNextIngredientFocusScrollRef.current = true;
         setDraft(d => ({
           ...d,
           ingredients: [...(d.ingredients||[]), {
@@ -3480,7 +3499,7 @@ function ensurePickState(recipe) {
 
                   <div
                     ref={ingredientsSectionRef}
-                    onFocusCapture={scrollIngredientsToTop}
+                    onFocusCapture={handleIngredientFocusCapture}
                     className="pt-2 border-t border-slate-100 scroll-mt-2"
                   >
                     <div className="flex items-center justify-between mb-2">
@@ -3495,7 +3514,7 @@ function ensurePickState(recipe) {
                         const disp = resolveIngDisplay(ing);
                         const sugg = productSuggestions(ing.nameSnapshot || disp.name);
                         return (
-                          <div key={ing._id || idx} className="p-3 bg-white border border-slate-200 rounded-2xl">
+                          <div key={ing._id || idx} data-ingredient-row className="p-3 bg-white border border-slate-200 rounded-2xl">
                             <div className="flex items-start gap-2">
                               <div className="flex-1 min-w-0 relative">
                                 <div className="text-[11px] font-semibold text-slate-500 mb-1">Product</div>
@@ -3508,7 +3527,7 @@ function ensurePickState(recipe) {
                                         el.focus();
                                       }
                                       setNewIngId(null);
-                                      scrollIngredientsToTop();
+                                      scrollNewIngredientIntoView(el);
                                     }
                                   }}
                                   value={disp.name}
