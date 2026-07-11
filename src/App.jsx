@@ -2756,10 +2756,10 @@ useEffect(() => {
         };
       }, []);
 
-      function scrollIngredientsToTop() {
-        const el = ingredientsSectionRef.current;
+      function scrollIngredientFocusIntoView(event) {
+        const el = event?.target?.scrollIntoView ? event.target : ingredientsSectionRef.current;
         if (!el) return;
-        const scroll = () => el.scrollIntoView({ block: 'start', inline: 'nearest', behavior: 'smooth' });
+        const scroll = () => el.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
         window.requestAnimationFrame(scroll);
         setTimeout(scroll, 90);
         setTimeout(scroll, 220);
@@ -3426,7 +3426,7 @@ function ensurePickState(recipe) {
 
                   <div
                     ref={ingredientsSectionRef}
-                    onFocusCapture={scrollIngredientsToTop}
+                    onFocusCapture={scrollIngredientFocusIntoView}
                     className="pt-2 border-t border-slate-100 scroll-mt-2"
                   >
                     <div className="flex items-center justify-between mb-2">
