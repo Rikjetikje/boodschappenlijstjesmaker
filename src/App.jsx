@@ -2908,6 +2908,7 @@ useEffect(() => {
           }]
         }));
         setNewIngId(id);
+        setTimeout(scrollIngredientsToTop, 0);
       }
 
       function updateIng(idx, patch) {
