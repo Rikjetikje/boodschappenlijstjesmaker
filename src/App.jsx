@@ -2748,12 +2748,22 @@ useEffect(() => {
       const [newIngId, setNewIngId] = useState(null);
       const [addFeedback, setAddFeedback] = useState(null);
       const addFeedbackTimerRef = useRef(null);
+      const ingredientsSectionRef = useRef(null);
 
       useEffect(() => {
         return () => {
           if (addFeedbackTimerRef.current) clearTimeout(addFeedbackTimerRef.current);
         };
       }, []);
+
+      function scrollIngredientsToTop() {
+        const el = ingredientsSectionRef.current;
+        if (!el) return;
+        const scroll = () => el.scrollIntoView({ block: 'start', inline: 'nearest', behavior: 'smooth' });
+        window.requestAnimationFrame(scroll);
+        setTimeout(scroll, 90);
+        setTimeout(scroll, 220);
+      }
 
       const filtered = useMemo(() => {
         const q = query.trim().toLowerCase();
@@ -3414,7 +3424,11 @@ function ensurePickState(recipe) {
 
 
 
-                  <div className="pt-2 border-t border-slate-100">
+                  <div
+                    ref={ingredientsSectionRef}
+                    onFocusCapture={scrollIngredientsToTop}
+                    className="pt-2 border-t border-slate-100 scroll-mt-2"
+                  >
                     <div className="flex items-center justify-between mb-2">
                       <div className="text-sm font-bold text-slate-800">Ingrediënten</div>
                       
