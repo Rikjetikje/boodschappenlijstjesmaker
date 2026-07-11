@@ -361,23 +361,52 @@ const APP_ICONS = {
       return <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">{children}</div>;
     }
 
-    function Modal({ title, onClose, children }) {
+    function Modal({ title, onClose, children, footer }) {
       const ref = useRef(null);
+      const [viewport, setViewport] = useState(() => ({
+        height: window.visualViewport ? window.visualViewport.height : window.innerHeight,
+        offsetTop: window.visualViewport ? window.visualViewport.offsetTop : 0,
+      }));
+
       useEffect(() => {
         const h = (e) => { if (e.key === 'Escape') onClose?.(); };
         document.addEventListener('keydown', h);
         return () => document.removeEventListener('keydown', h);
       }, [onClose]);
 
+      useEffect(() => {
+        const vv = window.visualViewport;
+        if (!vv) return;
+        const update = () => setViewport({
+          height: vv.height,
+          offsetTop: vv.offsetTop,
+        });
+        vv.addEventListener('resize', update);
+        vv.addEventListener('scroll', update);
+        update();
+        return () => {
+          vv.removeEventListener('resize', update);
+          vv.removeEventListener('scroll', update);
+        };
+      }, []);
+
       return (
-        <div ref={ref} className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50"
+        <div
+          ref={ref}
+          className="fixed left-0 right-0 bg-black/50 flex items-end sm:items-center justify-center z-50"
+          style={{ top: `${viewport.offsetTop}px`, height: `${viewport.height}px` }}
           onMouseDown={(e) => { if (e.target === ref.current) onClose?.(); }}>
-          <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-2xl max-h-[85vh] flex flex-col overflow-hidden">
+          <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-2xl max-h-[calc(100%-0.75rem)] sm:max-h-[85vh] flex flex-col overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
               <div className="font-bold text-base">{title || ''}</div>
               <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 text-sm transform-gpu">✕</button>
             </div>
             <div className="flex-1 overflow-auto p-4">{children}</div>
+            {footer ? (
+              <div className="shrink-0 px-4 py-3 bg-white/95 backdrop-blur border-t border-slate-100 pb-[calc(env(safe-area-inset-bottom)+0.75rem)]">
+                {footer}
+              </div>
+            ) : null}
           </div>
         </div>
       );
@@ -2756,10 +2785,10 @@ useEffect(() => {
         };
       }, []);
 
-      function scrollIngredientFocusIntoView(event) {
-        const el = event?.target?.scrollIntoView ? event.target : ingredientsSectionRef.current;
+      function scrollIngredientsToTop() {
+        const el = ingredientsSectionRef.current;
         if (!el) return;
-        const scroll = () => el.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
+        const scroll = () => el.scrollIntoView({ block: 'start', inline: 'nearest', behavior: 'smooth' });
         window.requestAnimationFrame(scroll);
         setTimeout(scroll, 90);
         setTimeout(scroll, 220);
@@ -3397,7 +3426,23 @@ function ensurePickState(recipe) {
           )}
 
           {openId && draft && (
-            <Modal title="Recept" onClose={()=>{ setOpenId(null); setDraft(null); }}>
+            <Modal
+              title="Recept"
+              onClose={()=>{ setOpenId(null); setDraft(null); }}
+              footer={(
+                <div className="flex flex-col sm:flex-row gap-2">
+                  {(recipes || []).some(r => r.id === draft.id) && (
+                    <button
+                      onClick={()=>deleteRecipe(draft)}
+                      className="px-4 py-2.5 rounded-xl bg-rose-50 text-rose-700 text-sm font-semibold"
+                    >
+                      Recept verwijderen
+                    </button>
+                  )}
+                  <Button onClick={saveRecipe} className="flex-1 bg-emerald-600 text-white">Opslaan</Button>
+                </div>
+              )}
+            >
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 <div className="space-y-3">
                   <div>
@@ -3426,7 +3471,7 @@ function ensurePickState(recipe) {
 
                   <div
                     ref={ingredientsSectionRef}
-                    onFocusCapture={scrollIngredientFocusIntoView}
+                    onFocusCapture={scrollIngredientsToTop}
                     className="pt-2 border-t border-slate-100 scroll-mt-2"
                   >
                     <div className="flex items-center justify-between mb-2">
@@ -3555,19 +3600,6 @@ function ensurePickState(recipe) {
                   <div className="text-[11px] text-slate-500">Tip: plakken vanuit Notities/website werkt prima.</div>
                 </div>
               </div>
-              <div className="sticky bottom-0 -mx-4 px-4 py-3 bg-white/95 backdrop-blur border-t border-slate-100 mt-4">
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    {(recipes || []).some(r => r.id === draft.id) && (
-                      <button
-                        onClick={()=>deleteRecipe(draft)}
-                        className="px-4 py-2.5 rounded-xl bg-rose-50 text-rose-700 text-sm font-semibold"
-                      >
-                        Recept verwijderen
-                      </button>
-                    )}
-                    <Button onClick={saveRecipe} className="flex-1 bg-emerald-600 text-white">Opslaan</Button>
-                  </div>
-                </div>
             </Modal>
           )}
         </div>
