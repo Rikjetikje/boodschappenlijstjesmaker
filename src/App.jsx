@@ -403,7 +403,7 @@ const APP_ICONS = {
             </div>
             <div className="flex-1 overflow-auto p-4">{children}</div>
             {footer ? (
-              <div className="shrink-0 px-4 py-3 bg-white/95 backdrop-blur border-t border-slate-100 pb-[calc(env(safe-area-inset-bottom)+0.75rem)]">
+              <div className="shrink-0 px-4 pt-3 pb-[env(safe-area-inset-bottom)] bg-white/95 backdrop-blur border-t border-slate-100">
                 {footer}
               </div>
             ) : null}
