@@ -2043,6 +2043,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
       const [newText, setNewText] = useState('');
       const [newCategory, setNewCategory] = useState('Overig');
       const [showSuggestions, setShowSuggestions] = useState(false);
+      const suggestionPointerDownRef = useRef(false);
       const [showCreateOptions, setShowCreateOptions] = useState(false);
       const [showAllDone, setShowAllDone] = useState(false);
       const addInputRef = useRef(null);
@@ -2525,7 +2526,14 @@ useEffect(() => {
                   value={newText}
                   onChange={(e)=>{ setNewText(e.target.value); setShowSuggestions(true); setShowCreateOptions(false); }}
                   onFocus={()=>{ if (newText.trim().length>=2 && !showCreateOptions) setShowSuggestions(true); }}
-                  onBlur={()=> { setTimeout(()=>{ setShowSuggestions(false); }, 150); }}
+                  onBlur={()=> {
+                    // Mobile browsers may blur the input before dispatching the
+                    // delayed click for a suggestion. Keep the menu mounted while
+                    // a pointer interaction inside it is still in progress.
+                    setTimeout(()=>{
+                      if (!suggestionPointerDownRef.current) setShowSuggestions(false);
+                    }, 150);
+                  }}
                   onKeyDown={(e)=>{
                     if (e.key === 'Enter') { e.preventDefault(); handleCreateAction(); }
                     if (e.key === 'Escape') { e.preventDefault(); clearSearch(); }
@@ -2585,11 +2593,16 @@ useEffect(() => {
               {showSuggestions && !showCreateOptions && suggestions.length > 0 && (
                 <div
                   ref={suggestionsRef}
+                  onPointerDownCapture={() => { suggestionPointerDownRef.current = true; }}
+                  onPointerUpCapture={() => {
+                    setTimeout(() => { suggestionPointerDownRef.current = false; }, 0);
+                  }}
+                  onPointerCancelCapture={() => { suggestionPointerDownRef.current = false; }}
                   className="absolute left-3 right-3 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-30 overflow-y-auto overscroll-contain"
                   style={{ maxHeight: "240px", WebkitOverflowScrolling: "touch" }}
                 >
                   {suggestions.map(s => (
-                    <button key={s.id} onMouseDown={(e)=>{ e.preventDefault(); pickSuggestionProduct(s); }}
+                    <button key={s.id} onMouseDown={(e)=>e.preventDefault()}
                       onClick={(e)=>{ e.preventDefault(); pickSuggestionProduct(s); }}
                       className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 flex items-center gap-2 border-b border-slate-100 last:border-b-0">
                       <span className="flex-1 truncate">{s.name}</span>
