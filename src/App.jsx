@@ -363,10 +363,59 @@ const APP_ICONS = {
 
     function Modal({ title, onClose, children, footer }) {
       const ref = useRef(null);
+      const contentRef = useRef(null);
+      const focusTimersRef = useRef([]);
       const [viewport, setViewport] = useState(() => ({
         height: window.visualViewport ? window.visualViewport.height : window.innerHeight,
         offsetTop: window.visualViewport ? window.visualViewport.offsetTop : 0,
       }));
+
+      function getFocusedAreaRect(target) {
+        if (target?.isContentEditable) {
+          const selection = window.getSelection?.();
+          if (selection?.rangeCount && target.contains(selection.anchorNode)) {
+            const caretRange = selection.getRangeAt(0).cloneRange();
+            caretRange.collapse(true);
+            const caretRect = caretRange.getBoundingClientRect();
+            if (caretRect.height || caretRect.width) return caretRect;
+          }
+        }
+        return target.getBoundingClientRect();
+      }
+
+      function keepControlVisible(target) {
+        const content = contentRef.current;
+        if (!content || !target?.isConnected || !content.contains(target)) return;
+
+        const contentRect = content.getBoundingClientRect();
+        const targetRect = getFocusedAreaRect(target);
+        const margin = 12;
+        const visibleTop = contentRect.top + margin;
+        const visibleBottom = contentRect.bottom - margin;
+
+        if (targetRect.height > visibleBottom - visibleTop) {
+          if (targetRect.bottom < visibleTop || targetRect.top > visibleBottom) {
+            content.scrollTop += targetRect.top - visibleTop;
+          }
+          return;
+        }
+
+        if (targetRect.top < visibleTop) {
+          content.scrollTop -= visibleTop - targetRect.top;
+        } else if (targetRect.bottom > visibleBottom) {
+          content.scrollTop += targetRect.bottom - visibleBottom;
+        }
+      }
+
+      function queueControlVisibilityCheck(target) {
+        focusTimersRef.current.forEach(clearTimeout);
+        focusTimersRef.current = [];
+
+        window.requestAnimationFrame(() => keepControlVisible(target));
+        focusTimersRef.current = [120, 300].map(delay => (
+          setTimeout(() => keepControlVisible(target), delay)
+        ));
+      }
 
       useEffect(() => {
         const h = (e) => { if (e.key === 'Escape') onClose?.(); };
@@ -377,10 +426,13 @@ const APP_ICONS = {
       useEffect(() => {
         const vv = window.visualViewport;
         if (!vv) return;
-        const update = () => setViewport({
-          height: vv.height,
-          offsetTop: vv.offsetTop,
-        });
+        const update = () => {
+          setViewport({
+            height: vv.height,
+            offsetTop: vv.offsetTop,
+          });
+          window.requestAnimationFrame(() => keepControlVisible(document.activeElement));
+        };
         vv.addEventListener('resize', update);
         vv.addEventListener('scroll', update);
         update();
@@ -388,6 +440,10 @@ const APP_ICONS = {
           vv.removeEventListener('resize', update);
           vv.removeEventListener('scroll', update);
         };
+      }, []);
+
+      useEffect(() => () => {
+        focusTimersRef.current.forEach(clearTimeout);
       }, []);
 
       const keyboardOpen = viewport.height < window.innerHeight - 120;
@@ -406,7 +462,13 @@ const APP_ICONS = {
               <div className="font-bold text-base">{title || ''}</div>
               <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 text-sm transform-gpu">✕</button>
             </div>
-            <div className="flex-1 overflow-auto p-4">{children}</div>
+            <div
+              ref={contentRef}
+              className="flex-1 overflow-auto p-4"
+              onFocusCapture={(event) => queueControlVisibilityCheck(event.target)}
+            >
+              {children}
+            </div>
             {footer ? (
               <div
                 className="shrink-0 px-4 pt-3 bg-white/95 backdrop-blur border-t border-slate-100"
@@ -2798,40 +2860,12 @@ useEffect(() => {
       const [newIngId, setNewIngId] = useState(null);
       const [addFeedback, setAddFeedback] = useState(null);
       const addFeedbackTimerRef = useRef(null);
-      const ingredientsSectionRef = useRef(null);
-      const skipNextIngredientFocusScrollRef = useRef(false);
 
       useEffect(() => {
         return () => {
           if (addFeedbackTimerRef.current) clearTimeout(addFeedbackTimerRef.current);
         };
       }, []);
-
-      function scrollIngredientsToTop() {
-        const el = ingredientsSectionRef.current;
-        if (!el) return;
-        const scroll = () => el.scrollIntoView({ block: 'start', inline: 'nearest', behavior: 'smooth' });
-        window.requestAnimationFrame(scroll);
-        setTimeout(scroll, 90);
-        setTimeout(scroll, 220);
-      }
-
-      function scrollNewIngredientIntoView(inputEl) {
-        const row = inputEl?.closest?.('[data-ingredient-row]') || inputEl;
-        if (!row) return;
-        const scroll = () => row.scrollIntoView({ block: 'start', inline: 'nearest', behavior: 'smooth' });
-        window.requestAnimationFrame(scroll);
-        setTimeout(scroll, 90);
-        setTimeout(scroll, 220);
-      }
-
-      function handleIngredientFocusCapture() {
-        if (skipNextIngredientFocusScrollRef.current) {
-          skipNextIngredientFocusScrollRef.current = false;
-          return;
-        }
-        scrollIngredientsToTop();
-      }
 
       const filtered = useMemo(() => {
         const q = query.trim().toLowerCase();
@@ -2927,7 +2961,6 @@ useEffect(() => {
       function addIngredientRow() {
         const id = genId('ing');
         document.activeElement?.blur?.();
-        skipNextIngredientFocusScrollRef.current = true;
         setDraft(d => ({
           ...d,
           ingredients: [...(d.ingredients||[]), {
@@ -3510,11 +3543,7 @@ function ensurePickState(recipe) {
 
 
 
-                  <div
-                    ref={ingredientsSectionRef}
-                    onFocusCapture={handleIngredientFocusCapture}
-                    className="pt-2 border-t border-slate-100 scroll-mt-2"
-                  >
+                  <div className="pt-2 border-t border-slate-100">
                     <div className="flex items-center justify-between mb-2">
                       <div className="text-sm font-bold text-slate-800">Ingrediënten</div>
                       
@@ -3527,7 +3556,7 @@ function ensurePickState(recipe) {
                         const disp = resolveIngDisplay(ing);
                         const sugg = productSuggestions(ing.nameSnapshot || disp.name);
                         return (
-                          <div key={ing._id || idx} data-ingredient-row className="p-3 bg-white border border-slate-200 rounded-2xl">
+                          <div key={ing._id || idx} className="p-3 bg-white border border-slate-200 rounded-2xl">
                             <div className="flex items-start gap-2">
                               <div className="flex-1 min-w-0 relative">
                                 <div className="text-[11px] font-semibold text-slate-500 mb-1">Product</div>
@@ -3540,7 +3569,6 @@ function ensurePickState(recipe) {
                                         el.focus();
                                       }
                                       setNewIngId(null);
-                                      scrollNewIngredientIntoView(el);
                                     }
                                   }}
                                   value={disp.name}
