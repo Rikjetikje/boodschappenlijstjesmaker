@@ -383,15 +383,23 @@ const APP_ICONS = {
         return target.getBoundingClientRect();
       }
 
-      function keepControlVisible(target) {
+      function keepControlVisible(target, alignTop = false) {
         const content = contentRef.current;
         if (!content || !target?.isConnected || !content.contains(target)) return;
 
         const contentRect = content.getBoundingClientRect();
-        const targetRect = getFocusedAreaRect(target);
+        const focusAnchor = alignTop
+          ? target.closest('[data-modal-focus-anchor]') || target
+          : target;
+        const targetRect = getFocusedAreaRect(focusAnchor);
         const margin = 12;
         const visibleTop = contentRect.top + margin;
         const visibleBottom = contentRect.bottom - margin;
+
+        if (alignTop) {
+          content.scrollTop += targetRect.top - visibleTop;
+          return;
+        }
 
         if (targetRect.height > visibleBottom - visibleTop) {
           if (targetRect.bottom < visibleTop || targetRect.top > visibleBottom) {
@@ -407,13 +415,13 @@ const APP_ICONS = {
         }
       }
 
-      function queueControlVisibilityCheck(target) {
+      function queueControlVisibilityCheck(target, alignTop = false) {
         focusTimersRef.current.forEach(clearTimeout);
         focusTimersRef.current = [];
 
-        window.requestAnimationFrame(() => keepControlVisible(target));
+        window.requestAnimationFrame(() => keepControlVisible(target, alignTop));
         focusTimersRef.current = [120, 300].map(delay => (
-          setTimeout(() => keepControlVisible(target), delay)
+          setTimeout(() => keepControlVisible(target, alignTop), delay)
         ));
       }
 
@@ -465,7 +473,10 @@ const APP_ICONS = {
             <div
               ref={contentRef}
               className="flex-1 overflow-auto p-4"
-              onFocusCapture={(event) => queueControlVisibilityCheck(event.target)}
+              onFocusCapture={(event) => queueControlVisibilityCheck(
+                event.target,
+                event.target?.dataset?.modalFocusAlign === 'top'
+              )}
             >
               {children}
             </div>
@@ -2166,24 +2177,54 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
       function formatNeedsLine(needsByRecipe) {
         const entries = Object.values(needsByRecipe || {});
         if (!entries.length) return "";
-        const byUnit = new Map();
+        const totals = new Map();
         const textBits = [];
 
         entries.forEach(e => {
-          const unit = String(e?.unit || "").trim();
+          const unit = String(e?.unit || "").trim().toLowerCase();
+          const times = Math.max(1, Number(e?.times) || 1);
           if (e?.value != null && isFinite(Number(e.value))) {
-            const cur = byUnit.get(unit) || 0;
-            byUnit.set(unit, cur + Number(e.value));
+            let key = `unit:${unit}`;
+            let value = Number(e.value) * times;
+            let kind = 'unit';
+            let displayUnit = unit;
+
+            if (unit === 'ml' || unit === 'l') {
+              key = 'volume';
+              kind = 'volume';
+              displayUnit = 'ml';
+              if (unit === 'l') value *= 1000;
+            } else if (unit === 'g' || unit === 'gr' || unit === 'kg') {
+              key = 'weight';
+              kind = 'weight';
+              displayUnit = 'gr';
+              if (unit === 'kg') value *= 1000;
+            }
+
+            const current = totals.get(key) || { value: 0, kind, displayUnit };
+            current.value += value;
+            totals.set(key, current);
           } else {
             const valueText = String(e?.valueText || "").trim();
-            if (valueText) textBits.push(`${valueText} ${unit}`.trim());
+            if (valueText) {
+              const text = `${valueText} ${unit}`.trim();
+              textBits.push(times > 1 ? `${text} × ${times}` : text);
+            }
           }
         });
 
         const parts = [];
-        for (const [unit, total] of byUnit.entries()) {
-          const nice = (Math.round(total * 100) / 100).toString().replace('.', ',');
-          parts.push(`${nice} ${unit}`.trim());
+        const niceNumber = (value) => (
+          (Math.round(value * 100) / 100).toString().replace('.', ',')
+        );
+        for (const total of totals.values()) {
+          if (total.kind === 'volume' && total.value >= 1000) {
+            parts.push(`${niceNumber(total.value / 1000)} l`);
+          } else if (total.kind === 'weight' && total.value >= 1000) {
+            parts.push(`${niceNumber(total.value / 1000)} kg`);
+          } else {
+            parts.push(`${niceNumber(total.value)} ${total.displayUnit}`.trim());
+          }
         }
         parts.push(...textBits);
         if (!parts.length) return "";
@@ -3161,9 +3202,6 @@ async function addRecipeToList(r, targetServings, pickState) {
             ? clamp(Math.round(overrideQty), 0, 99)
             : clamp(parseInt(String(ing.buyQty ?? 1), 10) || 1, 1, 99);
 
-          const id = itemIdForProduct(ensuredProductId);
-          const ref = db.doc(`households/${householdId}/lists/${activeListId}/items/${id}`);
-
           // Build "need" for this recipe from original recipe amount
           const origAmount = String(ing.amount ?? ing.qty ?? ing.quantity ?? '').trim();
           const needNum = parseFloat(origAmount.replace(',','.'));
@@ -3173,6 +3211,39 @@ async function addRecipeToList(r, targetServings, pickState) {
 
           // bestaat het item al op de lijst?
           const existing = existingByProductId.get(ensuredProductId);
+          const previousNeed = existing?.needsByRecipe?.[r.id] || null;
+          let needForWrite = needObj;
+          let incrementNumericNeed = false;
+
+          if (previousNeed) {
+            const previousUnit = String(previousNeed.unit || '').trim().toLowerCase();
+            const nextUnit = String(needObj.unit || '').trim().toLowerCase();
+            const previousValue = Number(previousNeed.value);
+            const nextValue = Number(needObj.value);
+
+            if (isFinite(previousValue) && isFinite(nextValue) && previousUnit === nextUnit) {
+              incrementNumericNeed = true;
+            } else if (previousNeed.valueText === needObj.valueText && previousUnit === nextUnit) {
+              needForWrite = {
+                ...needObj,
+                times: Math.max(1, Number(previousNeed.times) || 1) + 1,
+              };
+            } else {
+              const previousText = previousNeed.value != null
+                ? `${previousNeed.value} ${previousNeed.unit || ''}`.trim()
+                : `${previousNeed.valueText || ''} ${previousNeed.unit || ''}`.trim();
+              const nextText = needObj.value != null
+                ? `${needObj.value} ${needObj.unit || ''}`.trim()
+                : `${needObj.valueText || ''} ${needObj.unit || ''}`.trim();
+              needForWrite = {
+                valueText: [previousText, nextText].filter(Boolean).join(' + '),
+                unit: '',
+              };
+            }
+          }
+
+          const id = existing?.id || itemIdForProduct(ensuredProductId);
+          const ref = db.doc(`households/${householdId}/lists/${activeListId}/items/${id}`);
           if (!undoItemIds.has(id)) {
             undoItems.push({
               id,
@@ -3183,10 +3254,16 @@ async function addRecipeToList(r, targetServings, pickState) {
 
           if (existing) {
             // Item bestaat al → aantal ophogen en needs bijwerken (dot-notation werkt bij update)
+            const needUpdate = incrementNumericNeed
+              ? {
+                  [`needsByRecipe.${r.id}.value`]: firebase.firestore.FieldValue.increment(Number(needObj.value)),
+                  [`needsByRecipe.${r.id}.unit`]: needObj.unit,
+                }
+              : { [`needsByRecipe.${r.id}`]: needForWrite };
             batch.update(ref, {
               qty: firebase.firestore.FieldValue.increment(buyInc),
               checked: false,
-              [`needsByRecipe.${r.id}`]: needObj,
+              ...needUpdate,
               updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
               updatedBy: currentUser?.uid || '',
               updatedByName: currentUser?.displayName || '',
@@ -3204,7 +3281,7 @@ async function addRecipeToList(r, targetServings, pickState) {
               qty: buyInc,
               checked: false,
 
-              needsByRecipe: { [r.id]: needObj },
+              needsByRecipe: { [r.id]: needForWrite },
 
               createdAt: firebase.firestore.FieldValue.serverTimestamp(),
               createdBy: currentUser?.uid || '',
@@ -3556,7 +3633,11 @@ function ensurePickState(recipe) {
                         const disp = resolveIngDisplay(ing);
                         const sugg = productSuggestions(ing.nameSnapshot || disp.name);
                         return (
-                          <div key={ing._id || idx} className="p-3 bg-white border border-slate-200 rounded-2xl">
+                          <div
+                            key={ing._id || idx}
+                            data-modal-focus-anchor
+                            className="p-3 bg-white border border-slate-200 rounded-2xl"
+                          >
                             <div className="flex items-start gap-2">
                               <div className="flex-1 min-w-0 relative">
                                 <div className="text-[11px] font-semibold text-slate-500 mb-1">Product</div>
@@ -3571,6 +3652,7 @@ function ensurePickState(recipe) {
                                       setNewIngId(null);
                                     }
                                   }}
+                                  data-modal-focus-align={ing._id === newIngId ? 'top' : undefined}
                                   value={disp.name}
                                   onChange={(e)=>updateIng(idx, { productId: null, nameSnapshot: e.target.value })}
                                   placeholder="bijv. Paprika"
