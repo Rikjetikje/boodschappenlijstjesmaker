@@ -3250,7 +3250,7 @@ useEffect(() => {
 
       async function restoreMenuWeek(menuWeek) {
         if (!householdId || !activeListId || !menuWeek?.recipes?.length) return;
-        if ((plannedRecipes || []).length && !confirm(`Het actieve menu vervangen door ${menuWeek.label}? Je boodschappen blijven staan.`)) return;
+        if ((plannedRecipes || []).length && !confirm(`De huidige geplande recepten vervangen door ${menuWeek.label}? Je bestaande boodschappen blijven staan; er worden geen nieuwe producten toegevoegd.`)) return;
         const batch = db.batch();
         const restoredRecipeIds = new Set(menuWeek.recipes.map(recipe => recipe.recipeId).filter(Boolean));
         (plannedRecipes || []).forEach(plan => {
@@ -3278,7 +3278,7 @@ useEffect(() => {
           });
         });
         await batch.commit();
-        setMenuWeekFeedback(`${menuWeek.label} is nu je actieve menu.`);
+        setMenuWeekFeedback(`De recepten uit ${menuWeek.label} staan weer in je planning.`);
       }
 
       async function deleteMenuWeek(menuWeek) {
@@ -4038,7 +4038,10 @@ function ensurePickState(recipe) {
                             onClick={() => restoreMenuWeek(menuWeek)}
                             disabled={!archivedRecipes.length}
                             className="mt-2 w-full px-3 py-2 rounded-lg bg-slate-800 text-white text-xs font-semibold disabled:opacity-40"
-                          >Gebruik als actief menu</button>
+                          >Recepten opnieuw plannen</button>
+                          <div className="mt-1.5 text-[11px] leading-snug text-slate-500 text-center">
+                            Zet de recepten met dezelfde weekdagen terug in je planning. Boodschappen worden niet automatisch toegevoegd.
+                          </div>
                         </div>
                       )}
                     </div>
