@@ -71,6 +71,15 @@ const APP_ICONS = {
       return index < 0 ? 99 : index;
     }
 
+    function currentIsoWeekLabel(date = new Date()) {
+      const utcDate = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+      const weekday = utcDate.getUTCDay() || 7;
+      utcDate.setUTCDate(utcDate.getUTCDate() + 4 - weekday);
+      const yearStart = new Date(Date.UTC(utcDate.getUTCFullYear(), 0, 1));
+      const week = Math.ceil((((utcDate - yearStart) / 86400000) + 1) / 7);
+      return `Week ${week}`;
+    }
+
     // Expose for safety (in case Babel wraps scopes)
     window.formatNum = formatNum;
 
@@ -307,12 +316,13 @@ const APP_ICONS = {
       const [items, setItems] = useState([]);
       const [recipes, setRecipes] = useState([]);
       const [plannedRecipes, setPlannedRecipes] = useState([]);
+      const [menuWeeks, setMenuWeeks] = useState([]);
       const [plannedRecipesLoaded, setPlannedRecipesLoaded] = useState(false);
       const [syncing, setSyncing] = useState(false);
 
       useEffect(() => {
         if (!user || !householdId) {
-          setMembers([]); setLists([]); setProducts([]); setItems([]); setRecipes([]); setPlannedRecipes([]);
+          setMembers([]); setLists([]); setProducts([]); setItems([]); setRecipes([]); setPlannedRecipes([]); setMenuWeeks([]);
           setPlannedRecipesLoaded(false);
           return;
         }
@@ -353,6 +363,14 @@ const APP_ICONS = {
           }, err => console.error("Recipes listener error:", err))
         );
 
+        unsubs.push(
+          db.collection(`households/${hid}/menu_weeks`).onSnapshot(snap => {
+            const weeks = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+              .sort((a,b) => (b.updatedAt?.seconds||b.createdAt?.seconds||0) - (a.updatedAt?.seconds||a.createdAt?.seconds||0));
+            setMenuWeeks(weeks);
+          }, err => console.error("Menu weeks listener error:", err))
+        );
+
         return () => unsubs.forEach(fn => fn());
       }, [user, householdId]);
 
@@ -390,7 +408,7 @@ const APP_ICONS = {
         if (lists.length > 0 && !activeListId) setActiveListId(lists[0].id);
       }, [lists, householdId, activeListId, setActiveListId]);
 
-      return { members, lists, products, items, recipes, plannedRecipes, plannedRecipesLoaded, syncing };
+      return { members, lists, products, items, recipes, plannedRecipes, menuWeeks, plannedRecipesLoaded, syncing };
     }
 
     // ---------------- UI bits ----------------
@@ -1180,6 +1198,7 @@ const APP_ICONS = {
                         await deleteCollection(`households/${householdId}/lists_meta`);
                         await deleteCollection(`households/${householdId}/products`);
                         await deleteCollection(`households/${householdId}/recipes`);
+                        await deleteCollection(`households/${householdId}/menu_weeks`);
                         await deleteCollection(`households/${householdId}/members`);
 
                         // Delete meta
@@ -2944,7 +2963,7 @@ useEffect(() => {
     }
 
     // ---------------- Recipes tab ----------------
-    function RecipesTab({ householdId, recipes, products, items, plannedRecipes, plannedRecipesLoaded, activeListId, currentUser }) {
+    function RecipesTab({ householdId, recipes, products, items, plannedRecipes, menuWeeks, plannedRecipesLoaded, activeListId, currentUser }) {
       const [query, setQuery] = useState('');
       const [openId, setOpenId] = useState(null); // recipe id in modal
       const [draft, setDraft] = useState(null);   // editable recipe
@@ -2954,6 +2973,11 @@ useEffect(() => {
       const [newIngId, setNewIngId] = useState(null);
       const [addFeedback, setAddFeedback] = useState(null);
       const [plannedDayDrafts, setPlannedDayDrafts] = useState({});
+      const [menuWeekLabel, setMenuWeekLabel] = useState(() => currentIsoWeekLabel());
+      const [showMenuWeeks, setShowMenuWeeks] = useState(false);
+      const [openMenuWeekId, setOpenMenuWeekId] = useState(null);
+      const [savingMenuWeek, setSavingMenuWeek] = useState(false);
+      const [menuWeekFeedback, setMenuWeekFeedback] = useState('');
       const addFeedbackTimerRef = useRef(null);
       const backfilledMenuKeysRef = useRef(new Set());
 
@@ -3170,6 +3194,89 @@ useEffect(() => {
       const menuStatusByRecipe = useMemo(() => {
         return new Map(menuPlans.map(plan => [plan.recipeId, plan]));
       }, [menuPlans]);
+
+      async function saveCurrentMenuWeek() {
+        if (!householdId || !menuPlans.length) return;
+        const label = menuWeekLabel.trim() || currentIsoWeekLabel();
+        const existing = (menuWeeks || []).find(week => String(week.label || '').trim().toLowerCase() === label.toLowerCase());
+        if (existing && !confirm(`${label} bestaat al. Wil je deze vervangen door het huidige menu?`)) return;
+
+        setSavingMenuWeek(true);
+        setMenuWeekFeedback('');
+        try {
+          const id = existing?.id || genId('mw');
+          const recipesSnapshot = menuPlans.map(plan => ({
+            recipeId: plan.recipeId,
+            recipeName: plan.recipeName || 'Recept',
+            plannedDay: plannedDayKey(plan),
+            baseServings: plan.baseServings || plan.recipe?.baseServings || 5,
+            ingredients: (plan.ingredients || []).map(ingredient => ({
+              ingredientId: ingredient.ingredientId || '',
+              productId: ingredient.productId || '',
+              name: ingredient.name || 'Product',
+              category: ingredient.category || 'Overig',
+              buyQty: Math.max(1, Number(ingredient.buyQty) || 1),
+              need: ingredient.need || null,
+            })),
+          }));
+          await db.doc(`households/${householdId}/menu_weeks/${id}`).set({
+            id,
+            label,
+            recipes: recipesSnapshot,
+            sourceListId: activeListId || '',
+            createdAt: existing?.createdAt || firebase.firestore.FieldValue.serverTimestamp(),
+            createdBy: existing?.createdBy || currentUser?.uid || '',
+            createdByName: existing?.createdByName || currentUser?.displayName || '',
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            updatedBy: currentUser?.uid || '',
+          }, { merge: true });
+          setMenuWeekFeedback(`${label} is apart opgeslagen.`);
+          setShowMenuWeeks(true);
+          setOpenMenuWeekId(id);
+        } finally {
+          setSavingMenuWeek(false);
+        }
+      }
+
+      async function restoreMenuWeek(menuWeek) {
+        if (!householdId || !activeListId || !menuWeek?.recipes?.length) return;
+        if ((plannedRecipes || []).length && !confirm(`Het actieve menu vervangen door ${menuWeek.label}? Je boodschappen blijven staan.`)) return;
+        const batch = db.batch();
+        const restoredRecipeIds = new Set(menuWeek.recipes.map(recipe => recipe.recipeId).filter(Boolean));
+        (plannedRecipes || []).forEach(plan => {
+          const recipeId = plan.recipeId || plan.id;
+          if (!restoredRecipeIds.has(recipeId)) {
+            batch.delete(db.doc(`households/${householdId}/lists/${activeListId}/planned_recipes/${recipeId}`));
+          }
+        });
+        menuWeek.recipes.forEach(recipe => {
+          if (!recipe.recipeId) return;
+          batch.set(db.doc(`households/${householdId}/lists/${activeListId}/planned_recipes/${recipe.recipeId}`), {
+            id: recipe.recipeId,
+            recipeId: recipe.recipeId,
+            recipeName: recipe.recipeName || 'Recept',
+            plannedDay: recipe.plannedDay || '',
+            plannedDate: '',
+            baseServings: recipe.baseServings || 5,
+            ingredients: recipe.ingredients || [],
+            addedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            addedBy: currentUser?.uid || '',
+            addedByName: currentUser?.displayName || '',
+            restoredFromMenuWeekId: menuWeek.id,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            updatedBy: currentUser?.uid || '',
+          });
+        });
+        await batch.commit();
+        setMenuWeekFeedback(`${menuWeek.label} is nu je actieve menu.`);
+      }
+
+      async function deleteMenuWeek(menuWeek) {
+        if (!householdId || !menuWeek?.id) return;
+        if (!confirm(`${menuWeek.label || 'Dit weekmenu'} verwijderen?`)) return;
+        await db.doc(`households/${householdId}/menu_weeks/${menuWeek.id}`).delete();
+        if (openMenuWeekId === menuWeek.id) setOpenMenuWeekId(null);
+      }
 
       function findPlannedIngredient(menuStatus, ingredient, ingredientKey) {
         if (!menuStatus) return null;
@@ -3799,6 +3906,95 @@ function ensurePickState(recipe) {
       
       return (
         <div className="pb-24">
+          <div className="mb-3 rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+            <div className="px-3 py-3">
+              <div className="flex items-start justify-between gap-3 mb-2">
+                <div>
+                  <div className="text-sm font-bold text-slate-800">Weekmenu bewaren</div>
+                  <div className="text-xs text-slate-500">Een vaste momentopname van je recepten en weekdagen.</div>
+                </div>
+                {(menuWeeks || []).length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowMenuWeeks(value => !value)}
+                    className="shrink-0 px-2.5 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-xs font-semibold"
+                  >{showMenuWeeks ? 'Sluiten' : `Bewaard (${menuWeeks.length})`}</button>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <input
+                  value={menuWeekLabel}
+                  onChange={(event) => setMenuWeekLabel(event.target.value)}
+                  placeholder="Bijv. Week 36"
+                  className="min-w-0 flex-1 h-10 px-3 rounded-xl border border-slate-200 bg-white text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={saveCurrentMenuWeek}
+                  disabled={!menuPlans.length || savingMenuWeek}
+                  className="shrink-0 h-10 px-3 rounded-xl bg-emerald-600 text-white text-xs font-semibold disabled:opacity-40"
+                >{savingMenuWeek ? 'Bewaren…' : 'Week opslaan'}</button>
+              </div>
+              {!menuPlans.length && (
+                <div className="text-[11px] text-slate-500 mt-1.5">Zet eerst één of meer recepten op je menu.</div>
+              )}
+              {menuWeekFeedback && (
+                <div className="text-[11px] font-semibold text-emerald-700 mt-1.5">{menuWeekFeedback}</div>
+              )}
+            </div>
+
+            {showMenuWeeks && (menuWeeks || []).length > 0 && (
+              <div className="border-t border-slate-200 bg-slate-50/70">
+                {(menuWeeks || []).map(menuWeek => {
+                  const isOpen = openMenuWeekId === menuWeek.id;
+                  const archivedRecipes = [...(menuWeek.recipes || [])].sort((a,b) => {
+                    const dayDifference = plannedDayOrder(a) - plannedDayOrder(b);
+                    if (dayDifference !== 0) return dayDifference;
+                    return String(a.recipeName || '').localeCompare(String(b.recipeName || ''), 'nl');
+                  });
+                  return (
+                    <div key={menuWeek.id} className="border-b border-slate-200 last:border-b-0">
+                      <div className="px-3 py-2 flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setOpenMenuWeekId(isOpen ? null : menuWeek.id)}
+                          className="flex-1 min-w-0 text-left"
+                        >
+                          <div className="text-sm font-semibold text-slate-800 truncate">{menuWeek.label || 'Weekmenu'}</div>
+                          <div className="text-[11px] text-slate-500">{archivedRecipes.length} recept{archivedRecipes.length === 1 ? '' : 'en'}</div>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => deleteMenuWeek(menuWeek)}
+                          className="w-9 h-9 rounded-full text-slate-500 flex items-center justify-center"
+                          aria-label={`${menuWeek.label || 'Weekmenu'} verwijderen`}
+                        ><TrashIcon className="w-4 h-4" /></button>
+                      </div>
+                      {isOpen && (
+                        <div className="px-3 pb-3">
+                          <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+                            {archivedRecipes.map(recipe => (
+                              <div key={recipe.recipeId} className="px-3 py-2 flex gap-3 border-b border-slate-100 last:border-b-0 text-xs">
+                                <div className="w-20 shrink-0 font-semibold text-emerald-700">{formatPlannedDay(recipe)}</div>
+                                <div className="min-w-0 flex-1 text-slate-700 truncate">{recipe.recipeName || 'Recept'}</div>
+                              </div>
+                            ))}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => restoreMenuWeek(menuWeek)}
+                            disabled={!archivedRecipes.length}
+                            className="mt-2 w-full px-3 py-2 rounded-lg bg-slate-800 text-white text-xs font-semibold disabled:opacity-40"
+                          >Gebruik als actief menu</button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
           <div className="mb-3 relative left-1/2 w-screen -translate-x-1/2 px-3">
             <div className={"bg-white border-2 rounded-2xl shadow-sm h-14 flex items-center gap-2 px-3 transition-colors " + (query.trim() ? "border-emerald-500 ring-4 ring-emerald-500/10" : "border-slate-300")}>
               <svg viewBox="0 0 24 24" className="w-5 h-5 text-slate-500 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
@@ -4432,7 +4628,7 @@ function ensurePickState(recipe) {
         return () => { cancelled = true; };
       }, [user, householdId]);
 
-      const { members, lists, products, items, recipes, plannedRecipes, plannedRecipesLoaded, syncing } = useHouseholdData(user, householdId, activeListId, setActiveListId);
+      const { members, lists, products, items, recipes, plannedRecipes, menuWeeks, plannedRecipesLoaded, syncing } = useHouseholdData(user, householdId, activeListId, setActiveListId);
 
       async function handleCreateList(name) {
         if (!householdId || !user) return;
@@ -4592,6 +4788,7 @@ function ensurePickState(recipe) {
                 products={products}
                 items={items}
                 plannedRecipes={plannedRecipes}
+                menuWeeks={menuWeeks}
                 plannedRecipesLoaded={plannedRecipesLoaded}
                 activeListId={activeListId}
                 currentUser={user}
@@ -4634,19 +4831,19 @@ function ensurePickState(recipe) {
           {showClearListPrompt && (
             <Modal title="Lijst wissen" onClose={()=>{ if (!clearingList) setShowClearListPrompt(false); }}>
               <div className="text-sm text-slate-700 mb-4">
-                Je hebt {plannedRecipes.length} gekozen recept{plannedRecipes.length === 1 ? '' : 'en'}. Wil je die bewaren voor je volgende boodschappenronde?
+                Je hebt {plannedRecipes.length} recept{plannedRecipes.length === 1 ? '' : 'en'} op je actieve menu. Wil je dat menu laten staan? Apart opgeslagen weekmenu’s blijven altijd bewaard.
               </div>
               <div className="flex flex-col gap-2">
                 <Button
                   className="bg-emerald-600 text-white w-full"
                   disabled={clearingList}
                   onClick={()=>clearActiveList({ keepRecipes: true }).catch(error => console.error('Clear list failed:', error))}
-                >Lijst wissen, recepten bewaren</Button>
+                >Lijst wissen, menu laten staan</Button>
                 <Button
                   className="bg-rose-50 text-rose-700 w-full"
                   disabled={clearingList}
                   onClick={()=>clearActiveList({ keepRecipes: false }).catch(error => console.error('Clear list failed:', error))}
-                >Lijst en recepten wissen</Button>
+                >Lijst en actief menu wissen</Button>
                 <Button
                   className="bg-slate-100 text-slate-700 w-full"
                   disabled={clearingList}
