@@ -2147,7 +2147,6 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
       const [stickyAdd, setStickyAdd] = useState(false);
       const [vvh, setVvh] = useState(() => (window.visualViewport ? window.visualViewport.height : window.innerHeight));
       const suggestionsRef = useRef(null);
-      const [flashId, setFlashId] = useState(null);
       const [pendingCheckIds, setPendingCheckIds] = useState(() => new Set());
       const [openQtyId, setOpenQtyId] = useState(null);
       const pickingSuggestionRef = useRef(false);
@@ -2526,21 +2525,25 @@ useEffect(() => {
           return;
         }
 
-        setFlashId(item.id);
         setPendingCheckIds(prev => {
           const next = new Set(prev);
           next.add(item.id);
           return next;
         });
+        const animationMs = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 180 : 680;
         setTimeout(async () => {
-          setFlashId(current => current === item.id ? null : current);
-          await toggle(item);
-          setPendingCheckIds(prev => {
-            const next = new Set(prev);
-            next.delete(item.id);
-            return next;
-          });
-        }, 950);
+          try {
+            await toggle(item);
+          } catch (error) {
+            console.error('Store mode check failed:', error);
+          } finally {
+            setPendingCheckIds(prev => {
+              const next = new Set(prev);
+              next.delete(item.id);
+              return next;
+            });
+          }
+        }, animationMs);
       }
 
       async function remove(item) {
@@ -2811,8 +2814,8 @@ useEffect(() => {
                       >
 
                       <div
-                        className={"relative flex items-center " + (storeMode ? "px-3 py-3.5" : "max-w-xl mx-auto px-3 py-3" + (idx < group.items.length - 1 ? " border-b border-slate-200/80" : "")) + (storeMode && flashId === it.id ? " bm-flash" : "")}
-                        style={storeMode && flashId === it.id ? { '--flash': categoryColor(it._cat) + '40' } : undefined}
+                        className={"relative flex items-center " + (storeMode ? "px-3 py-3.5" : "max-w-xl mx-auto px-3 py-3" + (idx < group.items.length - 1 ? " border-b border-slate-200/80" : "")) + (storeMode && !it.checked && pendingCheckIds.has(it.id) ? " bm-check-implode" : "")}
+                        style={storeMode && !it.checked && pendingCheckIds.has(it.id) ? { '--flash': categoryColor(it._cat) + '4d' } : undefined}
                         onClick={() => { if (storeMode) { toggleInStoreMode(it); } }}
                       >
                         <div className="flex-1 min-w-0 pr-2">

@@ -19,8 +19,56 @@ button, input, select { -webkit-tap-highlight-color: transparent; }
 
 @keyframes bmflash {
   0% { background-color: transparent; }
-  16% { background-color: var(--flash); }
-  48% { background-color: var(--flash); }
+  14% { background-color: var(--flash); }
+  58% { background-color: var(--flash); }
   100% { background-color: transparent; }
 }
-.bm-flash { animation: bmflash .95s cubic-bezier(.22, .61, .36, 1); }
+
+@keyframes bmCheckImplode {
+  0% {
+    max-height: 160px;
+    opacity: 1;
+    transform: scaleX(1) scaleY(1);
+  }
+  16% {
+    max-height: 160px;
+    transform: scaleX(1.035) scaleY(.93);
+  }
+  32% {
+    max-height: 160px;
+    transform: scaleX(.975) scaleY(1.055);
+  }
+  46% {
+    max-height: 160px;
+    transform: scaleX(1.018) scaleY(.975);
+  }
+  58% {
+    max-height: 160px;
+    opacity: 1;
+    transform: scaleX(1) scaleY(1);
+  }
+  100% {
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    opacity: 0;
+    transform: scaleX(.82) scaleY(0);
+  }
+}
+
+.bm-check-implode {
+  overflow: hidden;
+  transform-origin: center center;
+  will-change: transform, opacity, max-height, padding;
+  animation:
+    bmflash 680ms cubic-bezier(.22, .61, .36, 1) forwards,
+    bmCheckImplode 680ms cubic-bezier(.3, 1.45, .45, 1) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bm-check-implode {
+    animation:
+      bmflash 180ms ease-out forwards,
+      bmCheckImplode 180ms ease-out forwards;
+  }
+}
