@@ -2941,6 +2941,7 @@ useEffect(() => {
       const [pickMap, setPickMap] = useState({});
       const [newIngId, setNewIngId] = useState(null);
       const [addFeedback, setAddFeedback] = useState(null);
+      const [plannedDateDrafts, setPlannedDateDrafts] = useState({});
       const addFeedbackTimerRef = useRef(null);
       const backfilledMenuKeysRef = useRef(new Set());
 
@@ -3270,7 +3271,7 @@ useEffect(() => {
         return s + ` ×${m}`;
       }
 
-async function addRecipeToList(r, targetServings, pickState) {
+async function addRecipeToList(r, targetServings, pickState, plannedDate = '') {
         if (!householdId || !activeListId) { alert('Geen actieve lijst gevonden.'); return; }
         // Ingrediënten in recepten zijn al ingevoerd voor de opgegeven basisporties; we schalen hier (nog) niet.
         const base = r.baseServings || r.servings || r.persons || 5;
@@ -3487,7 +3488,7 @@ async function addRecipeToList(r, targetServings, pickState) {
             id: r.id,
             recipeId: r.id,
             recipeName: r.name || 'Recept',
-            plannedDate: priorPlan?.plannedDate || '',
+            plannedDate: priorPlan?.plannedDate || plannedDate || '',
             baseServings: base,
             ingredients: Array.from(plannedIngredientMap.values()),
             addedAt: priorPlan?.addedAt || firebase.firestore.FieldValue.serverTimestamp(),
@@ -3558,6 +3559,89 @@ async function addRecipeToList(r, targetServings, pickState) {
           });
         });
         await batch.commit();
+      }
+
+      async function saveRecipeToMenu(r, pickState, plannedDate = '') {
+        if (!householdId || !activeListId || !r?.id) return;
+        const priorPlan = (plannedRecipes || []).find(plan => (plan.recipeId || plan.id) === r.id) || null;
+        const productById = new Map((products || []).map(product => [product.id, product]));
+        const productByName = new Map((products || []).map(product => [String(product.name || '').trim().toLowerCase(), product]));
+        const createdProductsByName = new Map();
+        const plannedIngredients = [];
+        const batch = db.batch();
+
+        (r.ingredients || []).forEach((ingredient, index) => {
+          const ingredientId = ingredient._id || String(index);
+          const include = pickState?.picks ? pickState.picks[ingredientId] !== false : true;
+          if (!include) return;
+
+          const linkedProduct = ingredient.productId ? productById.get(ingredient.productId) : null;
+          const name = String(linkedProduct?.name || ingredient.nameSnapshot || '').trim();
+          if (!name) return;
+          const category = linkedProduct?.category || ingredient.categorySnapshot || 'Overig';
+          const nameKey = name.toLowerCase();
+          let product = linkedProduct || productByName.get(nameKey) || createdProductsByName.get(nameKey);
+
+          if (!product) {
+            product = {
+              id: genId('p'),
+              schemaVersion: 2,
+              name,
+              category,
+              updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+              updatedBy: currentUser?.uid || '',
+              updatedByName: currentUser?.displayName || '',
+              updatedByPhotoURL: currentUser?.photoURL || '',
+            };
+            createdProductsByName.set(nameKey, product);
+            batch.set(db.doc(`households/${householdId}/products/${product.id}`), product, { merge: true });
+          }
+
+          let unit = ingredient.unit ?? ingredient.unitText ?? 'st';
+          if (String(unit).toLowerCase() === 'g') unit = 'gr';
+          const amountText = String(ingredient.amount ?? ingredient.qty ?? ingredient.quantity ?? '').trim();
+          const amountNumber = parseFloat(amountText.replace(',', '.'));
+          const need = isFinite(amountNumber)
+            ? { value: amountNumber, unit: String(unit || 'st') }
+            : { valueText: amountText, unit: String(unit || 'st') };
+
+          plannedIngredients.push({
+            ingredientId,
+            productId: product.id,
+            name,
+            category: product.category || category,
+            buyQty: Math.max(1, Number(ingredient.buyQty) || 1),
+            need,
+          });
+        });
+
+        batch.set(db.doc(`households/${householdId}/lists/${activeListId}/planned_recipes/${r.id}`), {
+          id: r.id,
+          recipeId: r.id,
+          recipeName: r.name || 'Recept',
+          plannedDate: plannedDate || '',
+          baseServings: r.baseServings || r.servings || r.persons || 5,
+          ingredients: plannedIngredients,
+          addedAt: priorPlan?.addedAt || firebase.firestore.FieldValue.serverTimestamp(),
+          addedBy: priorPlan?.addedBy || currentUser?.uid || '',
+          addedByName: priorPlan?.addedByName || currentUser?.displayName || '',
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          updatedBy: currentUser?.uid || '',
+        }, { merge: true });
+
+        await batch.commit();
+        setAddFeedback({
+          recipeId: r.id,
+          message: 'Recept is op je menu bewaard.',
+          listId: activeListId,
+          undoItems: [],
+          planBefore: priorPlan,
+        });
+        if (addFeedbackTimerRef.current) clearTimeout(addFeedbackTimerRef.current);
+        addFeedbackTimerRef.current = setTimeout(() => {
+          setAddFeedback(null);
+          addFeedbackTimerRef.current = null;
+        }, 5500);
       }
 
       async function setPlannedRecipeDate(plan, plannedDate) {
@@ -3813,6 +3897,29 @@ function ensurePickState(recipe) {
                           <div className="text-xs text-slate-500 mb-2">Nog geen online recept gekoppeld.</div>
                         )}
 
+                        {!menuStatus && (
+                          <div className="mb-2 rounded-xl border border-emerald-200 bg-emerald-50/60 px-3 py-3">
+                            <div className="text-sm font-semibold text-emerald-900">Bewaar dit recept op je menu</div>
+                            <div className="text-xs text-emerald-800/80 mt-0.5 mb-2">Dat kan ook zonder de producten nu al toe te voegen.</div>
+                            <div className="flex items-end gap-2">
+                              <label className="flex-1 min-w-0">
+                                <span className="block text-[11px] font-semibold text-emerald-800 mb-1">Dag (optioneel)</span>
+                                <input
+                                  type="date"
+                                  value={plannedDateDrafts[r.id] || ''}
+                                  onChange={(event) => setPlannedDateDrafts(previous => ({ ...previous, [r.id]: event.target.value }))}
+                                  className="w-full px-3 py-2 rounded-lg border border-emerald-200 bg-white text-sm text-slate-700"
+                                />
+                              </label>
+                              <button
+                                type="button"
+                                onClick={() => saveRecipeToMenu(r, st, plannedDateDrafts[r.id] || '')}
+                                className="shrink-0 px-3 py-2 rounded-lg bg-emerald-600 text-white text-xs font-semibold"
+                              >Op menu bewaren</button>
+                            </div>
+                          </div>
+                        )}
+
                         {menuStatus && (
                           <div className="mb-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
                             <label className="mb-2 block">
@@ -3920,10 +4027,10 @@ function ensurePickState(recipe) {
                   </div>
                 ) : (
                   <Button
-                    onClick={() => addRecipeToList(expandedRecipe, null, expandedPickState)}
+                    onClick={() => addRecipeToList(expandedRecipe, null, expandedPickState, plannedDateDrafts[expandedRecipe.id] || '')}
                     className="w-full bg-slate-900 text-white shadow-lg"
                   >
-                    Voeg geselecteerde producten toe
+                    {menuStatusByRecipe.has(expandedRecipe.id) ? 'Voeg geselecteerde producten toe' : 'Bewaar op menu en voeg producten toe'}
                   </Button>
                 )}
               </div>
