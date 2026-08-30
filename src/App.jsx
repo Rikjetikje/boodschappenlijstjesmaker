@@ -3078,27 +3078,44 @@ useEffect(() => {
       }
 
       const menuPlans = useMemo(() => {
-        const productIdsOnList = new Set((items || []).filter(it => it.productId).map(it => it.productId));
+        const listItemsByProductId = new Map();
+        (items || []).forEach(item => {
+          if (!item.productId) return;
+          const matching = listItemsByProductId.get(item.productId) || [];
+          matching.push(item);
+          listItemsByProductId.set(item.productId, matching);
+        });
         const recipeById = new Map((recipes || []).map(r => [r.id, r]));
         return (plannedRecipes || []).map(plan => {
+          const recipeId = plan.recipeId || plan.id;
           const seen = new Set();
           const ingredients = (plan.ingredients || []).filter(ing => {
             if (!ing?.productId || seen.has(ing.productId)) return false;
             seen.add(ing.productId);
             return true;
-          }).map(ing => ({
-            ...ing,
-            onList: productIdsOnList.has(ing.productId),
-          }));
+          }).map(ing => {
+            const matchingItems = listItemsByProductId.get(ing.productId) || [];
+            return {
+              ...ing,
+              onList: matchingItems.length > 0,
+              linkedToRecipe: matchingItems.some(item => !!item.needsByRecipe?.[recipeId]),
+            };
+          });
           const missing = ingredients.filter(ing => !ing.onList);
+          const linked = ingredients.filter(ing => ing.linkedToRecipe);
+          const alreadyOnList = ingredients.filter(ing => ing.onList && !ing.linkedToRecipe);
           const recipe = recipeById.get(plan.recipeId || plan.id) || null;
           return {
             ...plan,
             recipe,
-            recipeId: plan.recipeId || plan.id,
+            recipeId,
             recipeName: recipe?.name || plan.recipeName || 'Recept',
             ingredients,
             missing,
+            linked,
+            alreadyOnList,
+            linkedCount: linked.length,
+            alreadyOnListCount: alreadyOnList.length,
             presentCount: ingredients.length - missing.length,
           };
         });
@@ -3701,11 +3718,14 @@ function ensurePickState(recipe) {
                   const isMenuOpen = expandedMenuId === plan.recipeId;
                   const total = plan.ingredients.length;
                   const complete = total > 0 && plan.missing.length === 0;
-                  const progress = total ? Math.round((plan.presentCount / total) * 100) : 0;
+                  const fullyLinked = complete && plan.alreadyOnListCount === 0;
+                  const linkedProgress = total ? (plan.linkedCount / total) * 100 : 0;
+                  const alreadyOnListProgress = total ? (plan.alreadyOnListCount / total) * 100 : 0;
+                  const statusTone = plan.missing.length ? 'missing' : (plan.alreadyOnListCount ? 'mixed' : 'linked');
                   return (
                     <div
                       key={plan.id || plan.recipeId}
-                      className={"overflow-hidden rounded-2xl border bg-white shadow-sm " + (plan.missing.length ? "border-rose-200" : "border-emerald-200")}
+                      className={"overflow-hidden rounded-2xl border bg-white shadow-sm " + (statusTone === 'missing' ? "border-rose-200" : (statusTone === 'mixed' ? "border-amber-200" : "border-emerald-200"))}
                     >
                       <button
                         type="button"
@@ -3714,19 +3734,28 @@ function ensurePickState(recipe) {
                         aria-expanded={isMenuOpen}
                       >
                         <div className="flex items-start gap-3">
-                          <div className={"mt-0.5 w-8 h-8 rounded-full flex items-center justify-center shrink-0 " + (complete ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700")}>
+                          <div className={"mt-0.5 w-8 h-8 rounded-full flex items-center justify-center shrink-0 " + (statusTone === 'missing' ? "bg-rose-100 text-rose-700" : (statusTone === 'mixed' ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"))}>
                             {complete ? "✓" : "!"}
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="font-semibold text-[15px] text-slate-900 truncate">{plan.recipeName}</div>
-                            <div className={"mt-0.5 text-xs font-medium " + (plan.missing.length ? "text-rose-700" : "text-emerald-700")}>
-                              {plan.presentCount} van {total} producten op de lijst
-                              {plan.missing.length ? ` · ${plan.missing.length} ontbreekt${plan.missing.length === 1 ? '' : 'en'}` : ' · compleet'}
+                            <div className="mt-0.5 text-xs font-semibold text-slate-700">
+                              {plan.presentCount}/{total} op de lijst
                             </div>
-                            <div className="mt-2 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                            <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[10px] font-semibold">
+                              {plan.linkedCount > 0 && <span className="text-emerald-700">● {plan.linkedCount} via recept</span>}
+                              {plan.alreadyOnListCount > 0 && <span className="text-amber-700">● {plan.alreadyOnListCount} al aanwezig</span>}
+                              {plan.missing.length > 0 && <span className="text-rose-700">● {plan.missing.length} ontbreekt{plan.missing.length === 1 ? '' : 'en'}</span>}
+                              {fullyLinked && <span className="text-emerald-700">· compleet</span>}
+                            </div>
+                            <div className="mt-2 h-1.5 rounded-full bg-rose-100 overflow-hidden flex">
                               <div
-                                className={"h-full rounded-full transition-all " + (plan.missing.length ? "bg-rose-400" : "bg-emerald-500")}
-                                style={{ width: `${progress}%` }}
+                                className="h-full bg-emerald-500 transition-all"
+                                style={{ width: `${linkedProgress}%` }}
+                              />
+                              <div
+                                className="h-full bg-amber-400 transition-all"
+                                style={{ width: `${alreadyOnListProgress}%` }}
                               />
                             </div>
                           </div>
@@ -3739,19 +3768,22 @@ function ensurePickState(recipe) {
                       {isMenuOpen && (
                         <div className="border-t border-slate-100 px-4 pb-4">
                           <div className="py-2 divide-y divide-slate-100">
-                            {plan.ingredients.map(ingredient => (
-                              <div key={ingredient.productId} className="flex items-center gap-2 py-2">
-                                <span className={"w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 " + (ingredient.onList ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700")}>
-                                  {ingredient.onList ? "✓" : "!"}
-                                </span>
-                                <span className={"flex-1 min-w-0 truncate text-sm " + (ingredient.onList ? "text-slate-700" : "font-semibold text-rose-700")}>
-                                  {ingredient.name || 'Product'}
-                                </span>
-                                <span className={"text-[11px] shrink-0 " + (ingredient.onList ? "text-emerald-700" : "text-rose-600")}>
-                                  {ingredient.onList ? 'op lijst' : 'ontbreekt'}
-                                </span>
-                              </div>
-                            ))}
+                            {plan.ingredients.map(ingredient => {
+                              const ingredientTone = ingredient.linkedToRecipe ? 'linked' : (ingredient.onList ? 'present' : 'missing');
+                              return (
+                                <div key={ingredient.productId} className="flex items-center gap-2 py-2">
+                                  <span className={"w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 " + (ingredientTone === 'linked' ? "bg-emerald-100 text-emerald-700" : (ingredientTone === 'present' ? "bg-amber-100 text-amber-700" : "bg-rose-100 text-rose-700"))}>
+                                    {ingredient.onList ? "✓" : "!"}
+                                  </span>
+                                  <span className={"flex-1 min-w-0 truncate text-sm " + (ingredientTone === 'missing' ? "font-semibold text-rose-700" : "text-slate-700")}>
+                                    {ingredient.name || 'Product'}
+                                  </span>
+                                  <span className={"text-[11px] shrink-0 " + (ingredientTone === 'linked' ? "text-emerald-700" : (ingredientTone === 'present' ? "text-amber-700" : "text-rose-600"))}>
+                                    {ingredientTone === 'linked' ? 'via recept' : (ingredientTone === 'present' ? 'al op lijst' : 'ontbreekt')}
+                                  </span>
+                                </div>
+                              );
+                            })}
                           </div>
                           <div className="flex flex-col sm:flex-row gap-2 pt-1">
                             {plan.missing.length > 0 && (
@@ -3802,7 +3834,7 @@ function ensurePickState(recipe) {
                           {(r.ingredients||[]).length} ingrediënten · basis {r.baseServings || 5} pers.
                         </div>
                         {menuStatus && (
-                          <div className={"inline-flex mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold " + (menuStatus.missing.length ? "bg-rose-100 text-rose-700" : "bg-emerald-100 text-emerald-700")}>
+                          <div className={"inline-flex mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold " + (menuStatus.missing.length ? "bg-rose-100 text-rose-700" : (menuStatus.alreadyOnListCount ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"))}>
                             Op menu · {menuStatus.presentCount}/{menuStatus.ingredients.length} op lijst
                           </div>
                         )}
