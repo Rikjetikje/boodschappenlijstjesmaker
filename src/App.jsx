@@ -39,24 +39,36 @@ const APP_ICONS = {
       return s.replace('.', ',');
     }
 
-    function localDateKey(date) {
-      const d = date instanceof Date ? date : new Date(date);
-      const year = d.getFullYear();
-      const month = String(d.getMonth() + 1).padStart(2, '0');
-      const day = String(d.getDate()).padStart(2, '0');
-      return `${year}-${month}-${day}`;
+    const MENU_WEEKDAYS = [
+      { key: 'ma', short: 'Ma', label: 'Maandag' },
+      { key: 'di', short: 'Di', label: 'Dinsdag' },
+      { key: 'wo', short: 'Wo', label: 'Woensdag' },
+      { key: 'do', short: 'Do', label: 'Donderdag' },
+      { key: 'vr', short: 'Vr', label: 'Vrijdag' },
+      { key: 'za', short: 'Za', label: 'Zaterdag' },
+      { key: 'zo', short: 'Zo', label: 'Zondag' },
+    ];
+
+    function plannedDayKey(plan) {
+      if (plan && Object.prototype.hasOwnProperty.call(plan, 'plannedDay')) {
+        return MENU_WEEKDAYS.some(day => day.key === plan.plannedDay) ? plan.plannedDay : '';
+      }
+      if (!plan?.plannedDate) return '';
+      const parts = String(plan.plannedDate).split('-').map(Number);
+      if (parts.length !== 3 || parts.some(n => !isFinite(n))) return '';
+      const jsDay = new Date(parts[0], parts[1] - 1, parts[2]).getDay();
+      return MENU_WEEKDAYS[(jsDay + 6) % 7]?.key || '';
     }
 
-    function formatPlannedDate(dateKey) {
-      if (!dateKey) return 'Nog in te plannen';
-      const parts = String(dateKey).split('-').map(Number);
-      if (parts.length !== 3 || parts.some(n => !isFinite(n))) return 'Nog in te plannen';
-      const date = new Date(parts[0], parts[1] - 1, parts[2]);
-      const today = new Date();
-      const tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
-      if (localDateKey(date) === localDateKey(today)) return 'Vandaag';
-      if (localDateKey(date) === localDateKey(tomorrow)) return 'Morgen';
-      return date.toLocaleDateString('nl-NL', { weekday: 'short', day: 'numeric', month: 'short' });
+    function formatPlannedDay(plan) {
+      const key = plannedDayKey(plan);
+      return MENU_WEEKDAYS.find(day => day.key === key)?.label || 'Nog in te plannen';
+    }
+
+    function plannedDayOrder(plan) {
+      const key = plannedDayKey(plan);
+      const index = MENU_WEEKDAYS.findIndex(day => day.key === key);
+      return index < 0 ? 99 : index;
     }
 
     // Expose for safety (in case Babel wraps scopes)
@@ -2941,7 +2953,7 @@ useEffect(() => {
       const [pickMap, setPickMap] = useState({});
       const [newIngId, setNewIngId] = useState(null);
       const [addFeedback, setAddFeedback] = useState(null);
-      const [plannedDateDrafts, setPlannedDateDrafts] = useState({});
+      const [plannedDayDrafts, setPlannedDayDrafts] = useState({});
       const addFeedbackTimerRef = useRef(null);
       const backfilledMenuKeysRef = useRef(new Set());
 
@@ -2966,9 +2978,8 @@ useEffect(() => {
           const bPlanned = !!bPlan;
           if (aPlanned !== bPlanned) return aPlanned ? -1 : 1;
           if (aPlanned && bPlanned) {
-            const aDate = aPlan.plannedDate || '9999-12-31';
-            const bDate = bPlan.plannedDate || '9999-12-31';
-            if (aDate !== bDate) return aDate.localeCompare(bDate);
+            const dayDifference = plannedDayOrder(aPlan) - plannedDayOrder(bPlan);
+            if (dayDifference !== 0) return dayDifference;
           }
           return (a.name||'').localeCompare(b.name||'', 'nl');
         });
@@ -3208,6 +3219,7 @@ useEffect(() => {
             id: recipeId,
             recipeId,
             recipeName: recipe?.name || 'Recept',
+            plannedDay: '',
             plannedDate: '',
             ingredients,
             addedAt: firebase.firestore.FieldValue.serverTimestamp(),
@@ -3271,7 +3283,7 @@ useEffect(() => {
         return s + ` ×${m}`;
       }
 
-async function addRecipeToList(r, targetServings, pickState, plannedDate = '') {
+async function addRecipeToList(r, targetServings, pickState, plannedDay = '') {
         if (!householdId || !activeListId) { alert('Geen actieve lijst gevonden.'); return; }
         // Ingrediënten in recepten zijn al ingevoerd voor de opgegeven basisporties; we schalen hier (nog) niet.
         const base = r.baseServings || r.servings || r.persons || 5;
@@ -3488,7 +3500,8 @@ async function addRecipeToList(r, targetServings, pickState, plannedDate = '') {
             id: r.id,
             recipeId: r.id,
             recipeName: r.name || 'Recept',
-            plannedDate: priorPlan?.plannedDate || plannedDate || '',
+            plannedDay: priorPlan ? plannedDayKey(priorPlan) : (plannedDay || ''),
+            plannedDate: priorPlan?.plannedDate || '',
             baseServings: base,
             ingredients: Array.from(plannedIngredientMap.values()),
             addedAt: priorPlan?.addedAt || firebase.firestore.FieldValue.serverTimestamp(),
@@ -3561,7 +3574,7 @@ async function addRecipeToList(r, targetServings, pickState, plannedDate = '') {
         await batch.commit();
       }
 
-      async function saveRecipeToMenu(r, pickState, plannedDate = '') {
+      async function saveRecipeToMenu(r, pickState, plannedDay = '') {
         if (!householdId || !activeListId || !r?.id) return;
         const priorPlan = (plannedRecipes || []).find(plan => (plan.recipeId || plan.id) === r.id) || null;
         const productById = new Map((products || []).map(product => [product.id, product]));
@@ -3619,7 +3632,8 @@ async function addRecipeToList(r, targetServings, pickState, plannedDate = '') {
           id: r.id,
           recipeId: r.id,
           recipeName: r.name || 'Recept',
-          plannedDate: plannedDate || '',
+          plannedDay: plannedDay || '',
+          plannedDate: priorPlan?.plannedDate || '',
           baseServings: r.baseServings || r.servings || r.persons || 5,
           ingredients: plannedIngredients,
           addedAt: priorPlan?.addedAt || firebase.firestore.FieldValue.serverTimestamp(),
@@ -3644,10 +3658,10 @@ async function addRecipeToList(r, targetServings, pickState, plannedDate = '') {
         }, 5500);
       }
 
-      async function setPlannedRecipeDate(plan, plannedDate) {
+      async function setPlannedRecipeDay(plan, plannedDay) {
         if (!householdId || !activeListId || !plan?.recipeId) return;
         await db.doc(`households/${householdId}/lists/${activeListId}/planned_recipes/${plan.recipeId}`).set({
-          plannedDate: plannedDate || '',
+          plannedDay: plannedDay || '',
           updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
           updatedBy: currentUser?.uid || '',
         }, { merge: true });
@@ -3839,10 +3853,10 @@ function ensurePickState(recipe) {
                 const menuStatus = menuStatusByRecipe.get(r.id);
                 const previousRecipe = index > 0 ? filtered[index - 1] : null;
                 const previousMenuStatus = previousRecipe ? menuStatusByRecipe.get(previousRecipe.id) : null;
-                const currentDateKey = menuStatus?.plannedDate || '';
-                const previousDateKey = previousMenuStatus?.plannedDate || '';
+                const currentDayKey = plannedDayKey(menuStatus);
+                const previousDayKey = plannedDayKey(previousMenuStatus);
                 const groupHeading = menuStatus
-                  ? (!previousMenuStatus || currentDateKey !== previousDateKey ? formatPlannedDate(currentDateKey) : null)
+                  ? (!previousMenuStatus || currentDayKey !== previousDayKey ? formatPlannedDay(menuStatus) : null)
                   : (previousMenuStatus ? 'Alle recepten' : null);
                 return (
                   <React.Fragment key={r.id}>
@@ -3868,7 +3882,7 @@ function ensurePickState(recipe) {
                         </div>
                         {menuStatus && (
                           <div className={"inline-flex mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold " + (menuStatus.missing.length ? "bg-rose-100 text-rose-700" : (menuStatus.alreadyOnListCount ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"))}>
-                            Op menu · {formatPlannedDate(menuStatus.plannedDate)} · {menuStatus.presentCount}/{menuStatus.ingredients.length} op lijst
+                            Op menu · {formatPlannedDay(menuStatus)} · {menuStatus.presentCount}/{menuStatus.ingredients.length} op lijst
                           </div>
                         )}
                       </button>
@@ -3901,36 +3915,45 @@ function ensurePickState(recipe) {
                           <div className="mb-2 rounded-xl border border-emerald-200 bg-emerald-50/60 px-3 py-3">
                             <div className="text-sm font-semibold text-emerald-900">Bewaar dit recept op je menu</div>
                             <div className="text-xs text-emerald-800/80 mt-0.5 mb-2">Dat kan ook zonder de producten nu al toe te voegen.</div>
-                            <div className="flex items-end gap-2">
-                              <label className="flex-1 min-w-0">
-                                <span className="block text-[11px] font-semibold text-emerald-800 mb-1">Dag (optioneel)</span>
-                                <input
-                                  type="date"
-                                  value={plannedDateDrafts[r.id] || ''}
-                                  onChange={(event) => setPlannedDateDrafts(previous => ({ ...previous, [r.id]: event.target.value }))}
-                                  className="w-full px-3 py-2 rounded-lg border border-emerald-200 bg-white text-sm text-slate-700"
-                                />
-                              </label>
-                              <button
-                                type="button"
-                                onClick={() => saveRecipeToMenu(r, st, plannedDateDrafts[r.id] || '')}
-                                className="shrink-0 px-3 py-2 rounded-lg bg-emerald-600 text-white text-xs font-semibold"
-                              >Op menu bewaren</button>
+                            <div className="text-[11px] font-semibold text-emerald-800 mb-1">Weekdag (optioneel)</div>
+                            <div className="grid grid-cols-7 gap-1 mb-2">
+                              {MENU_WEEKDAYS.map(day => (
+                                <button
+                                  key={day.key}
+                                  type="button"
+                                  onClick={() => setPlannedDayDrafts(previous => ({
+                                    ...previous,
+                                    [r.id]: previous[r.id] === day.key ? '' : day.key,
+                                  }))}
+                                  className={"h-9 rounded-lg text-[11px] font-bold border " + (plannedDayDrafts[r.id] === day.key ? "bg-emerald-600 border-emerald-600 text-white" : "bg-white border-emerald-200 text-emerald-800")}
+                                  aria-label={day.label}
+                                >{day.short}</button>
+                              ))}
                             </div>
+                            <button
+                              type="button"
+                              onClick={() => saveRecipeToMenu(r, st, plannedDayDrafts[r.id] || '')}
+                              className="w-full px-3 py-2 rounded-lg bg-emerald-600 text-white text-xs font-semibold"
+                            >Op menu bewaren</button>
                           </div>
                         )}
 
                         {menuStatus && (
                           <div className="mb-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
-                            <label className="mb-2 block">
-                              <span className="block text-[11px] font-semibold text-slate-500 mb-1">Gepland voor</span>
-                              <input
-                                type="date"
-                                value={menuStatus.plannedDate || ''}
-                                onChange={(event) => setPlannedRecipeDate(menuStatus, event.target.value)}
-                                className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm text-slate-700"
-                              />
-                            </label>
+                            <div className="mb-2">
+                              <div className="text-[11px] font-semibold text-slate-500 mb-1">Gepland voor</div>
+                              <div className="grid grid-cols-7 gap-1">
+                                {MENU_WEEKDAYS.map(day => (
+                                  <button
+                                    key={day.key}
+                                    type="button"
+                                    onClick={() => setPlannedRecipeDay(menuStatus, plannedDayKey(menuStatus) === day.key ? '' : day.key)}
+                                    className={"h-9 rounded-lg text-[11px] font-bold border " + (plannedDayKey(menuStatus) === day.key ? "bg-slate-800 border-slate-800 text-white" : "bg-white border-slate-200 text-slate-600")}
+                                    aria-label={day.label}
+                                  >{day.short}</button>
+                                ))}
+                              </div>
+                            </div>
                             <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] font-semibold">
                               {menuStatus.linkedCount > 0 && <span className="text-emerald-700">● {menuStatus.linkedCount} via recept</span>}
                               {menuStatus.alreadyOnListCount > 0 && <span className="text-amber-700">● {menuStatus.alreadyOnListCount} al aanwezig</span>}
@@ -4027,7 +4050,7 @@ function ensurePickState(recipe) {
                   </div>
                 ) : (
                   <Button
-                    onClick={() => addRecipeToList(expandedRecipe, null, expandedPickState, plannedDateDrafts[expandedRecipe.id] || '')}
+                    onClick={() => addRecipeToList(expandedRecipe, null, expandedPickState, plannedDayDrafts[expandedRecipe.id] || '')}
                     className="w-full bg-slate-900 text-white shadow-lg"
                   >
                     {menuStatusByRecipe.has(expandedRecipe.id) ? 'Voeg geselecteerde producten toe' : 'Bewaar op menu en voeg producten toe'}
