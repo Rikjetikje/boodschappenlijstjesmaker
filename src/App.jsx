@@ -2185,7 +2185,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
         );
       }
 
-    function ListTab({ householdId, activeListId, products, items, currentUser, storeMode, showAdders, onClearList }) {
+    function ListTab({ householdId, activeListId, products, items, currentUser, storeMode, showAdders, onClearList, onListCompleted }) {
       const [newText, setNewText] = useState('');
       const [newCategory, setNewCategory] = useState('Overig');
       const [showSuggestions, setShowSuggestions] = useState(false);
@@ -2565,7 +2565,10 @@ useEffect(() => {
         // Check if all items are now checked
         if (nowChecked && items && items.length > 0) {
           const allDone = items.every(it => it.id === item.id ? true : it.checked);
-          if (allDone) setShowAllDone(true);
+          if (allDone) {
+            setShowAllDone(true);
+            onListCompleted?.();
+          }
         }
       }
 
@@ -2976,6 +2979,7 @@ useEffect(() => {
       const [menuWeekLabel, setMenuWeekLabel] = useState(() => currentIsoWeekLabel());
       const [showMenuWeeks, setShowMenuWeeks] = useState(false);
       const [openMenuWeekId, setOpenMenuWeekId] = useState(null);
+      const [openArchivedRecipeKey, setOpenArchivedRecipeKey] = useState(null);
       const [savingMenuWeek, setSavingMenuWeek] = useState(false);
       const [menuWeekFeedback, setMenuWeekFeedback] = useState('');
       const addFeedbackTimerRef = useRef(null);
@@ -3208,6 +3212,7 @@ useEffect(() => {
           const recipesSnapshot = menuPlans.map(plan => ({
             recipeId: plan.recipeId,
             recipeName: plan.recipeName || 'Recept',
+            recipeUrl: plan.recipe?.url || '',
             plannedDay: plannedDayKey(plan),
             baseServings: plan.baseServings || plan.recipe?.baseServings || 5,
             ingredients: (plan.ingredients || []).map(ingredient => ({
@@ -3276,6 +3281,7 @@ useEffect(() => {
         if (!confirm(`${menuWeek.label || 'Dit weekmenu'} verwijderen?`)) return;
         await db.doc(`households/${householdId}/menu_weeks/${menuWeek.id}`).delete();
         if (openMenuWeekId === menuWeek.id) setOpenMenuWeekId(null);
+        if (openArchivedRecipeKey?.startsWith(`${menuWeek.id}:`)) setOpenArchivedRecipeKey(null);
       }
 
       function findPlannedIngredient(menuStatus, ingredient, ingredientKey) {
@@ -3973,12 +3979,54 @@ function ensurePickState(recipe) {
                       {isOpen && (
                         <div className="px-3 pb-3">
                           <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-                            {archivedRecipes.map(recipe => (
-                              <div key={recipe.recipeId} className="px-3 py-2 flex gap-3 border-b border-slate-100 last:border-b-0 text-xs">
-                                <div className="w-20 shrink-0 font-semibold text-emerald-700">{formatPlannedDay(recipe)}</div>
-                                <div className="min-w-0 flex-1 text-slate-700 truncate">{recipe.recipeName || 'Recept'}</div>
-                              </div>
-                            ))}
+                            {archivedRecipes.map(recipe => {
+                              const archivedRecipeKey = `${menuWeek.id}:${recipe.recipeId}`;
+                              const recipeIsOpen = openArchivedRecipeKey === archivedRecipeKey;
+                              const currentRecipe = (recipes || []).find(item => item.id === recipe.recipeId);
+                              const recipeUrl = recipe.recipeUrl || currentRecipe?.url || '';
+                              return (
+                                <div key={recipe.recipeId} className="border-b border-slate-100 last:border-b-0">
+                                  <button
+                                    type="button"
+                                    onClick={() => setOpenArchivedRecipeKey(recipeIsOpen ? null : archivedRecipeKey)}
+                                    className="w-full px-3 py-2 flex items-center gap-3 text-xs text-left"
+                                  >
+                                    <div className="w-20 shrink-0 font-semibold text-emerald-700">{formatPlannedDay(recipe)}</div>
+                                    <div className="min-w-0 flex-1 text-slate-700 font-medium truncate">{recipe.recipeName || 'Recept'}</div>
+                                    <svg viewBox="0 0 24 24" className={"w-4 h-4 shrink-0 text-slate-400 transition-transform " + (recipeIsOpen ? "rotate-180" : "")} fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                      <path d="m6 9 6 6 6-6" />
+                                    </svg>
+                                  </button>
+                                  {recipeIsOpen && (
+                                    <div className="px-3 pb-3">
+                                      {recipeUrl && (
+                                        <a
+                                          href={/^https?:\/\//i.test(recipeUrl.trim()) ? recipeUrl.trim() : `https://${recipeUrl.trim()}`}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="inline-block mb-2 text-xs font-semibold text-emerald-700 underline"
+                                        >Bekijk hier het recept.</a>
+                                      )}
+                                      <div className="rounded-lg bg-slate-50 border border-slate-100 overflow-hidden">
+                                        {(recipe.ingredients || []).length ? (recipe.ingredients || []).map((ingredient, ingredientIndex) => {
+                                          const need = ingredient.need || {};
+                                          const needAmount = need.value != null ? formatNum(Number(need.value)) : String(need.valueText || '').trim();
+                                          const needText = `${needAmount} ${need.unit || ''}`.trim();
+                                          return (
+                                            <div key={ingredient.ingredientId || ingredient.productId || ingredientIndex} className="px-2.5 py-2 flex items-baseline gap-2 border-b border-slate-100 last:border-b-0 text-xs">
+                                              <div className="min-w-0 flex-1 text-slate-700">{ingredient.name || 'Product'}</div>
+                                              {needText && <div className="shrink-0 text-slate-500">{needText}</div>}
+                                            </div>
+                                          );
+                                        }) : (
+                                          <div className="px-2.5 py-2 text-xs text-slate-500">Geen ingrediënten opgeslagen.</div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
                           <button
                             type="button"
@@ -4668,7 +4716,17 @@ function ensurePickState(recipe) {
         }
       }
 
-      async function clearActiveList({ keepRecipes }) {
+      async function clearActiveMenuPlans() {
+        if (!householdId || !activeListId) return;
+        const plannedSnap = await db.collection(`households/${householdId}/lists/${activeListId}/planned_recipes`).get();
+        if (!plannedSnap.empty) {
+          const batch = db.batch();
+          plannedSnap.docs.forEach(d => batch.delete(d.ref));
+          await batch.commit();
+        }
+      }
+
+      async function clearActiveList() {
         if (!householdId || !activeListId) return;
         setClearingList(true);
         try {
@@ -4678,14 +4736,7 @@ function ensurePickState(recipe) {
             snap.docs.forEach(d => batch.delete(d.ref));
             await batch.commit();
           }
-          if (!keepRecipes) {
-            const plannedSnap = await db.collection(`households/${householdId}/lists/${activeListId}/planned_recipes`).get();
-            if (!plannedSnap.empty) {
-              const batch = db.batch();
-              plannedSnap.docs.forEach(d => batch.delete(d.ref));
-              await batch.commit();
-            }
-          }
+          await clearActiveMenuPlans();
           setShowClearListPrompt(false);
         } finally {
           setClearingList(false);
@@ -4699,7 +4750,7 @@ function ensurePickState(recipe) {
           return;
         }
         if (!confirm('Hele lijst leegmaken?')) return;
-        clearActiveList({ keepRecipes: true }).catch(error => console.error('Clear list failed:', error));
+        clearActiveList().catch(error => console.error('Clear list failed:', error));
       }
 
       function handleSignIn() {
@@ -4772,6 +4823,7 @@ function ensurePickState(recipe) {
                 storeMode={storeMode}
                 showAdders={showAdders}
                 onClearList={handleClearActiveList}
+                onListCompleted={() => clearActiveMenuPlans().catch(error => console.error('Complete menu failed:', error))}
               />
             ) : tab === 'products' ? (
               <ProductsTab
@@ -4831,19 +4883,14 @@ function ensurePickState(recipe) {
           {showClearListPrompt && (
             <Modal title="Lijst wissen" onClose={()=>{ if (!clearingList) setShowClearListPrompt(false); }}>
               <div className="text-sm text-slate-700 mb-4">
-                Je hebt {plannedRecipes.length} recept{plannedRecipes.length === 1 ? '' : 'en'} op je actieve menu. Wil je dat menu laten staan? Apart opgeslagen weekmenu’s blijven altijd bewaard.
+                Hiermee rond je ook het actieve menu met {plannedRecipes.length} recept{plannedRecipes.length === 1 ? '' : 'en'} af. Apart opgeslagen weekmenu’s blijven altijd bewaard.
               </div>
               <div className="flex flex-col gap-2">
                 <Button
-                  className="bg-emerald-600 text-white w-full"
+                  className="bg-rose-600 text-white w-full"
                   disabled={clearingList}
-                  onClick={()=>clearActiveList({ keepRecipes: true }).catch(error => console.error('Clear list failed:', error))}
-                >Lijst wissen, menu laten staan</Button>
-                <Button
-                  className="bg-rose-50 text-rose-700 w-full"
-                  disabled={clearingList}
-                  onClick={()=>clearActiveList({ keepRecipes: false }).catch(error => console.error('Clear list failed:', error))}
-                >Lijst en actief menu wissen</Button>
+                  onClick={()=>clearActiveList().catch(error => console.error('Clear list failed:', error))}
+                >Lijst wissen en menu afronden</Button>
                 <Button
                   className="bg-slate-100 text-slate-700 w-full"
                   disabled={clearingList}
