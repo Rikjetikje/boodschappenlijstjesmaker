@@ -71,13 +71,18 @@ const APP_ICONS = {
       return index < 0 ? 99 : index;
     }
 
-    function currentIsoWeekLabel(date = new Date()) {
+    function isoWeekLabel(date = new Date()) {
       const utcDate = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
       const weekday = utcDate.getUTCDay() || 7;
       utcDate.setUTCDate(utcDate.getUTCDate() + 4 - weekday);
       const yearStart = new Date(Date.UTC(utcDate.getUTCFullYear(), 0, 1));
       const week = Math.ceil((((utcDate - yearStart) / 86400000) + 1) / 7);
       return `Week ${week}`;
+    }
+
+    function nextIsoWeekLabel(date = new Date()) {
+      const nextWeek = new Date(date.getFullYear(), date.getMonth(), date.getDate() + 7);
+      return isoWeekLabel(nextWeek);
     }
 
     // Expose for safety (in case Babel wraps scopes)
@@ -2976,7 +2981,7 @@ useEffect(() => {
       const [newIngId, setNewIngId] = useState(null);
       const [addFeedback, setAddFeedback] = useState(null);
       const [plannedDayDrafts, setPlannedDayDrafts] = useState({});
-      const [menuWeekLabel, setMenuWeekLabel] = useState(() => currentIsoWeekLabel());
+      const [menuWeekLabel, setMenuWeekLabel] = useState(() => nextIsoWeekLabel());
       const [showMenuWeeks, setShowMenuWeeks] = useState(false);
       const [openMenuWeekId, setOpenMenuWeekId] = useState(null);
       const [openArchivedRecipeKey, setOpenArchivedRecipeKey] = useState(null);
@@ -3201,7 +3206,7 @@ useEffect(() => {
 
       async function saveCurrentMenuWeek() {
         if (!householdId || !menuPlans.length) return;
-        const label = menuWeekLabel.trim() || currentIsoWeekLabel();
+        const label = menuWeekLabel.trim() || nextIsoWeekLabel();
         const existing = (menuWeeks || []).find(week => String(week.label || '').trim().toLowerCase() === label.toLowerCase());
         if (existing && !confirm(`${label} bestaat al. Wil je deze vervangen door het huidige menu?`)) return;
 
