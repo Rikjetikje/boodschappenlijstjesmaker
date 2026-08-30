@@ -39,6 +39,26 @@ const APP_ICONS = {
       return s.replace('.', ',');
     }
 
+    function localDateKey(date) {
+      const d = date instanceof Date ? date : new Date(date);
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+
+    function formatPlannedDate(dateKey) {
+      if (!dateKey) return 'Nog in te plannen';
+      const parts = String(dateKey).split('-').map(Number);
+      if (parts.length !== 3 || parts.some(n => !isFinite(n))) return 'Nog in te plannen';
+      const date = new Date(parts[0], parts[1] - 1, parts[2]);
+      const today = new Date();
+      const tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+      if (localDateKey(date) === localDateKey(today)) return 'Vandaag';
+      if (localDateKey(date) === localDateKey(tomorrow)) return 'Morgen';
+      return date.toLocaleDateString('nl-NL', { weekday: 'short', day: 'numeric', month: 'short' });
+    }
+
     // Expose for safety (in case Babel wraps scopes)
     window.formatNum = formatNum;
 
@@ -1898,7 +1918,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
     }
 
             // --- Swipe (alleen in de winkel / lijst) ---
-      function SwipeRow({ item, children, onSwipeRight, onSwipeLeft, revealRightColor, rightReveal, openSide, onCloseReveal, isLastInGroup, getCollapseEl }) {
+      function SwipeRow({ item, children, onSwipeRight, onSwipeLeft, revealRightColor, rightReveal, openSide, onCloseReveal, isLastInGroup, getCollapseEl, checking = false }) {
         const rowRef = useRef(null);
         const deleteIconRef = useRef(null);
         const startRef = useRef({ x: 0, y: 0, base: 0, active: false, locked: false, horiz: false });
@@ -2100,7 +2120,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
         }
 
         return (
-          <div ref={outerRef} className="relative overflow-hidden">
+          <div ref={outerRef} className={"relative overflow-hidden " + (checking ? "bm-check-collapse" : "")}>
             {revealRightColor && (
               <div
                 className="absolute inset-y-0 left-0 w-28 flex items-center pl-4"
@@ -2126,7 +2146,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
               onTouchStart={onTouchStart}
               onTouchMove={onTouchMove}
               onTouchEnd={onTouchEnd}
-              className={"relative touch-pan-y " + (revealRightColor ? "bg-white" : "")}
+              className={"relative touch-pan-y " + (revealRightColor ? "bg-white" : "") + (checking ? " min-h-0 overflow-hidden" : "")}
             >
               {children}
             </div>
@@ -2134,7 +2154,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
         );
       }
 
-    function ListTab({ householdId, activeListId, products, items, currentUser, storeMode, showAdders }) {
+    function ListTab({ householdId, activeListId, products, items, currentUser, storeMode, showAdders, onClearList }) {
       const [newText, setNewText] = useState('');
       const [newCategory, setNewCategory] = useState('Overig');
       const [showSuggestions, setShowSuggestions] = useState(false);
@@ -2530,7 +2550,7 @@ useEffect(() => {
           next.add(item.id);
           return next;
         });
-        const animationMs = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 180 : 680;
+        const animationMs = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 180 : 760;
         setTimeout(async () => {
           try {
             await toggle(item);
@@ -2788,6 +2808,7 @@ useEffect(() => {
                         onCloseReveal={!storeMode ? (()=>setOpenQtyId(null)) : undefined}
                         isLastInGroup={!storeMode && group.items.length === 1}
                         getCollapseEl={() => groupRefs.current[`${group.category}-${group.checkedGroup ? 'checked' : 'open'}`]}
+                        checking={storeMode && !it.checked && pendingCheckIds.has(it.id)}
                         rightReveal={!storeMode ? (
                           <div
                             onClick={(e)=>e.stopPropagation()}
@@ -2814,7 +2835,7 @@ useEffect(() => {
                       >
 
                       <div
-                        className={"relative flex items-center " + (storeMode ? "px-3 py-3.5" : "max-w-xl mx-auto px-3 py-3" + (idx < group.items.length - 1 ? " border-b border-slate-200/80" : "")) + (storeMode && !it.checked && pendingCheckIds.has(it.id) ? " bm-check-implode" : "")}
+                        className={"relative flex items-center " + (storeMode ? "px-3 py-3.5" : "max-w-xl mx-auto px-3 py-3" + (idx < group.items.length - 1 ? " border-b border-slate-200/80" : "")) + (storeMode && !it.checked && pendingCheckIds.has(it.id) ? " bm-check-elastic" : "")}
                         style={storeMode && !it.checked && pendingCheckIds.has(it.id) ? { '--flash': categoryColor(it._cat) + '4d' } : undefined}
                         onClick={() => { if (storeMode) { toggleInStoreMode(it); } }}
                       >
@@ -2895,14 +2916,9 @@ useEffect(() => {
                     className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-700"
                   >Sluiten</button>
                   <button
-                    onClick={async ()=>{
+                    onClick={()=>{
                       setShowAllDone(false);
-                      const snap = await db.collection(`households/${householdId}/lists/${activeListId}/items`).get();
-                      if (!snap.empty) {
-                        const batch = db.batch();
-                        snap.docs.forEach(d => batch.delete(d.ref));
-                        await batch.commit();
-                      }
+                      onClearList?.();
                     }}
                     className="flex-1 px-4 py-2.5 rounded-xl bg-red-500 text-white text-sm font-semibold"
                   >Lijst wissen</button>
@@ -2934,8 +2950,8 @@ useEffect(() => {
         };
       }, []);
 
-      const plannedRecipeIds = useMemo(() => {
-        return new Set((plannedRecipes || []).map(plan => plan.recipeId || plan.id));
+      const plannedRecipeById = useMemo(() => {
+        return new Map((plannedRecipes || []).map(plan => [plan.recipeId || plan.id, plan]));
       }, [plannedRecipes]);
 
       const filtered = useMemo(() => {
@@ -2943,13 +2959,20 @@ useEffect(() => {
         let rs = recipes || [];
         if (q) rs = rs.filter(r => (r.name||'').toLowerCase().includes(q));
         rs = [...rs].sort((a,b) => {
-          const aPlanned = plannedRecipeIds.has(a.id);
-          const bPlanned = plannedRecipeIds.has(b.id);
+          const aPlan = plannedRecipeById.get(a.id);
+          const bPlan = plannedRecipeById.get(b.id);
+          const aPlanned = !!aPlan;
+          const bPlanned = !!bPlan;
           if (aPlanned !== bPlanned) return aPlanned ? -1 : 1;
+          if (aPlanned && bPlanned) {
+            const aDate = aPlan.plannedDate || '9999-12-31';
+            const bDate = bPlan.plannedDate || '9999-12-31';
+            if (aDate !== bDate) return aDate.localeCompare(bDate);
+          }
           return (a.name||'').localeCompare(b.name||'', 'nl');
         });
         return rs;
-      }, [recipes, query, plannedRecipeIds]);
+      }, [recipes, query, plannedRecipeById]);
 
       function newRecipe(initialName = '') {
         const id = genId('r');
@@ -3184,6 +3207,7 @@ useEffect(() => {
             id: recipeId,
             recipeId,
             recipeName: recipe?.name || 'Recept',
+            plannedDate: '',
             ingredients,
             addedAt: firebase.firestore.FieldValue.serverTimestamp(),
             addedBy: currentUser?.uid || '',
@@ -3463,6 +3487,7 @@ async function addRecipeToList(r, targetServings, pickState) {
             id: r.id,
             recipeId: r.id,
             recipeName: r.name || 'Recept',
+            plannedDate: priorPlan?.plannedDate || '',
             baseServings: base,
             ingredients: Array.from(plannedIngredientMap.values()),
             addedAt: priorPlan?.addedAt || firebase.firestore.FieldValue.serverTimestamp(),
@@ -3533,6 +3558,15 @@ async function addRecipeToList(r, targetServings, pickState) {
           });
         });
         await batch.commit();
+      }
+
+      async function setPlannedRecipeDate(plan, plannedDate) {
+        if (!householdId || !activeListId || !plan?.recipeId) return;
+        await db.doc(`households/${householdId}/lists/${activeListId}/planned_recipes/${plan.recipeId}`).set({
+          plannedDate: plannedDate || '',
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          updatedBy: currentUser?.uid || '',
+        }, { merge: true });
       }
 
       async function restoreMissingProducts(plan) {
@@ -3715,12 +3749,27 @@ function ensurePickState(recipe) {
                   <div className="text-4xl mb-1">🍲</div>
                   <div className="text-sm">Nog geen recepten</div>
                 </div>
-              ) : filtered.map(r => {
+              ) : filtered.map((r, index) => {
                 const isOpen = expandedId === r.id;
                 const st = pickMap[r.id];
                 const menuStatus = menuStatusByRecipe.get(r.id);
+                const previousRecipe = index > 0 ? filtered[index - 1] : null;
+                const previousMenuStatus = previousRecipe ? menuStatusByRecipe.get(previousRecipe.id) : null;
+                const currentDateKey = menuStatus?.plannedDate || '';
+                const previousDateKey = previousMenuStatus?.plannedDate || '';
+                const groupHeading = menuStatus
+                  ? (!previousMenuStatus || currentDateKey !== previousDateKey ? formatPlannedDate(currentDateKey) : null)
+                  : (previousMenuStatus ? 'Alle recepten' : null);
                 return (
-                  <div key={r.id} className="border-b border-slate-200/80 last:border-b-0">
+                  <React.Fragment key={r.id}>
+                  {groupHeading && (
+                    <div className="bg-slate-100/90 border-b border-slate-200 px-3 py-2">
+                      <div className="max-w-xl mx-auto text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                        {groupHeading}
+                      </div>
+                    </div>
+                  )}
+                  <div className="border-b border-slate-200/80 last:border-b-0">
                     <div className="max-w-xl mx-auto px-3 py-3 flex items-center gap-2">
                       <button
                         onClick={() => {
@@ -3735,7 +3784,7 @@ function ensurePickState(recipe) {
                         </div>
                         {menuStatus && (
                           <div className={"inline-flex mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold " + (menuStatus.missing.length ? "bg-rose-100 text-rose-700" : (menuStatus.alreadyOnListCount ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"))}>
-                            Op menu · {menuStatus.presentCount}/{menuStatus.ingredients.length} op lijst
+                            Op menu · {formatPlannedDate(menuStatus.plannedDate)} · {menuStatus.presentCount}/{menuStatus.ingredients.length} op lijst
                           </div>
                         )}
                       </button>
@@ -3766,6 +3815,15 @@ function ensurePickState(recipe) {
 
                         {menuStatus && (
                           <div className="mb-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+                            <label className="mb-2 block">
+                              <span className="block text-[11px] font-semibold text-slate-500 mb-1">Gepland voor</span>
+                              <input
+                                type="date"
+                                value={menuStatus.plannedDate || ''}
+                                onChange={(event) => setPlannedRecipeDate(menuStatus, event.target.value)}
+                                className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm text-slate-700"
+                              />
+                            </label>
                             <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] font-semibold">
                               {menuStatus.linkedCount > 0 && <span className="text-emerald-700">● {menuStatus.linkedCount} via recept</span>}
                               {menuStatus.alreadyOnListCount > 0 && <span className="text-amber-700">● {menuStatus.alreadyOnListCount} al aanwezig</span>}
@@ -3837,6 +3895,7 @@ function ensurePickState(recipe) {
                       </div>
                     )}
                   </div>
+                  </React.Fragment>
                 );
               })}
             </div>
@@ -4129,6 +4188,8 @@ function ensurePickState(recipe) {
       }, [storeMode, tab]);
       const [showSignOut, setShowSignOut] = useState(false);
       const [createdCode, setCreatedCode] = useState(null);
+      const [showClearListPrompt, setShowClearListPrompt] = useState(false);
+      const [clearingList, setClearingList] = useState(false);
 
       // Load household info (name + code)
       useEffect(() => {
@@ -4281,15 +4342,38 @@ function ensurePickState(recipe) {
         }
       }
 
-      async function handleClearActiveList() {
+      async function clearActiveList({ keepRecipes }) {
         if (!householdId || !activeListId) return;
-        if (!confirm('Hele lijst leegmaken?')) return;
-        const snap = await db.collection(`households/${householdId}/lists/${activeListId}/items`).get();
-        if (!snap.empty) {
-          const batch = db.batch();
-          snap.docs.forEach(d => batch.delete(d.ref));
-          await batch.commit();
+        setClearingList(true);
+        try {
+          const snap = await db.collection(`households/${householdId}/lists/${activeListId}/items`).get();
+          if (!snap.empty) {
+            const batch = db.batch();
+            snap.docs.forEach(d => batch.delete(d.ref));
+            await batch.commit();
+          }
+          if (!keepRecipes) {
+            const plannedSnap = await db.collection(`households/${householdId}/lists/${activeListId}/planned_recipes`).get();
+            if (!plannedSnap.empty) {
+              const batch = db.batch();
+              plannedSnap.docs.forEach(d => batch.delete(d.ref));
+              await batch.commit();
+            }
+          }
+          setShowClearListPrompt(false);
+        } finally {
+          setClearingList(false);
         }
+      }
+
+      function handleClearActiveList() {
+        if (!householdId || !activeListId) return;
+        if ((plannedRecipes || []).length > 0) {
+          setShowClearListPrompt(true);
+          return;
+        }
+        if (!confirm('Hele lijst leegmaken?')) return;
+        clearActiveList({ keepRecipes: true }).catch(error => console.error('Clear list failed:', error));
       }
 
       function handleSignIn() {
@@ -4361,6 +4445,7 @@ function ensurePickState(recipe) {
                 currentUser={user}
                 storeMode={storeMode}
                 showAdders={showAdders}
+                onClearList={handleClearActiveList}
               />
             ) : tab === 'products' ? (
               <ProductsTab
@@ -4412,6 +4497,31 @@ function ensurePickState(recipe) {
               <div className="flex flex-col sm:flex-row gap-2">
                 <Button className="bg-slate-100 text-slate-700 flex-1" onClick={()=>setShowSignOut(false)}>Annuleren</Button>
                 <Button className="bg-rose-600 text-white flex-1" onClick={()=>auth.signOut()}>Uitloggen</Button>
+              </div>
+            </Modal>
+          )}
+
+          {showClearListPrompt && (
+            <Modal title="Lijst wissen" onClose={()=>{ if (!clearingList) setShowClearListPrompt(false); }}>
+              <div className="text-sm text-slate-700 mb-4">
+                Je hebt {plannedRecipes.length} gekozen recept{plannedRecipes.length === 1 ? '' : 'en'}. Wil je die bewaren voor je volgende boodschappenronde?
+              </div>
+              <div className="flex flex-col gap-2">
+                <Button
+                  className="bg-emerald-600 text-white w-full"
+                  disabled={clearingList}
+                  onClick={()=>clearActiveList({ keepRecipes: true }).catch(error => console.error('Clear list failed:', error))}
+                >Lijst wissen, recepten bewaren</Button>
+                <Button
+                  className="bg-rose-50 text-rose-700 w-full"
+                  disabled={clearingList}
+                  onClick={()=>clearActiveList({ keepRecipes: false }).catch(error => console.error('Clear list failed:', error))}
+                >Lijst en recepten wissen</Button>
+                <Button
+                  className="bg-slate-100 text-slate-700 w-full"
+                  disabled={clearingList}
+                  onClick={()=>setShowClearListPrompt(false)}
+                >Annuleren</Button>
               </div>
             </Modal>
           )}

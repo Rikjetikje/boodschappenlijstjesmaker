@@ -24,51 +24,61 @@ button, input, select { -webkit-tap-highlight-color: transparent; }
   100% { background-color: transparent; }
 }
 
-@keyframes bmCheckImplode {
+@keyframes bmCheckElastic {
   0% {
-    max-height: 160px;
     opacity: 1;
     transform: scaleX(1) scaleY(1);
   }
-  16% {
-    max-height: 160px;
-    transform: scaleX(1.035) scaleY(.93);
+  14% {
+    transform: scaleX(1.022) scaleY(.965);
   }
-  32% {
-    max-height: 160px;
-    transform: scaleX(.975) scaleY(1.055);
+  28% {
+    transform: scaleX(.992) scaleY(1.02);
   }
-  46% {
-    max-height: 160px;
-    transform: scaleX(1.018) scaleY(.975);
-  }
-  58% {
-    max-height: 160px;
+  42% {
     opacity: 1;
-    transform: scaleX(1) scaleY(1);
+    transform: scaleX(1.006) scaleY(.995);
+  }
+  64% {
+    opacity: .92;
+    transform: scaleX(.985) scaleY(.88);
+  }
+  82% {
+    opacity: .5;
+    transform: scaleX(.93) scaleY(.42);
   }
   100% {
-    max-height: 0;
-    padding-top: 0;
-    padding-bottom: 0;
     opacity: 0;
-    transform: scaleX(.82) scaleY(0);
+    transform: scaleX(.86) scaleY(.04);
   }
 }
 
-.bm-check-implode {
-  overflow: hidden;
+@keyframes bmCheckCollapse {
+  0%, 42% { grid-template-rows: 1fr; }
+  100% { grid-template-rows: 0fr; }
+}
+
+.bm-check-collapse {
+  display: grid;
+  grid-template-rows: 1fr;
+  animation: bmCheckCollapse 760ms cubic-bezier(.22, .72, .24, 1) forwards;
+}
+
+.bm-check-elastic {
   transform-origin: center center;
-  will-change: transform, opacity, max-height, padding;
+  will-change: transform, opacity;
   animation:
-    bmflash 680ms cubic-bezier(.22, .61, .36, 1) forwards,
-    bmCheckImplode 680ms cubic-bezier(.3, 1.45, .45, 1) forwards;
+    bmflash 760ms cubic-bezier(.22, .61, .36, 1) forwards,
+    bmCheckElastic 760ms cubic-bezier(.22, .72, .24, 1) forwards;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .bm-check-implode {
+  .bm-check-collapse {
+    animation: bmCheckCollapse 180ms ease-out forwards;
+  }
+  .bm-check-elastic {
     animation:
       bmflash 180ms ease-out forwards,
-      bmCheckImplode 180ms ease-out forwards;
+      bmCheckElastic 180ms ease-out forwards;
   }
 }
