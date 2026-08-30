@@ -274,11 +274,14 @@ const APP_ICONS = {
       const [products, setProducts] = useState([]);
       const [items, setItems] = useState([]);
       const [recipes, setRecipes] = useState([]);
+      const [plannedRecipes, setPlannedRecipes] = useState([]);
+      const [plannedRecipesLoaded, setPlannedRecipesLoaded] = useState(false);
       const [syncing, setSyncing] = useState(false);
 
       useEffect(() => {
         if (!user || !householdId) {
-          setMembers([]); setLists([]); setProducts([]); setItems([]); setRecipes([]);
+          setMembers([]); setLists([]); setProducts([]); setItems([]); setRecipes([]); setPlannedRecipes([]);
+          setPlannedRecipesLoaded(false);
           return;
         }
         const hid = householdId;
@@ -322,13 +325,31 @@ const APP_ICONS = {
       }, [user, householdId]);
 
       useEffect(() => {
-        if (!user || !householdId || !activeListId) { setItems([]); return; }
+        if (!user || !householdId || !activeListId) {
+          setItems([]);
+          setPlannedRecipes([]);
+          setPlannedRecipesLoaded(false);
+          return;
+        }
         const hid = householdId;
-        const ref = db.collection(`households/${hid}/lists/${activeListId}/items`);
-        const unsub = ref.onSnapshot(snap => {
+        setItems([]);
+        setPlannedRecipes([]);
+        setPlannedRecipesLoaded(false);
+        const itemRef = db.collection(`households/${hid}/lists/${activeListId}/items`);
+        const planRef = db.collection(`households/${hid}/lists/${activeListId}/planned_recipes`);
+        const unsubItems = itemRef.onSnapshot(snap => {
           setItems(snap.docs.map(d => ({ id: d.id, ...d.data() })));
         }, err => console.error("List items listener error:", err));
-        return () => unsub();
+        const unsubPlans = planRef.onSnapshot(snap => {
+          const plans = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+            .sort((a,b) => (a.addedAt?.seconds||0) - (b.addedAt?.seconds||0));
+          setPlannedRecipes(plans);
+          setPlannedRecipesLoaded(true);
+        }, err => {
+          console.error("Planned recipes listener error:", err);
+          setPlannedRecipesLoaded(true);
+        });
+        return () => { unsubItems(); unsubPlans(); };
       }, [user, householdId, activeListId]);
 
       // Auto-select first list if none
@@ -337,7 +358,7 @@ const APP_ICONS = {
         if (lists.length > 0 && !activeListId) setActiveListId(lists[0].id);
       }, [lists, householdId, activeListId, setActiveListId]);
 
-      return { members, lists, products, items, recipes, syncing };
+      return { members, lists, products, items, recipes, plannedRecipes, plannedRecipesLoaded, syncing };
     }
 
     // ---------------- UI bits ----------------
@@ -1122,6 +1143,7 @@ const APP_ICONS = {
                         const listsMeta = await db.collection(`households/${householdId}/lists_meta`).get();
                         for (const listDoc of listsMeta.docs) {
                           await deleteCollection(`households/${householdId}/lists/${listDoc.id}/items`);
+                          await deleteCollection(`households/${householdId}/lists/${listDoc.id}/planned_recipes`);
                         }
                         await deleteCollection(`households/${householdId}/lists_meta`);
                         await deleteCollection(`households/${householdId}/products`);
@@ -2891,16 +2913,18 @@ useEffect(() => {
     }
 
     // ---------------- Recipes tab ----------------
-    function RecipesTab({ householdId, recipes, products, items, activeListId, currentUser }) {
+    function RecipesTab({ householdId, recipes, products, items, plannedRecipes, plannedRecipesLoaded, activeListId, currentUser }) {
       const [query, setQuery] = useState('');
       const [openId, setOpenId] = useState(null); // recipe id in modal
       const [draft, setDraft] = useState(null);   // editable recipe
       const [quickServings, setQuickServings] = useState(5);
       const [expandedId, setExpandedId] = useState(null);
+      const [expandedMenuId, setExpandedMenuId] = useState(null);
       const [pickMap, setPickMap] = useState({});
       const [newIngId, setNewIngId] = useState(null);
       const [addFeedback, setAddFeedback] = useState(null);
       const addFeedbackTimerRef = useRef(null);
+      const backfilledMenuKeysRef = useRef(new Set());
 
       useEffect(() => {
         return () => {
@@ -3053,6 +3077,88 @@ useEffect(() => {
         return { name, cat };
       }
 
+      const menuPlans = useMemo(() => {
+        const productIdsOnList = new Set((items || []).filter(it => it.productId).map(it => it.productId));
+        const recipeById = new Map((recipes || []).map(r => [r.id, r]));
+        return (plannedRecipes || []).map(plan => {
+          const seen = new Set();
+          const ingredients = (plan.ingredients || []).filter(ing => {
+            if (!ing?.productId || seen.has(ing.productId)) return false;
+            seen.add(ing.productId);
+            return true;
+          }).map(ing => ({
+            ...ing,
+            onList: productIdsOnList.has(ing.productId),
+          }));
+          const missing = ingredients.filter(ing => !ing.onList);
+          const recipe = recipeById.get(plan.recipeId || plan.id) || null;
+          return {
+            ...plan,
+            recipe,
+            recipeId: plan.recipeId || plan.id,
+            recipeName: recipe?.name || plan.recipeName || 'Recept',
+            ingredients,
+            missing,
+            presentCount: ingredients.length - missing.length,
+          };
+        });
+      }, [plannedRecipes, items, recipes]);
+
+      const menuStatusByRecipe = useMemo(() => {
+        return new Map(menuPlans.map(plan => [plan.recipeId, plan]));
+      }, [menuPlans]);
+
+      // Recepten die vóór deze functie zijn toegevoegd, hebben al verwijzingen
+      // op lijstregels maar nog geen los menu-item. Leg die één keer alsnog vast,
+      // zodat ze niet verdwijnen zodra later een product wordt verwijderd.
+      useEffect(() => {
+        if (!householdId || !activeListId || !plannedRecipesLoaded) return;
+        const existingPlanIds = new Set((plannedRecipes || []).map(p => p.recipeId || p.id));
+        const recipeById = new Map((recipes || []).map(r => [r.id, r]));
+        const productById = new Map((products || []).map(p => [p.id, p]));
+        const referencedRecipeIds = new Set();
+        (items || []).forEach(item => {
+          Object.keys(item.needsByRecipe || {}).forEach(recipeId => referencedRecipeIds.add(recipeId));
+        });
+
+        const missingPlanIds = Array.from(referencedRecipeIds).filter(recipeId => {
+          const key = `${activeListId}:${recipeId}`;
+          return !existingPlanIds.has(recipeId) && !backfilledMenuKeysRef.current.has(key);
+        });
+        if (!missingPlanIds.length) return;
+
+        const batch = db.batch();
+        missingPlanIds.forEach(recipeId => {
+          backfilledMenuKeysRef.current.add(`${activeListId}:${recipeId}`);
+          const recipe = recipeById.get(recipeId);
+          const ingredients = (items || []).filter(item => item.needsByRecipe?.[recipeId] && item.productId).map(item => {
+            const product = productById.get(item.productId);
+            return {
+              productId: item.productId,
+              name: product?.name || item.nameSnapshot || 'Product',
+              category: product?.category || item.categorySnapshot || 'Overig',
+              buyQty: Math.max(1, Number(item.qty) || 1),
+              need: item.needsByRecipe[recipeId],
+            };
+          });
+          batch.set(db.doc(`households/${householdId}/lists/${activeListId}/planned_recipes/${recipeId}`), {
+            id: recipeId,
+            recipeId,
+            recipeName: recipe?.name || 'Recept',
+            ingredients,
+            addedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            addedBy: currentUser?.uid || '',
+            addedByName: currentUser?.displayName || '',
+            backfilled: true,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          }, { merge: true });
+        });
+        batch.commit().catch(error => {
+          missingPlanIds.forEach(recipeId => backfilledMenuKeysRef.current.delete(`${activeListId}:${recipeId}`));
+          console.error('Backfill planned recipes failed:', error);
+        });
+      }, [householdId, activeListId, plannedRecipesLoaded, plannedRecipes, recipes, products, items, currentUser]);
+
       const DISCRETE_UNITS = ['st','stuk','bl','blik','zak','pak','pot','fles','tube','bol','krop','teen','tenen','knol','bus'];
 
       function scaleAmountText(amountText, unitText, base, target) {
@@ -3134,6 +3240,10 @@ async function addRecipeToList(r, targetServings, pickState) {
         let added = 0;
         const undoItems = [];
         const undoItemIds = new Set();
+        const priorPlan = (plannedRecipes || []).find(plan => (plan.recipeId || plan.id) === r.id) || null;
+        const plannedIngredientMap = new Map((priorPlan?.ingredients || [])
+          .filter(ing => ing?.productId)
+          .map(ing => [ing.productId, ing]));
 
         ings.forEach((ing, idx) => {
           const key = ing._id || String(idx);
@@ -3208,6 +3318,15 @@ async function addRecipeToList(r, targetServings, pickState) {
           const needObj = isFinite(needNum)
             ? { value: needNum, unit: String(unit || 'st') }
             : { valueText: origAmount, unit: String(unit || 'st') };
+
+          plannedIngredientMap.set(ensuredProductId, {
+            ingredientId: key,
+            productId: ensuredProductId,
+            name,
+            category: (ensuredProduct?.category) || cat,
+            buyQty: Math.max(1, buyInc || 1),
+            need: needObj,
+          });
 
           // bestaat het item al op de lijst?
           const existing = existingByProductId.get(ensuredProductId);
@@ -3300,6 +3419,21 @@ async function addRecipeToList(r, targetServings, pickState) {
           existingByProductId.set(ensuredProductId, { id, productId: ensuredProductId });
         });
 
+        if (added > 0) {
+          batch.set(db.doc(`households/${householdId}/lists/${activeListId}/planned_recipes/${r.id}`), {
+            id: r.id,
+            recipeId: r.id,
+            recipeName: r.name || 'Recept',
+            baseServings: base,
+            ingredients: Array.from(plannedIngredientMap.values()),
+            addedAt: priorPlan?.addedAt || firebase.firestore.FieldValue.serverTimestamp(),
+            addedBy: priorPlan?.addedBy || currentUser?.uid || '',
+            addedByName: priorPlan?.addedByName || currentUser?.displayName || '',
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            updatedBy: currentUser?.uid || '',
+          }, { merge: true });
+        }
+
         await batch.commit();
         if (added > 0) {
           setAddFeedback({
@@ -3307,6 +3441,7 @@ async function addRecipeToList(r, targetServings, pickState) {
             message: `${added} product${added === 1 ? '' : 'en'} toegevoegd aan je lijst.`,
             listId: activeListId,
             undoItems,
+            planBefore: priorPlan,
           });
           setExpandedId(null);
           setPickMap(prev => {
@@ -3338,9 +3473,88 @@ async function addRecipeToList(r, targetServings, pickState) {
           if (before) batch.set(ref, before);
           else batch.delete(ref);
         });
+        if (Object.prototype.hasOwnProperty.call(addFeedback, 'planBefore') && addFeedback.recipeId) {
+          const planRef = db.doc(`households/${householdId}/lists/${listId}/planned_recipes/${addFeedback.recipeId}`);
+          if (addFeedback.planBefore) batch.set(planRef, addFeedback.planBefore);
+          else batch.delete(planRef);
+        }
         await batch.commit();
         setAddFeedback(null);
       }
+
+      async function removeMenuPlan(plan) {
+        if (!householdId || !activeListId || !plan?.recipeId) return;
+        if (!confirm(`"${plan.recipeName}" van het menu halen? De producten blijven op je lijst staan.`)) return;
+        const batch = db.batch();
+        batch.delete(db.doc(`households/${householdId}/lists/${activeListId}/planned_recipes/${plan.recipeId}`));
+        (items || []).forEach(item => {
+          if (!item.needsByRecipe?.[plan.recipeId]) return;
+          batch.update(db.doc(`households/${householdId}/lists/${activeListId}/items/${item.id}`), {
+            [`needsByRecipe.${plan.recipeId}`]: firebase.firestore.FieldValue.delete(),
+          });
+        });
+        await batch.commit();
+        if (expandedMenuId === plan.recipeId) setExpandedMenuId(null);
+      }
+
+      async function restoreMissingProducts(plan) {
+        if (!householdId || !activeListId || !plan?.missing?.length) return;
+        const productById = new Map((products || []).map(product => [product.id, product]));
+        const batch = db.batch();
+        const undoItems = [];
+
+        plan.missing.forEach(ingredient => {
+          if (!ingredient.productId) return;
+          if (!productById.has(ingredient.productId)) {
+            batch.set(db.doc(`households/${householdId}/products/${ingredient.productId}`), {
+              id: ingredient.productId,
+              schemaVersion: 2,
+              name: ingredient.name || 'Product',
+              category: ingredient.category || 'Overig',
+              updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+              updatedBy: currentUser?.uid || '',
+              updatedByName: currentUser?.displayName || '',
+              updatedByPhotoURL: currentUser?.photoURL || '',
+            }, { merge: true });
+          }
+          const id = itemIdForProduct(ingredient.productId);
+          const ref = db.doc(`households/${householdId}/lists/${activeListId}/items/${id}`);
+          batch.set(ref, {
+            id,
+            productId: ingredient.productId,
+            nameSnapshot: ingredient.name || 'Product',
+            categorySnapshot: ingredient.category || 'Overig',
+            qty: clamp(Number(ingredient.buyQty) || 1, 1, 99),
+            checked: false,
+            needsByRecipe: { [plan.recipeId]: ingredient.need || { valueText: '', unit: 'st' } },
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            createdBy: currentUser?.uid || '',
+            createdByName: currentUser?.displayName || '',
+            createdByPhotoURL: currentUser?.photoURL || '',
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            updatedBy: currentUser?.uid || '',
+            updatedByName: currentUser?.displayName || '',
+            updatedByPhotoURL: currentUser?.photoURL || '',
+            source: `recipe:${plan.recipeId}`,
+          }, { merge: true });
+          undoItems.push({ id, before: null });
+        });
+
+        if (!undoItems.length) return;
+        await batch.commit();
+        setAddFeedback({
+          recipeId: plan.recipeId,
+          message: `${undoItems.length} ontbrekend${undoItems.length === 1 ? ' product' : 'e producten'} teruggezet.`,
+          listId: activeListId,
+          undoItems,
+        });
+        if (addFeedbackTimerRef.current) clearTimeout(addFeedbackTimerRef.current);
+        addFeedbackTimerRef.current = setTimeout(() => {
+          setAddFeedback(null);
+          addFeedbackTimerRef.current = null;
+        }, 5000);
+      }
+
       const productSuggestions = (text) => {
         const q = (text||'').trim().toLowerCase();
         if (q.length < 2) return [];
@@ -3456,6 +3670,112 @@ function ensurePickState(recipe) {
             </div>
           </div>
 
+          <section className="mb-4" aria-labelledby="menu-heading">
+            <div className="flex items-center justify-between gap-3 px-1 mb-2">
+              <div>
+                <h2 id="menu-heading" className="text-sm font-bold text-slate-900">Op het menu</h2>
+                <div className="text-[11px] text-slate-500">Recepten die aan dit lijstje zijn toegevoegd</div>
+              </div>
+              {menuPlans.length > 0 && (
+                <span className="shrink-0 min-w-6 h-6 px-2 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold flex items-center justify-center">
+                  {menuPlans.length}
+                </span>
+              )}
+            </div>
+
+            {!activeListId ? (
+              <div className="rounded-2xl border border-dashed border-slate-300 bg-white/70 px-4 py-3 text-sm text-slate-500">
+                Maak eerst een lijstje aan om recepten te plannen.
+              </div>
+            ) : !plannedRecipesLoaded ? (
+              <div className="rounded-2xl border border-slate-200 bg-white/70 px-4 py-3 text-sm text-slate-500">
+                Menu laden…
+              </div>
+            ) : menuPlans.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-slate-300 bg-white/70 px-4 py-3 text-sm text-slate-500">
+                Nog niets gepland. Voeg hieronder een recept toe aan je lijst.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {menuPlans.map(plan => {
+                  const isMenuOpen = expandedMenuId === plan.recipeId;
+                  const total = plan.ingredients.length;
+                  const complete = total > 0 && plan.missing.length === 0;
+                  const progress = total ? Math.round((plan.presentCount / total) * 100) : 0;
+                  return (
+                    <div
+                      key={plan.id || plan.recipeId}
+                      className={"overflow-hidden rounded-2xl border bg-white shadow-sm " + (plan.missing.length ? "border-rose-200" : "border-emerald-200")}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setExpandedMenuId(isMenuOpen ? null : plan.recipeId)}
+                        className="w-full px-4 py-3 text-left"
+                        aria-expanded={isMenuOpen}
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className={"mt-0.5 w-8 h-8 rounded-full flex items-center justify-center shrink-0 " + (complete ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700")}>
+                            {complete ? "✓" : "!"}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="font-semibold text-[15px] text-slate-900 truncate">{plan.recipeName}</div>
+                            <div className={"mt-0.5 text-xs font-medium " + (plan.missing.length ? "text-rose-700" : "text-emerald-700")}>
+                              {plan.presentCount} van {total} producten op de lijst
+                              {plan.missing.length ? ` · ${plan.missing.length} ontbreekt${plan.missing.length === 1 ? '' : 'en'}` : ' · compleet'}
+                            </div>
+                            <div className="mt-2 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                              <div
+                                className={"h-full rounded-full transition-all " + (plan.missing.length ? "bg-rose-400" : "bg-emerald-500")}
+                                style={{ width: `${progress}%` }}
+                              />
+                            </div>
+                          </div>
+                          <svg viewBox="0 0 24 24" className={"mt-1 w-5 h-5 text-slate-500 shrink-0 transition-transform " + (isMenuOpen ? "rotate-180" : "")} fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <path d="m6 9 6 6 6-6" />
+                          </svg>
+                        </div>
+                      </button>
+
+                      {isMenuOpen && (
+                        <div className="border-t border-slate-100 px-4 pb-4">
+                          <div className="py-2 divide-y divide-slate-100">
+                            {plan.ingredients.map(ingredient => (
+                              <div key={ingredient.productId} className="flex items-center gap-2 py-2">
+                                <span className={"w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 " + (ingredient.onList ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700")}>
+                                  {ingredient.onList ? "✓" : "!"}
+                                </span>
+                                <span className={"flex-1 min-w-0 truncate text-sm " + (ingredient.onList ? "text-slate-700" : "font-semibold text-rose-700")}>
+                                  {ingredient.name || 'Product'}
+                                </span>
+                                <span className={"text-[11px] shrink-0 " + (ingredient.onList ? "text-emerald-700" : "text-rose-600")}>
+                                  {ingredient.onList ? 'op lijst' : 'ontbreekt'}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                          <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                            {plan.missing.length > 0 && (
+                              <Button onClick={() => restoreMissingProducts(plan)} className="flex-1 bg-rose-600 text-white">
+                                Zet ontbrekende terug
+                              </Button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => removeMenuPlan(plan)}
+                              className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-600 text-sm font-semibold"
+                            >
+                              Van menu halen
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
           <div className="relative left-1/2 w-screen -translate-x-1/2">
             <div className="bg-white border-y border-slate-200/80">
               {filtered.length === 0 ? (
@@ -3466,6 +3786,7 @@ function ensurePickState(recipe) {
               ) : filtered.map(r => {
                 const isOpen = expandedId === r.id;
                 const st = pickMap[r.id];
+                const menuStatus = menuStatusByRecipe.get(r.id);
                 return (
                   <div key={r.id} className="border-b border-slate-200/80 last:border-b-0">
                     <div className="max-w-xl mx-auto px-3 py-3 flex items-center gap-2">
@@ -3480,6 +3801,11 @@ function ensurePickState(recipe) {
                         <div className="text-xs text-slate-500 truncate">
                           {(r.ingredients||[]).length} ingrediënten · basis {r.baseServings || 5} pers.
                         </div>
+                        {menuStatus && (
+                          <div className={"inline-flex mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold " + (menuStatus.missing.length ? "bg-rose-100 text-rose-700" : "bg-emerald-100 text-emerald-700")}>
+                            Op menu · {menuStatus.presentCount}/{menuStatus.ingredients.length} op lijst
+                          </div>
+                        )}
                       </button>
 
                       <button onClick={() => { if (!isOpen) ensurePickState(r); setExpandedId(isOpen ? null : r.id); }} title="Openen/sluiten" aria-label="Openen/sluiten" className="w-9 h-9 rounded-full bg-transparent text-slate-600 flex items-center justify-center">
@@ -3946,7 +4272,7 @@ function ensurePickState(recipe) {
         return () => { cancelled = true; };
       }, [user, householdId]);
 
-      const { members, lists, products, items, recipes, syncing } = useHouseholdData(user, householdId, activeListId, setActiveListId);
+      const { members, lists, products, items, recipes, plannedRecipes, plannedRecipesLoaded, syncing } = useHouseholdData(user, householdId, activeListId, setActiveListId);
 
       async function handleCreateList(name) {
         if (!householdId || !user) return;
@@ -3969,6 +4295,13 @@ function ensurePickState(recipe) {
         if (!snap.empty) {
           const batch = db.batch();
           snap.docs.forEach(d => batch.delete(d.ref));
+          await batch.commit();
+        }
+
+        const plannedSnap = await db.collection(`households/${householdId}/lists/${listId}/planned_recipes`).get();
+        if (!plannedSnap.empty) {
+          const batch = db.batch();
+          plannedSnap.docs.forEach(d => batch.delete(d.ref));
           await batch.commit();
         }
 
@@ -4074,6 +4407,8 @@ function ensurePickState(recipe) {
                 recipes={recipes}
                 products={products}
                 items={items}
+                plannedRecipes={plannedRecipes}
+                plannedRecipesLoaded={plannedRecipesLoaded}
                 activeListId={activeListId}
                 currentUser={user}
               />
