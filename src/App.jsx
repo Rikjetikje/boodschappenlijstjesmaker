@@ -2919,7 +2919,6 @@ useEffect(() => {
       const [draft, setDraft] = useState(null);   // editable recipe
       const [quickServings, setQuickServings] = useState(5);
       const [expandedId, setExpandedId] = useState(null);
-      const [expandedMenuId, setExpandedMenuId] = useState(null);
       const [pickMap, setPickMap] = useState({});
       const [newIngId, setNewIngId] = useState(null);
       const [addFeedback, setAddFeedback] = useState(null);
@@ -2932,13 +2931,22 @@ useEffect(() => {
         };
       }, []);
 
+      const plannedRecipeIds = useMemo(() => {
+        return new Set((plannedRecipes || []).map(plan => plan.recipeId || plan.id));
+      }, [plannedRecipes]);
+
       const filtered = useMemo(() => {
         const q = query.trim().toLowerCase();
         let rs = recipes || [];
         if (q) rs = rs.filter(r => (r.name||'').toLowerCase().includes(q));
-        rs = [...rs].sort((a,b) => (a.name||'').localeCompare(b.name||'', 'nl'));
+        rs = [...rs].sort((a,b) => {
+          const aPlanned = plannedRecipeIds.has(a.id);
+          const bPlanned = plannedRecipeIds.has(b.id);
+          if (aPlanned !== bPlanned) return aPlanned ? -1 : 1;
+          return (a.name||'').localeCompare(b.name||'', 'nl');
+        });
         return rs;
-      }, [recipes, query]);
+      }, [recipes, query, plannedRecipeIds]);
 
       function newRecipe(initialName = '') {
         const id = genId('r');
@@ -3124,6 +3132,17 @@ useEffect(() => {
       const menuStatusByRecipe = useMemo(() => {
         return new Map(menuPlans.map(plan => [plan.recipeId, plan]));
       }, [menuPlans]);
+
+      function findPlannedIngredient(menuStatus, ingredient, ingredientKey) {
+        if (!menuStatus) return null;
+        const display = resolveIngDisplay(ingredient);
+        const normalizedName = String(display.name || '').trim().toLowerCase();
+        return menuStatus.ingredients.find(candidate => (
+          (candidate.ingredientId && candidate.ingredientId === ingredientKey) ||
+          (ingredient.productId && candidate.productId === ingredient.productId) ||
+          (normalizedName && String(candidate.name || '').trim().toLowerCase() === normalizedName)
+        )) || null;
+      }
 
       // Recepten die vóór deze functie zijn toegevoegd, hebben al verwijzingen
       // op lijstregels maar nog geen los menu-item. Leg die één keer alsnog vast,
@@ -3511,7 +3530,6 @@ async function addRecipeToList(r, targetServings, pickState) {
           });
         });
         await batch.commit();
-        if (expandedMenuId === plan.recipeId) setExpandedMenuId(null);
       }
 
       async function restoreMissingProducts(plan) {
@@ -3687,127 +3705,6 @@ function ensurePickState(recipe) {
             </div>
           </div>
 
-          <section className="mb-4" aria-labelledby="menu-heading">
-            <div className="flex items-center justify-between gap-3 px-1 mb-2">
-              <div>
-                <h2 id="menu-heading" className="text-sm font-bold text-slate-900">Op het menu</h2>
-                <div className="text-[11px] text-slate-500">Recepten die aan dit lijstje zijn toegevoegd</div>
-              </div>
-              {menuPlans.length > 0 && (
-                <span className="shrink-0 min-w-6 h-6 px-2 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold flex items-center justify-center">
-                  {menuPlans.length}
-                </span>
-              )}
-            </div>
-
-            {!activeListId ? (
-              <div className="rounded-2xl border border-dashed border-slate-300 bg-white/70 px-4 py-3 text-sm text-slate-500">
-                Maak eerst een lijstje aan om recepten te plannen.
-              </div>
-            ) : !plannedRecipesLoaded ? (
-              <div className="rounded-2xl border border-slate-200 bg-white/70 px-4 py-3 text-sm text-slate-500">
-                Menu laden…
-              </div>
-            ) : menuPlans.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-slate-300 bg-white/70 px-4 py-3 text-sm text-slate-500">
-                Nog niets gepland. Voeg hieronder een recept toe aan je lijst.
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {menuPlans.map(plan => {
-                  const isMenuOpen = expandedMenuId === plan.recipeId;
-                  const total = plan.ingredients.length;
-                  const complete = total > 0 && plan.missing.length === 0;
-                  const fullyLinked = complete && plan.alreadyOnListCount === 0;
-                  const linkedProgress = total ? (plan.linkedCount / total) * 100 : 0;
-                  const alreadyOnListProgress = total ? (plan.alreadyOnListCount / total) * 100 : 0;
-                  const statusTone = plan.missing.length ? 'missing' : (plan.alreadyOnListCount ? 'mixed' : 'linked');
-                  return (
-                    <div
-                      key={plan.id || plan.recipeId}
-                      className={"overflow-hidden rounded-2xl border bg-white shadow-sm " + (statusTone === 'missing' ? "border-rose-200" : (statusTone === 'mixed' ? "border-amber-200" : "border-emerald-200"))}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => setExpandedMenuId(isMenuOpen ? null : plan.recipeId)}
-                        className="w-full px-4 py-3 text-left"
-                        aria-expanded={isMenuOpen}
-                      >
-                        <div className="flex items-start gap-3">
-                          <div className={"mt-0.5 w-8 h-8 rounded-full flex items-center justify-center shrink-0 " + (statusTone === 'missing' ? "bg-rose-100 text-rose-700" : (statusTone === 'mixed' ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"))}>
-                            {complete ? "✓" : "!"}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="font-semibold text-[15px] text-slate-900 truncate">{plan.recipeName}</div>
-                            <div className="mt-0.5 text-xs font-semibold text-slate-700">
-                              {plan.presentCount}/{total} op de lijst
-                            </div>
-                            <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[10px] font-semibold">
-                              {plan.linkedCount > 0 && <span className="text-emerald-700">● {plan.linkedCount} via recept</span>}
-                              {plan.alreadyOnListCount > 0 && <span className="text-amber-700">● {plan.alreadyOnListCount} al aanwezig</span>}
-                              {plan.missing.length > 0 && <span className="text-rose-700">● {plan.missing.length} ontbreekt{plan.missing.length === 1 ? '' : 'en'}</span>}
-                              {fullyLinked && <span className="text-emerald-700">· compleet</span>}
-                            </div>
-                            <div className="mt-2 h-1.5 rounded-full bg-rose-100 overflow-hidden flex">
-                              <div
-                                className="h-full bg-emerald-500 transition-all"
-                                style={{ width: `${linkedProgress}%` }}
-                              />
-                              <div
-                                className="h-full bg-amber-400 transition-all"
-                                style={{ width: `${alreadyOnListProgress}%` }}
-                              />
-                            </div>
-                          </div>
-                          <svg viewBox="0 0 24 24" className={"mt-1 w-5 h-5 text-slate-500 shrink-0 transition-transform " + (isMenuOpen ? "rotate-180" : "")} fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                            <path d="m6 9 6 6 6-6" />
-                          </svg>
-                        </div>
-                      </button>
-
-                      {isMenuOpen && (
-                        <div className="border-t border-slate-100 px-4 pb-4">
-                          <div className="py-2 divide-y divide-slate-100">
-                            {plan.ingredients.map(ingredient => {
-                              const ingredientTone = ingredient.linkedToRecipe ? 'linked' : (ingredient.onList ? 'present' : 'missing');
-                              return (
-                                <div key={ingredient.productId} className="flex items-center gap-2 py-2">
-                                  <span className={"w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 " + (ingredientTone === 'linked' ? "bg-emerald-100 text-emerald-700" : (ingredientTone === 'present' ? "bg-amber-100 text-amber-700" : "bg-rose-100 text-rose-700"))}>
-                                    {ingredient.onList ? "✓" : "!"}
-                                  </span>
-                                  <span className={"flex-1 min-w-0 truncate text-sm " + (ingredientTone === 'missing' ? "font-semibold text-rose-700" : "text-slate-700")}>
-                                    {ingredient.name || 'Product'}
-                                  </span>
-                                  <span className={"text-[11px] shrink-0 " + (ingredientTone === 'linked' ? "text-emerald-700" : (ingredientTone === 'present' ? "text-amber-700" : "text-rose-600"))}>
-                                    {ingredientTone === 'linked' ? 'via recept' : (ingredientTone === 'present' ? 'al op lijst' : 'ontbreekt')}
-                                  </span>
-                                </div>
-                              );
-                            })}
-                          </div>
-                          <div className="flex flex-col sm:flex-row gap-2 pt-1">
-                            {plan.missing.length > 0 && (
-                              <Button onClick={() => restoreMissingProducts(plan)} className="flex-1 bg-rose-600 text-white">
-                                Zet ontbrekende terug
-                              </Button>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => removeMenuPlan(plan)}
-                              className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-600 text-sm font-semibold"
-                            >
-                              Van menu halen
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </section>
-
           <div className="relative left-1/2 w-screen -translate-x-1/2">
             <div className="bg-white border-y border-slate-200/80">
               {filtered.length === 0 ? (
@@ -3864,12 +3761,44 @@ function ensurePickState(recipe) {
                           <div className="text-xs text-slate-500 mb-2">Nog geen online recept gekoppeld.</div>
                         )}
 
+                        {menuStatus && (
+                          <div className="mb-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+                            <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] font-semibold">
+                              {menuStatus.linkedCount > 0 && <span className="text-emerald-700">● {menuStatus.linkedCount} via recept</span>}
+                              {menuStatus.alreadyOnListCount > 0 && <span className="text-amber-700">● {menuStatus.alreadyOnListCount} al aanwezig</span>}
+                              {menuStatus.missing.length > 0 && <span className="text-rose-700">● {menuStatus.missing.length} ontbreekt{menuStatus.missing.length === 1 ? '' : 'en'}</span>}
+                            </div>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {menuStatus.missing.length > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => restoreMissingProducts(menuStatus)}
+                                  className="px-3 py-2 rounded-lg bg-rose-600 text-white text-xs font-semibold"
+                                >
+                                  Zet ontbrekende terug
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => removeMenuPlan(menuStatus)}
+                                className="px-3 py-2 rounded-lg border border-slate-200 bg-white text-slate-600 text-xs font-semibold"
+                              >
+                                Van menu halen
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
                         <div className="space-y-1">
                           {(r.ingredients||[]).map((ing, idx) => {
                             const key = ing._id || String(idx);
                             const disp = resolveIngDisplay(ing);
                             const defaultQty = parseDefaultQty(ing);
                             const checked = st.picks?.[key] !== false;
+                            const plannedIngredient = findPlannedIngredient(menuStatus, ing, key);
+                            const plannedTone = plannedIngredient
+                              ? (plannedIngredient.linkedToRecipe ? 'linked' : (plannedIngredient.onList ? 'present' : 'missing'))
+                              : null;
                                                         return (
                               <div key={key} className="flex items-center gap-2 py-2 border-b border-slate-100 last:border-b-0">
                                 <button onClick={()=>togglePick(r.id, key)} className={
@@ -3885,6 +3814,11 @@ function ensurePickState(recipe) {
                                   </div>
                                   {ing.amount && (
                                     <div className="text-[11px] text-slate-500 truncate">nodig: {ing.amount} {ing.unit || 'st'}</div>
+                                  )}
+                                  {plannedTone && (
+                                    <div className={"text-[10px] font-semibold truncate " + (plannedTone === 'linked' ? "text-emerald-700" : (plannedTone === 'present' ? "text-amber-700" : "text-rose-700"))}>
+                                      ● {plannedTone === 'linked' ? 'via recept' : (plannedTone === 'present' ? 'al op lijst' : 'ontbreekt')}
+                                    </div>
                                   )}
                                 </div>
 
