@@ -2985,16 +2985,28 @@ useEffect(() => {
       const [showMenuWeeks, setShowMenuWeeks] = useState(false);
       const [openMenuWeekId, setOpenMenuWeekId] = useState(null);
       const [openArchivedRecipeKey, setOpenArchivedRecipeKey] = useState(null);
+      const [addingToMenuWeekId, setAddingToMenuWeekId] = useState(null);
+      const [archiveRecipeDraft, setArchiveRecipeDraft] = useState({ recipeId: '', plannedDay: '' });
       const [savingMenuWeek, setSavingMenuWeek] = useState(false);
       const [menuWeekFeedback, setMenuWeekFeedback] = useState('');
       const addFeedbackTimerRef = useRef(null);
       const backfilledMenuKeysRef = useRef(new Set());
+      const openedDefaultMenuWeekRef = useRef(false);
 
       useEffect(() => {
         return () => {
           if (addFeedbackTimerRef.current) clearTimeout(addFeedbackTimerRef.current);
         };
       }, []);
+
+      useEffect(() => {
+        if (openedDefaultMenuWeekRef.current || !(menuWeeks || []).length) return;
+        const currentWeekLabel = isoWeekLabel();
+        const preferredWeek = menuWeeks.find(week => String(week.label || '').trim().toLowerCase() === currentWeekLabel.toLowerCase()) || menuWeeks[0];
+        openedDefaultMenuWeekRef.current = true;
+        setShowMenuWeeks(true);
+        setOpenMenuWeekId(preferredWeek.id);
+      }, [menuWeeks]);
 
       const plannedRecipeById = useMemo(() => {
         return new Map((plannedRecipes || []).map(plan => [plan.recipeId || plan.id, plan]));
@@ -3248,12 +3260,77 @@ useEffect(() => {
         }
       }
 
+      function snapshotRecipeForMenuWeek(recipe, plannedDay) {
+        return {
+          recipeId: recipe.id,
+          recipeName: recipe.name || 'Recept',
+          recipeUrl: recipe.url || '',
+          plannedDay: plannedDay || '',
+          baseServings: recipe.baseServings || 5,
+          ingredients: (recipe.ingredients || []).map((ingredient, index) => {
+            const display = resolveIngDisplay(ingredient);
+            let unit = ingredient.unit ?? ingredient.unitText ?? 'st';
+            if (String(unit).toLowerCase() === 'g') unit = 'gr';
+            const amountText = String(ingredient.amount ?? ingredient.qty ?? ingredient.quantity ?? '').trim();
+            const amountNumber = parseFloat(amountText.replace(',', '.'));
+            return {
+              ingredientId: ingredient._id || String(index),
+              productId: ingredient.productId || '',
+              name: display.name || 'Product',
+              category: display.cat || 'Overig',
+              buyQty: Math.max(1, Number(ingredient.buyQty) || 1),
+              need: isFinite(amountNumber)
+                ? { value: amountNumber, unit: String(unit || 'st') }
+                : { valueText: amountText, unit: String(unit || 'st') },
+            };
+          }),
+        };
+      }
+
+      async function updateMenuWeekRecipes(menuWeek, nextRecipes, feedback) {
+        if (!householdId || !menuWeek?.id) return;
+        await db.doc(`households/${householdId}/menu_weeks/${menuWeek.id}`).set({
+          recipes: nextRecipes,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          updatedBy: currentUser?.uid || '',
+        }, { merge: true });
+        setMenuWeekFeedback(feedback);
+      }
+
+      async function updateArchivedRecipeDay(menuWeek, recipeId, plannedDay) {
+        const nextRecipes = (menuWeek.recipes || []).map(recipe => (
+          recipe.recipeId === recipeId ? { ...recipe, plannedDay: plannedDay || '' } : recipe
+        ));
+        await updateMenuWeekRecipes(menuWeek, nextRecipes, `${menuWeek.label} is aangepast.`);
+      }
+
+      async function removeArchivedRecipe(menuWeek, recipe) {
+        if (!confirm(`${recipe.recipeName || 'Dit recept'} uit ${menuWeek.label || 'deze week'} verwijderen?`)) return;
+        const nextRecipes = (menuWeek.recipes || []).filter(item => item.recipeId !== recipe.recipeId);
+        await updateMenuWeekRecipes(menuWeek, nextRecipes, `${recipe.recipeName || 'Het recept'} is uit ${menuWeek.label} verwijderd.`);
+        setOpenArchivedRecipeKey(null);
+      }
+
+      async function addRecipeToArchivedWeek(menuWeek) {
+        const recipe = (recipes || []).find(item => item.id === archiveRecipeDraft.recipeId);
+        if (!recipe) return;
+        const nextRecipes = [
+          ...(menuWeek.recipes || []),
+          snapshotRecipeForMenuWeek(recipe, archiveRecipeDraft.plannedDay),
+        ];
+        await updateMenuWeekRecipes(menuWeek, nextRecipes, `${recipe.name || 'Het recept'} is aan ${menuWeek.label} toegevoegd.`);
+        setAddingToMenuWeekId(null);
+        setArchiveRecipeDraft({ recipeId: '', plannedDay: '' });
+        setOpenArchivedRecipeKey(`${menuWeek.id}:${recipe.id}`);
+      }
+
       async function deleteMenuWeek(menuWeek) {
         if (!householdId || !menuWeek?.id) return;
         if (!confirm(`${menuWeek.label || 'Dit weekmenu'} verwijderen?`)) return;
         await db.doc(`households/${householdId}/menu_weeks/${menuWeek.id}`).delete();
         if (openMenuWeekId === menuWeek.id) setOpenMenuWeekId(null);
         if (openArchivedRecipeKey?.startsWith(`${menuWeek.id}:`)) setOpenArchivedRecipeKey(null);
+        if (addingToMenuWeekId === menuWeek.id) setAddingToMenuWeekId(null);
       }
 
       function findPlannedIngredient(menuStatus, ingredient, ingredientKey) {
@@ -3896,7 +3973,7 @@ function ensurePickState(recipe) {
                     type="button"
                     onClick={() => setShowMenuWeeks(value => !value)}
                     className="shrink-0 px-2.5 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-xs font-semibold"
-                  >{showMenuWeeks ? 'Sluiten' : `Bewaard (${menuWeeks.length})`}</button>
+                  >{showMenuWeeks ? 'Inklappen' : `Bewaard (${menuWeeks.length})`}</button>
                 )}
               </div>
               <div className="flex gap-2">
@@ -3930,6 +4007,8 @@ function ensurePickState(recipe) {
                     if (dayDifference !== 0) return dayDifference;
                     return String(a.recipeName || '').localeCompare(String(b.recipeName || ''), 'nl');
                   });
+                  const archivedRecipeIds = new Set(archivedRecipes.map(recipe => recipe.recipeId));
+                  const availableRecipes = (recipes || []).filter(recipe => !archivedRecipeIds.has(recipe.id));
                   return (
                     <div key={menuWeek.id} className="border-b border-slate-200 last:border-b-0">
                       <div className="px-3 py-2 flex items-center gap-2">
@@ -3971,6 +4050,20 @@ function ensurePickState(recipe) {
                                   </button>
                                   {recipeIsOpen && (
                                     <div className="px-3 pb-3">
+                                      <div className="mb-2">
+                                        <div className="text-[11px] font-semibold text-slate-500 mb-1">Weekdag aanpassen</div>
+                                        <div className="grid grid-cols-7 gap-1">
+                                          {MENU_WEEKDAYS.map(day => (
+                                            <button
+                                              key={day.key}
+                                              type="button"
+                                              onClick={() => updateArchivedRecipeDay(menuWeek, recipe.recipeId, plannedDayKey(recipe) === day.key ? '' : day.key)}
+                                              className={"h-8 rounded-lg text-[10px] font-bold border " + (plannedDayKey(recipe) === day.key ? "bg-emerald-600 border-emerald-600 text-white" : "bg-white border-slate-200 text-slate-600")}
+                                              aria-label={day.label}
+                                            >{day.short}</button>
+                                          ))}
+                                        </div>
+                                      </div>
                                       {recipeUrl && (
                                         <a
                                           href={/^https?:\/\//i.test(recipeUrl.trim()) ? recipeUrl.trim() : `https://${recipeUrl.trim()}`}
@@ -3994,12 +4087,62 @@ function ensurePickState(recipe) {
                                           <div className="px-2.5 py-2 text-xs text-slate-500">Geen ingrediënten opgeslagen.</div>
                                         )}
                                       </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => removeArchivedRecipe(menuWeek, recipe)}
+                                        className="mt-2 text-xs font-semibold text-rose-600"
+                                      >Uit deze week verwijderen</button>
                                     </div>
                                   )}
                                 </div>
                               );
                             })}
                           </div>
+                          {addingToMenuWeekId === menuWeek.id ? (
+                            <div className="mt-2 rounded-xl border border-slate-200 bg-white p-3">
+                              <div className="text-xs font-semibold text-slate-700 mb-1.5">Recept toevoegen aan {menuWeek.label}</div>
+                              <select
+                                value={archiveRecipeDraft.recipeId}
+                                onChange={(event) => setArchiveRecipeDraft(previous => ({ ...previous, recipeId: event.target.value }))}
+                                className="w-full h-10 px-3 rounded-lg border border-slate-200 bg-white text-sm"
+                              >
+                                <option value="">Kies een recept…</option>
+                                {availableRecipes.map(recipe => <option key={recipe.id} value={recipe.id}>{recipe.name || 'Recept'}</option>)}
+                              </select>
+                              <div className="text-[11px] font-semibold text-slate-500 mt-2 mb-1">Weekdag</div>
+                              <div className="grid grid-cols-7 gap-1">
+                                {MENU_WEEKDAYS.map(day => (
+                                  <button
+                                    key={day.key}
+                                    type="button"
+                                    onClick={() => setArchiveRecipeDraft(previous => ({ ...previous, plannedDay: previous.plannedDay === day.key ? '' : day.key }))}
+                                    className={"h-8 rounded-lg text-[10px] font-bold border " + (archiveRecipeDraft.plannedDay === day.key ? "bg-emerald-600 border-emerald-600 text-white" : "bg-white border-slate-200 text-slate-600")}
+                                    aria-label={day.label}
+                                  >{day.short}</button>
+                                ))}
+                              </div>
+                              <div className="mt-2 flex gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => { setAddingToMenuWeekId(null); setArchiveRecipeDraft({ recipeId: '', plannedDay: '' }); }}
+                                  className="flex-1 px-3 py-2 rounded-lg bg-slate-100 text-slate-700 text-xs font-semibold"
+                                >Annuleren</button>
+                                <button
+                                  type="button"
+                                  onClick={() => addRecipeToArchivedWeek(menuWeek)}
+                                  disabled={!archiveRecipeDraft.recipeId}
+                                  className="flex-1 px-3 py-2 rounded-lg bg-emerald-600 text-white text-xs font-semibold disabled:opacity-40"
+                                >Toevoegen</button>
+                              </div>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => { setAddingToMenuWeekId(menuWeek.id); setArchiveRecipeDraft({ recipeId: '', plannedDay: '' }); }}
+                              disabled={!availableRecipes.length}
+                              className="mt-2 w-full px-3 py-2 rounded-lg border border-dashed border-slate-300 bg-white text-slate-700 text-xs font-semibold disabled:opacity-40"
+                            >+ Recept toevoegen</button>
+                          )}
                         </div>
                       )}
                     </div>
