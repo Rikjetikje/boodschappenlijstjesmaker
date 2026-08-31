@@ -3248,39 +3248,6 @@ useEffect(() => {
         }
       }
 
-      async function restoreMenuWeek(menuWeek) {
-        if (!householdId || !activeListId || !menuWeek?.recipes?.length) return;
-        if ((plannedRecipes || []).length && !confirm(`De huidige geplande recepten vervangen door ${menuWeek.label}? Je bestaande boodschappen blijven staan; er worden geen nieuwe producten toegevoegd.`)) return;
-        const batch = db.batch();
-        const restoredRecipeIds = new Set(menuWeek.recipes.map(recipe => recipe.recipeId).filter(Boolean));
-        (plannedRecipes || []).forEach(plan => {
-          const recipeId = plan.recipeId || plan.id;
-          if (!restoredRecipeIds.has(recipeId)) {
-            batch.delete(db.doc(`households/${householdId}/lists/${activeListId}/planned_recipes/${recipeId}`));
-          }
-        });
-        menuWeek.recipes.forEach(recipe => {
-          if (!recipe.recipeId) return;
-          batch.set(db.doc(`households/${householdId}/lists/${activeListId}/planned_recipes/${recipe.recipeId}`), {
-            id: recipe.recipeId,
-            recipeId: recipe.recipeId,
-            recipeName: recipe.recipeName || 'Recept',
-            plannedDay: recipe.plannedDay || '',
-            plannedDate: '',
-            baseServings: recipe.baseServings || 5,
-            ingredients: recipe.ingredients || [],
-            addedAt: firebase.firestore.FieldValue.serverTimestamp(),
-            addedBy: currentUser?.uid || '',
-            addedByName: currentUser?.displayName || '',
-            restoredFromMenuWeekId: menuWeek.id,
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-            updatedBy: currentUser?.uid || '',
-          });
-        });
-        await batch.commit();
-        setMenuWeekFeedback(`De recepten uit ${menuWeek.label} staan weer in je planning.`);
-      }
-
       async function deleteMenuWeek(menuWeek) {
         if (!householdId || !menuWeek?.id) return;
         if (!confirm(`${menuWeek.label || 'Dit weekmenu'} verwijderen?`)) return;
@@ -4032,15 +3999,6 @@ function ensurePickState(recipe) {
                                 </div>
                               );
                             })}
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => restoreMenuWeek(menuWeek)}
-                            disabled={!archivedRecipes.length}
-                            className="mt-2 w-full px-3 py-2 rounded-lg bg-slate-800 text-white text-xs font-semibold disabled:opacity-40"
-                          >Recepten opnieuw plannen</button>
-                          <div className="mt-1.5 text-[11px] leading-snug text-slate-500 text-center">
-                            Zet de recepten met dezelfde weekdagen terug in je planning. Boodschappen worden niet automatisch toegevoegd.
                           </div>
                         </div>
                       )}
