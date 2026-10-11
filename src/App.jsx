@@ -2875,8 +2875,17 @@ useEffect(() => {
                   style={{ maxHeight: "240px", WebkitOverflowScrolling: "touch" }}
                 >
                   {suggestions.map(s => (
-                    <button key={s.id} onMouseDown={(e)=>e.preventDefault()}
-                      onClick={(e)=>{ e.preventDefault(); pickSuggestionProduct(s); }}
+                    <button
+                      key={s.id}
+                      type="button"
+                      onPointerUp={(e)=>{
+                        e.preventDefault();
+                        pickSuggestionProduct(s);
+                      }}
+                      onClick={(e)=>{
+                        e.preventDefault();
+                        if (e.detail === 0) pickSuggestionProduct(s);
+                      }}
                       className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 flex items-center gap-2 border-b border-slate-100 last:border-b-0">
                       <span className="flex-1 truncate">{s.name}</span>
                       <span className="text-[11px] text-slate-500 shrink-0">{(s.category||'Overig').split(',')[0]}</span>
