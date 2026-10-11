@@ -16,9 +16,7 @@ button, input, select, textarea, [role="button"] {
 }
 
 button:focus-visible,
-input:focus-visible,
-select:focus-visible,
-textarea:focus-visible,
+[role="button"]:focus-visible,
 [tabindex]:focus-visible {
   outline: 3px solid rgb(16 185 129 / 0.35);
   outline-offset: 2px;
