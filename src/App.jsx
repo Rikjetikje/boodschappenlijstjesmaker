@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { auth, db, firebase } from './firebase';
 import packageInfo from '../package.json';
 
@@ -30,6 +30,20 @@ const APP_ICONS = {
 
 
     function clamp(n, a, b){ return Math.max(a, Math.min(b, n)); }
+
+    function revealExpandedControl(control) {
+      if (!control) return;
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          if (!control.isConnected) return;
+          const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+          const top = Math.max(0, window.scrollY + control.getBoundingClientRect().top - 8);
+          try { control.focus({ preventScroll: true }); }
+          catch (error) { control.focus(); }
+          window.scrollTo({ top, behavior: reduceMotion ? 'auto' : 'smooth' });
+        });
+      });
+    }
 
     function formatNum(n) {
       if (!isFinite(n)) return '';
@@ -177,33 +191,42 @@ const APP_ICONS = {
       );
     }
 
-    function QuantityControl({ qty, onDec, onInc, plusTitle = "Meer", minusTitle = "Minder", collapseAtOne = false }) {
+    function QuantityControl({ qty, onDec, onInc, plusTitle = "Meer", minusTitle = "Minder", busy = false }) {
       const q = clamp(Number(qty) || 0, 0, 99);
-      if (q <= 0 || (collapseAtOne && q <= 1)) {
+      if (q <= 0) {
         return (
           <button
+            type="button"
             onClick={onInc}
             title={plusTitle}
-            className="relative w-9 h-9 rounded-full border border-[#17372d]/20 bg-white text-[#17372d] text-sm font-medium flex items-center justify-center before:absolute before:content-[''] before:-inset-1.5"
+            aria-label={plusTitle}
+            disabled={busy}
+            className="w-11 h-11 rounded-full border border-[#17372d]/20 bg-white text-[#17372d] text-sm font-medium flex items-center justify-center"
           >
-            +
+            {busy ? '…' : '+'}
           </button>
         );
       }
       return (
-        <div className="flex items-center gap-1 rounded-full bg-slate-100 border border-slate-200 p-1">
+        <div className="flex items-center gap-0.5 rounded-full bg-slate-100 border border-slate-200 p-0.5">
           <button
+            type="button"
             onClick={onDec}
             title={minusTitle}
-            className="relative w-7 h-7 rounded-full bg-white text-slate-700 text-sm border border-slate-200 flex items-center justify-center before:absolute before:content-[''] before:-inset-y-2.5 before:-inset-x-1"
+            aria-label={minusTitle}
+            disabled={busy}
+            className="w-11 h-11 rounded-full bg-white text-slate-700 text-sm border border-slate-200 flex items-center justify-center"
           >
             -
           </button>
-          <div className="min-w-[22px] text-center text-sm font-medium text-slate-700 tabular-nums">{q}</div>
+          <div aria-live="polite" className="min-w-[22px] text-center text-sm font-medium text-slate-700 tabular-nums">{busy ? '…' : q}</div>
           <button
+            type="button"
             onClick={onInc}
             title={plusTitle}
-            className="relative w-7 h-7 rounded-full bg-white text-[#17372d] text-sm border border-[#17372d]/20 flex items-center justify-center before:absolute before:content-[''] before:-inset-y-2.5 before:-inset-x-1"
+            aria-label={plusTitle}
+            disabled={busy}
+            className="w-11 h-11 rounded-full bg-white text-[#17372d] text-sm border border-[#17372d]/20 flex items-center justify-center"
           >
             +
           </button>
@@ -421,7 +444,7 @@ const APP_ICONS = {
       return (
         <button
           className={
-            "px-4 py-2.5 rounded-xl font-semibold text-sm " +
+            "min-h-11 px-4 py-2.5 rounded-xl font-semibold text-sm " +
             "active:scale-[0.99] transition " +
             "disabled:opacity-60 disabled:active:scale-100 " +
             className
@@ -440,7 +463,10 @@ const APP_ICONS = {
     function Modal({ title, onClose, children, footer }) {
       const ref = useRef(null);
       const contentRef = useRef(null);
+      const titleRef = useRef(null);
+      const previousFocusRef = useRef(null);
       const focusTimersRef = useRef([]);
+      const titleId = useId();
       const [viewport, setViewport] = useState(() => ({
         height: window.visualViewport ? window.visualViewport.height : window.innerHeight,
         offsetTop: window.visualViewport ? window.visualViewport.offsetTop : 0,
@@ -508,6 +534,24 @@ const APP_ICONS = {
       }, [onClose]);
 
       useEffect(() => {
+        previousFocusRef.current = document.activeElement;
+        if (contentRef.current) contentRef.current.scrollTop = 0;
+        const frame = window.requestAnimationFrame(() => {
+          if (ref.current?.contains(document.activeElement)) return;
+          try { titleRef.current?.focus({ preventScroll: true }); }
+          catch (error) { titleRef.current?.focus(); }
+        });
+        return () => {
+          window.cancelAnimationFrame(frame);
+          const previous = previousFocusRef.current;
+          if (previous?.isConnected) {
+            try { previous.focus({ preventScroll: true }); }
+            catch (error) { previous.focus(); }
+          }
+        };
+      }, []);
+
+      useEffect(() => {
         const vv = window.visualViewport;
         if (!vv) return;
         const update = () => {
@@ -538,17 +582,20 @@ const APP_ICONS = {
       return (
         <div
           ref={ref}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={title ? titleId : undefined}
           className="fixed left-0 right-0 bg-black/50 flex items-end sm:items-center justify-center z-50"
           style={{ top: `${viewport.offsetTop}px`, height: `${viewport.height}px` }}
           onMouseDown={(e) => { if (e.target === ref.current) onClose?.(); }}>
           <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-2xl max-h-[calc(100%-0.75rem)] sm:max-h-[85vh] flex flex-col overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
-              <div className="font-bold text-base">{title || ''}</div>
-              <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 text-sm transform-gpu">✕</button>
+              <h2 ref={titleRef} id={titleId} tabIndex="-1" className="font-bold text-base outline-none">{title || ''}</h2>
+              <button type="button" onClick={onClose} aria-label="Sluiten" className="w-11 h-11 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 text-sm transform-gpu">✕</button>
             </div>
             <div
               ref={contentRef}
-              className="flex-1 overflow-auto p-4"
+              className="flex-1 overflow-auto overscroll-contain p-4"
               onFocusCapture={(event) => queueControlVisibilityCheck(
                 event.target,
                 event.target?.dataset?.modalFocusAlign === 'top'
@@ -946,7 +993,7 @@ const APP_ICONS = {
             onClick={()=>setTab(id)}
             title={label}
             aria-label={label}
-            className={(active ? 'bg-emerald-600 text-white' : 'bg-white border border-slate-200 text-slate-700') + ' h-10 w-full px-0 py-0 flex items-center justify-center'}
+            className={(active ? 'bg-emerald-600 text-white' : 'bg-white border border-slate-200 text-slate-700') + ' h-11 w-full px-0 py-0 flex items-center justify-center'}
           >
             <TabIcon type={id} active={active} />
           </Button>
@@ -959,7 +1006,7 @@ const APP_ICONS = {
             <div className="relative">
               <button
                 onClick={() => setShowMenu(!showMenu)}
-                className="w-10 h-10 rounded-xl bg-white border border-slate-200 text-slate-700 shadow-sm flex items-center justify-center"
+                className="w-11 h-11 rounded-xl bg-white border border-slate-200 text-slate-700 shadow-sm flex items-center justify-center"
                 title="Menu"
                 aria-label="Menu"
               >
@@ -1095,16 +1142,19 @@ const APP_ICONS = {
             )}
 
             <div className="flex items-center gap-2 shrink-0">
-              <div
-                className="flex items-center gap-1 cursor-pointer select-none"
+              <button
+                type="button"
+                className="min-h-11 flex items-center gap-1 cursor-pointer select-none"
                 onClick={() => setStoreMode?.(!storeMode)}
                 title={storeMode ? "Winkelmodus uit" : "Winkelmodus aan"}
+                aria-label={storeMode ? "Winkelmodus uit" : "Winkelmodus aan"}
+                aria-pressed={storeMode}
               >
                 <img src={storeMode ? CART_FULL : CART_EMPTY} alt="" aria-hidden="true" className="w-6 h-6 object-contain" />
                 <div className={"relative w-11 h-6 rounded-full transition-colors duration-200 " + (storeMode ? "bg-emerald-500" : "bg-slate-300")}>
                   <div className={"absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 " + (storeMode ? "translate-x-5" : "translate-x-0")} />
                 </div>
-              </div>
+              </button>
             </div>
           </div>
 
@@ -1242,6 +1292,8 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
   const [editName, setEditName] = useState('');
   const [editCategory, setEditCategory] = useState('Overig');
   const [addFeedback, setAddFeedback] = useState(null);
+  const [pendingProductIds, setPendingProductIds] = useState(() => new Set());
+  const pendingProductIdsRef = useRef(new Set());
   const addFeedbackTimerRef = useRef(null);
 
   // Cycle chips (W / 2W / 3W): clicking a chip puts those products on top AND selects them.
@@ -1466,33 +1518,25 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
     return arr.find(x => x.productId === productId && !x.checked) || arr.find(x => x.productId === productId) || null;
   }
 
-  async function decItemFromProduct(p) {
-    if (!activeListId) { alert('Maak eerst een lijst aan.'); return; }
-    const existing = findExistingByProductId(p.id);
-    if (!existing) return;
-    const next = clamp(currentQty(existing) - 1, 0, 99);
-    const ref = db.doc(`households/${householdId}/lists/${activeListId}/items/${existing.id}`);
-    if (next <= 0) { await ref.delete(); return; }
-    await ref.set({
-      qty: next,
-      amount: String(next),
-      unit: 'st',
-      checked: false,
-      nameSnapshot: p.name || existing.nameSnapshot || '',
-      categorySnapshot: p.category || existing.categorySnapshot || 'Overig',
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-      updatedBy: currentUser?.uid || '',
-      updatedByName: currentUser?.displayName || '',
-      updatedByPhotoURL: currentUser?.photoURL || '',
-    }, { merge: true });
+  function setProductPending(productId, pending) {
+    const next = new Set(pendingProductIdsRef.current);
+    if (pending) next.add(productId);
+    else next.delete(productId);
+    pendingProductIdsRef.current = next;
+    setPendingProductIds(next);
   }
 
-  async function addItemFromProduct(p) {
+  async function decItemFromProduct(p) {
     if (!activeListId) { alert('Maak eerst een lijst aan.'); return; }
-    const existing = findExistingByProductId(p.id);
-    if (existing) {
-      const next = clamp(currentQty(existing) + 1, 0, 99);
-      await db.doc(`households/${householdId}/lists/${activeListId}/items/${existing.id}`).set({
+    if (pendingProductIdsRef.current.has(p.id)) return;
+    setProductPending(p.id, true);
+    try {
+      const existing = findExistingByProductId(p.id);
+      if (!existing) return;
+      const next = clamp(currentQty(existing) - 1, 0, 99);
+      const ref = db.doc(`households/${householdId}/lists/${activeListId}/items/${existing.id}`);
+      if (next <= 0) { await ref.delete(); return; }
+      await ref.set({
         qty: next,
         amount: String(next),
         unit: 'st',
@@ -1504,28 +1548,56 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
         updatedByName: currentUser?.displayName || '',
         updatedByPhotoURL: currentUser?.photoURL || '',
       }, { merge: true });
-      return;
+    } finally {
+      setProductPending(p.id, false);
     }
-    const id = itemIdForProduct(p.id);
-    await db.doc(`households/${householdId}/lists/${activeListId}/items/${id}`).set({
-      id,
-      productId: p.id,
-      nameSnapshot: p.name || '',
-      categorySnapshot: p.category || 'Overig',
-      qty: 1,
-      amount: '1',
-      unit: 'st',
-      checked: false,
-      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-      createdBy: currentUser?.uid || '',
-      createdByName: currentUser?.displayName || '',
-      createdByPhotoURL: currentUser?.photoURL || '',
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-      updatedBy: currentUser?.uid || '',
-      updatedByName: currentUser?.displayName || '',
-      updatedByPhotoURL: currentUser?.photoURL || '',
-      source: 'product',
-    });
+  }
+
+  async function addItemFromProduct(p) {
+    if (!activeListId) { alert('Maak eerst een lijst aan.'); return; }
+    if (pendingProductIdsRef.current.has(p.id)) return;
+    setProductPending(p.id, true);
+    try {
+      const existing = findExistingByProductId(p.id);
+      if (existing) {
+        const next = clamp(currentQty(existing) + 1, 0, 99);
+        await db.doc(`households/${householdId}/lists/${activeListId}/items/${existing.id}`).set({
+          qty: next,
+          amount: String(next),
+          unit: 'st',
+          checked: false,
+          nameSnapshot: p.name || existing.nameSnapshot || '',
+          categorySnapshot: p.category || existing.categorySnapshot || 'Overig',
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          updatedBy: currentUser?.uid || '',
+          updatedByName: currentUser?.displayName || '',
+          updatedByPhotoURL: currentUser?.photoURL || '',
+        }, { merge: true });
+        return;
+      }
+      const id = itemIdForProduct(p.id);
+      await db.doc(`households/${householdId}/lists/${activeListId}/items/${id}`).set({
+        id,
+        productId: p.id,
+        nameSnapshot: p.name || '',
+        categorySnapshot: p.category || 'Overig',
+        qty: 1,
+        amount: '1',
+        unit: 'st',
+        checked: false,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        createdBy: currentUser?.uid || '',
+        createdByName: currentUser?.displayName || '',
+        createdByPhotoURL: currentUser?.photoURL || '',
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        updatedBy: currentUser?.uid || '',
+        updatedByName: currentUser?.displayName || '',
+        updatedByPhotoURL: currentUser?.photoURL || '',
+        source: 'product',
+      });
+    } finally {
+      setProductPending(p.id, false);
+    }
   }
 
   function toggleSelected(productId) {
@@ -1793,24 +1865,27 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
                 const existing = findExistingByProductId(p.id);
                 const qty = currentQty(existing);
                 const isSelected = selectedIds.has(p.id);
+                const isPending = pendingProductIds.has(p.id);
 
                 return (
                   <div key={p.id} className="max-w-xl mx-auto px-3 py-3 flex items-center gap-2 border-b border-slate-200/80 last:border-b-0">
                     <button
+                      type="button"
                       onClick={() => toggleSelected(p.id)}
-                      className={
-                        "relative w-6 h-6 rounded-lg border flex items-center justify-center text-xs shrink-0 before:absolute before:content-[''] before:-inset-2.5 " +
-                        (isSelected ? "bg-emerald-600 border-emerald-600 text-white" : "bg-white border-slate-300 text-slate-500")
-                      }
+                      className="w-11 h-11 flex items-center justify-center shrink-0"
                       title={isSelected ? "Deselecteren" : "Selecteren"}
+                      aria-label={isSelected ? `${p.name} deselecteren` : `${p.name} selecteren`}
                     >
-                      {isSelected ? "✓" : ""}
+                      <span className={
+                        "w-6 h-6 rounded-lg border flex items-center justify-center text-xs " +
+                        (isSelected ? "bg-emerald-600 border-emerald-600 text-white" : "bg-white border-slate-300 text-slate-500")
+                      }>{isSelected ? "✓" : ""}</span>
                     </button>
 
                     <button
                       type="button"
                       onClick={() => toggleSelected(p.id)}
-                      className="flex-1 min-w-0 text-left"
+                      className="flex-1 min-w-0 min-h-11 text-left flex items-center"
                       title={isSelected ? "Deselecteren" : "Selecteren"}
                     >
                       <div className="font-normal text-[15px] text-slate-800 truncate">{p.name}</div>
@@ -1821,10 +1896,10 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
                       onDec={()=>decItemFromProduct(p)}
                       onInc={()=>addItemFromProduct(p)}
                       plusTitle="Toevoegen aan lijst"
-                      collapseAtOne
+                      busy={isPending}
                     />
 
-                    <button onClick={()=>startEdit(p)} className="w-9 h-9 rounded-full bg-transparent text-slate-600 flex items-center justify-center" title="Product bewerken">
+                    <button type="button" onClick={()=>startEdit(p)} aria-label={`${p.name} bewerken`} className="w-11 h-11 rounded-full bg-transparent text-slate-600 flex items-center justify-center" title="Product bewerken">
                       <EditIcon className="w-5 h-5" />
                     </button>
                   </div>
@@ -2197,6 +2272,8 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
       const suggestionPointerDownRef = useRef(false);
       const [showCreateOptions, setShowCreateOptions] = useState(false);
       const [showAllDone, setShowAllDone] = useState(false);
+      const [addingItem, setAddingItem] = useState(false);
+      const addingItemRef = useRef(false);
       const addInputRef = useRef(null);
 
       // Mobile UX: "magnet" add bar to top on focus (especially iOS keyboard)
@@ -2506,37 +2583,43 @@ useEffect(() => {
 
       async function addFreeText() {
         const text = newText.trim();
-        if (!text) return;
+        if (!text || addingItemRef.current) return;
+        addingItemRef.current = true;
+        setAddingItem(true);
+        try {
+          // If the text matches an existing product (exact), just add it
+          const existing = exactProduct;
+          if (existing) {
+            await addItemFromProduct(existing);
+          } else {
+            // Create a new product so it shows up in the product list, then add it
+            if (!householdId) { alert('Geen huishouden gevonden.'); return; }
 
-        // If the text matches an existing product (exact), just add it
-        const existing = exactProduct;
-        if (existing) {
-          await addItemFromProduct(existing);
-        } else {
-          // Create a new product so it shows up in the product list, then add it
-          if (!householdId) { alert('Geen huishouden gevonden.'); return; }
+            const productId = genId('p');
+            const category = newCategory || 'Overig';
+            const productDoc = {
+              id: productId,
+              schemaVersion: 2,
+              name: text,
+              category,
+              updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+              updatedBy: currentUser?.uid || '',
+              updatedByName: currentUser?.displayName || '',
+              updatedByPhotoURL: currentUser?.photoURL || '',
+            };
 
-          const productId = genId('p');
-          const category = newCategory || 'Overig';
-          const productDoc = {
-            id: productId,
-            schemaVersion: 2,
-            name: text,
-            category,
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-            updatedBy: currentUser?.uid || '',
-            updatedByName: currentUser?.displayName || '',
-            updatedByPhotoURL: currentUser?.photoURL || '',
-          };
+            await db.doc(`households/${householdId}/products/${productId}`).set(productDoc);
+            await addItemFromProduct(productDoc);
+          }
 
-          await db.doc(`households/${householdId}/products/${productId}`).set(productDoc);
-          await addItemFromProduct(productDoc);
+          setNewText('');
+          setShowSuggestions(false);
+          setShowCreateOptions(false);
+          setStickyAdd(false);
+        } finally {
+          addingItemRef.current = false;
+          setAddingItem(false);
         }
-
-        setNewText('');
-        setShowSuggestions(false);
-        setShowCreateOptions(false);
-        setStickyAdd(false);
       }
 
       function clearSearch() {
@@ -2547,7 +2630,7 @@ useEffect(() => {
       }
 
       async function handleCreateAction() {
-        if (!newText.trim()) return;
+        if (!newText.trim() || addingItemRef.current) return;
         if (exactProduct || showCreateOptions) {
           await addFreeText();
           return;
@@ -2734,11 +2817,14 @@ useEffect(() => {
                       type="button"
                       onMouseDown={(e)=>e.preventDefault()}
                       onClick={handleCreateAction}
-                      className="w-9 h-9 rounded-full bg-emerald-50 border border-emerald-100 text-emerald-700 flex items-center justify-center"
-                      title={exactProduct ? "Toevoegen" : (showCreateOptions ? "Product aanmaken" : "Nieuw product")}
-                      aria-label={exactProduct ? "Toevoegen" : (showCreateOptions ? "Product aanmaken" : "Nieuw product")}
+                      disabled={addingItem}
+                      className="w-11 h-11 rounded-full bg-emerald-50 border border-emerald-100 text-emerald-700 flex items-center justify-center"
+                      title={addingItem ? "Bezig met toevoegen" : (exactProduct ? "Toevoegen" : (showCreateOptions ? "Product aanmaken" : "Nieuw product"))}
+                      aria-label={addingItem ? "Bezig met toevoegen" : (exactProduct ? "Toevoegen" : (showCreateOptions ? "Product aanmaken" : "Nieuw product"))}
                     >
-                      {showCreateOptions && !exactProduct ? (
+                      {addingItem ? (
+                        <span className="text-sm font-bold" aria-hidden="true">…</span>
+                      ) : showCreateOptions && !exactProduct ? (
                         <span className="text-sm font-bold">✓</span>
                       ) : (
                         <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
@@ -2992,6 +3078,7 @@ useEffect(() => {
       const addFeedbackTimerRef = useRef(null);
       const backfilledMenuKeysRef = useRef(new Set());
       const openedDefaultMenuWeekRef = useRef(false);
+      const recipeTitleRefs = useRef(new Map());
 
       useEffect(() => {
         return () => {
@@ -3913,6 +4000,16 @@ function ensurePickState(recipe) {
         });
       }
 
+      function toggleRecipeExpanded(recipe, isOpen) {
+        if (isOpen) {
+          setExpandedId(null);
+          return;
+        }
+        ensurePickState(recipe);
+        setExpandedId(recipe.id);
+        revealExpandedControl(recipeTitleRefs.current.get(recipe.id));
+      }
+
 
       function setQty(recipeId, key, nextQty, defaultQty) {
         const q = clamp(parseInt(nextQty || 0, 10) || 0, 0, 99);
@@ -3971,7 +4068,10 @@ function ensurePickState(recipe) {
                 {(menuWeeks || []).length > 0 && (
                   <button
                     type="button"
-                    onClick={() => setShowMenuWeeks(value => !value)}
+                    onClick={(event) => {
+                      if (!showMenuWeeks) revealExpandedControl(event.currentTarget);
+                      setShowMenuWeeks(value => !value);
+                    }}
                     className="shrink-0 px-2.5 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-xs font-semibold"
                   >{showMenuWeeks ? 'Inklappen' : `Bewaard (${menuWeeks.length})`}</button>
                 )}
@@ -4014,8 +4114,11 @@ function ensurePickState(recipe) {
                       <div className="px-3 py-2 flex items-center gap-2">
                         <button
                           type="button"
-                          onClick={() => setOpenMenuWeekId(isOpen ? null : menuWeek.id)}
-                          className="flex-1 min-w-0 text-left"
+                          onClick={(event) => {
+                            if (!isOpen) revealExpandedControl(event.currentTarget);
+                            setOpenMenuWeekId(isOpen ? null : menuWeek.id);
+                          }}
+                          className="flex-1 min-w-0 min-h-11 text-left"
                         >
                           <div className="text-sm font-semibold text-slate-800 truncate">{menuWeek.label || 'Weekmenu'}</div>
                           <div className="text-[11px] text-slate-500">{archivedRecipes.length} recept{archivedRecipes.length === 1 ? '' : 'en'}</div>
@@ -4039,8 +4142,11 @@ function ensurePickState(recipe) {
                                 <div key={recipe.recipeId} className="border-b border-slate-100 last:border-b-0">
                                   <button
                                     type="button"
-                                    onClick={() => setOpenArchivedRecipeKey(recipeIsOpen ? null : archivedRecipeKey)}
-                                    className="w-full px-3 py-2 flex items-center gap-3 text-xs text-left"
+                                    onClick={(event) => {
+                                      if (!recipeIsOpen) revealExpandedControl(event.currentTarget);
+                                      setOpenArchivedRecipeKey(recipeIsOpen ? null : archivedRecipeKey);
+                                    }}
+                                    className="w-full min-h-11 px-3 py-2 flex items-center gap-3 text-xs text-left"
                                   >
                                     <div className="w-20 shrink-0 font-semibold text-emerald-700">{formatPlannedDay(recipe)}</div>
                                     <div className="min-w-0 flex-1 text-slate-700 font-medium truncate">{recipe.recipeName || 'Recept'}</div>
@@ -4052,7 +4158,7 @@ function ensurePickState(recipe) {
                                     <div className="px-3 pb-3">
                                       <div className="mb-2">
                                         <div className="text-[11px] font-semibold text-slate-500 mb-1">Weekdag aanpassen</div>
-                                        <div className="grid grid-cols-7 gap-1">
+                                        <div className="grid grid-cols-4 min-[380px]:grid-cols-7 gap-1">
                                           {MENU_WEEKDAYS.map(day => (
                                             <button
                                               key={day.key}
@@ -4110,7 +4216,7 @@ function ensurePickState(recipe) {
                                 {availableRecipes.map(recipe => <option key={recipe.id} value={recipe.id}>{recipe.name || 'Recept'}</option>)}
                               </select>
                               <div className="text-[11px] font-semibold text-slate-500 mt-2 mb-1">Weekdag</div>
-                              <div className="grid grid-cols-7 gap-1">
+                              <div className="grid grid-cols-4 min-[380px]:grid-cols-7 gap-1">
                                 {MENU_WEEKDAYS.map(day => (
                                   <button
                                     key={day.key}
@@ -4223,11 +4329,13 @@ function ensurePickState(recipe) {
                   <div className="border-b border-slate-200/80 last:border-b-0">
                     <div className="max-w-xl mx-auto px-3 py-3 flex items-center gap-2">
                       <button
-                        onClick={() => {
-                          if (!isOpen) ensurePickState(r);
-                          setExpandedId(isOpen ? null : r.id);
+                        ref={(node) => {
+                          if (node) recipeTitleRefs.current.set(r.id, node);
+                          else recipeTitleRefs.current.delete(r.id);
                         }}
-                        className="flex-1 text-left min-w-0"
+                        onClick={() => toggleRecipeExpanded(r, isOpen)}
+                        aria-expanded={isOpen}
+                        className="flex-1 min-h-11 text-left min-w-0"
                       >
                         <div className="font-medium text-[15px] text-slate-800 truncate">{r.name || 'Recept'}</div>
                         <div className="text-xs text-slate-500 truncate">
@@ -4240,13 +4348,13 @@ function ensurePickState(recipe) {
                         )}
                       </button>
 
-                      <button onClick={() => { if (!isOpen) ensurePickState(r); setExpandedId(isOpen ? null : r.id); }} title="Openen/sluiten" aria-label="Openen/sluiten" className="w-9 h-9 rounded-full bg-transparent text-slate-600 flex items-center justify-center">
+                      <button type="button" onClick={() => toggleRecipeExpanded(r, isOpen)} aria-expanded={isOpen} title="Openen/sluiten" aria-label="Openen/sluiten" className="w-11 h-11 rounded-full bg-transparent text-slate-600 flex items-center justify-center">
                         <svg viewBox="0 0 24 24" className={"w-5 h-5 transition-transform " + (isOpen ? "rotate-180" : "")} fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                           <path d="m6 9 6 6 6-6" />
                         </svg>
                       </button>
 
-                      <button onClick={()=>editRecipe(r)} title="Bewerken" className="w-9 h-9 rounded-full bg-transparent text-slate-600 flex items-center justify-center">
+                      <button type="button" onClick={()=>editRecipe(r)} title="Bewerken" aria-label={`${r.name || 'Recept'} bewerken`} className="w-11 h-11 rounded-full bg-transparent text-slate-600 flex items-center justify-center">
                         <EditIcon className="w-5 h-5" />
                       </button>
                     </div>
@@ -4269,7 +4377,7 @@ function ensurePickState(recipe) {
                             <div className="text-sm font-semibold text-emerald-900">Bewaar dit recept op je menu</div>
                             <div className="text-xs text-emerald-800/80 mt-0.5 mb-2">Dat kan ook zonder de producten nu al toe te voegen.</div>
                             <div className="text-[11px] font-semibold text-emerald-800 mb-1">Weekdag (optioneel)</div>
-                            <div className="grid grid-cols-7 gap-1 mb-2">
+                            <div className="grid grid-cols-4 min-[380px]:grid-cols-7 gap-1 mb-2">
                               {MENU_WEEKDAYS.map(day => (
                                 <button
                                   key={day.key}
@@ -4295,7 +4403,7 @@ function ensurePickState(recipe) {
                           <div className="mb-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
                             <div className="mb-2">
                               <div className="text-[11px] font-semibold text-slate-500 mb-1">Gepland voor</div>
-                              <div className="grid grid-cols-7 gap-1">
+                              <div className="grid grid-cols-4 min-[380px]:grid-cols-7 gap-1">
                                 {MENU_WEEKDAYS.map(day => (
                                   <button
                                     key={day.key}
@@ -4345,26 +4453,31 @@ function ensurePickState(recipe) {
                               : null;
                                                         return (
                               <div key={key} className="flex items-center gap-2 py-2 border-b border-slate-100 last:border-b-0">
-                                <button onClick={()=>togglePick(r.id, key)} className={
-                                  "w-6 h-6 rounded-lg border flex items-center justify-center text-xs " +
-                                  (checked ? "bg-emerald-600 border-emerald-600 text-white" : "bg-white border-slate-300 text-slate-500")
-                                }>
-                                  {checked ? "✓" : ""}
-                                </button>
+                                <button
+                                  type="button"
+                                  onClick={()=>togglePick(r.id, key, defaultQty)}
+                                  className="flex-1 min-w-0 min-h-11 flex items-center gap-2 text-left"
+                                  aria-label={`${disp.name || 'Ingrediënt'} ${checked ? 'uitzetten' : 'aanzetten'}`}
+                                >
+                                  <span className={
+                                    "w-6 h-6 shrink-0 rounded-lg border flex items-center justify-center text-xs " +
+                                    (checked ? "bg-emerald-600 border-emerald-600 text-white" : "bg-white border-slate-300 text-slate-500")
+                                  }>{checked ? "✓" : ""}</span>
 
-                                <div className="flex-1 min-w-0">
-                                  <div className={"text-sm font-normal truncate " + (checked ? "text-slate-800" : "text-slate-500 line-through")}>
-                                    {disp.name || "(onbekend)"}
-                                  </div>
-                                  {ing.amount && (
-                                    <div className="text-[11px] text-slate-500 truncate">nodig: {ing.amount} {ing.unit || 'st'}</div>
-                                  )}
-                                  {plannedTone && (
-                                    <div className={"text-[10px] font-semibold truncate " + (plannedTone === 'linked' ? "text-emerald-700" : (plannedTone === 'present' ? "text-amber-700" : "text-rose-700"))}>
-                                      ● {plannedTone === 'linked' ? 'via recept' : (plannedTone === 'present' ? 'al op lijst' : 'ontbreekt')}
-                                    </div>
-                                  )}
-                                </div>
+                                  <span className="flex-1 min-w-0">
+                                    <span className={"block text-sm font-normal truncate " + (checked ? "text-slate-800" : "text-slate-500 line-through")}>
+                                      {disp.name || "(onbekend)"}
+                                    </span>
+                                    {ing.amount && (
+                                      <span className="block text-[11px] text-slate-500 truncate">nodig: {ing.amount} {ing.unit || 'st'}</span>
+                                    )}
+                                    {plannedTone && (
+                                      <span className={"block text-[10px] font-semibold truncate " + (plannedTone === 'linked' ? "text-emerald-700" : (plannedTone === 'present' ? "text-amber-700" : "text-rose-700"))}>
+                                        ● {plannedTone === 'linked' ? 'via recept' : (plannedTone === 'present' ? 'al op lijst' : 'ontbreekt')}
+                                      </span>
+                                    )}
+                                  </span>
+                                </button>
 
                                 <QuantityControl
                                   qty={Number(st.qtys?.[key] ?? defaultQty) || 0}
@@ -4665,10 +4778,36 @@ function ensurePickState(recipe) {
       const [tab, setTab] = useState('list');
       const [storeMode, setStoreMode] = useState(false);
       const [showAdders, setShowAdders] = useState(false);
+      const mainContentRef = useRef(null);
+      const mountedTabRef = useRef(false);
+
+      function focusMainContent() {
+        window.requestAnimationFrame(() => {
+          window.scrollTo({ top: 0, behavior: 'auto' });
+          try { mainContentRef.current?.focus({ preventScroll: true }); }
+          catch (error) { mainContentRef.current?.focus(); }
+        });
+      }
+
+      function selectTab(nextTab) {
+        if (nextTab === tab) {
+          focusMainContent();
+          return;
+        }
+        setTab(nextTab);
+      }
 
       useEffect(() => {
         if (storeMode && tab !== 'list') setTab('list');
       }, [storeMode, tab]);
+
+      useEffect(() => {
+        if (!mountedTabRef.current) {
+          mountedTabRef.current = true;
+          return;
+        }
+        focusMainContent();
+      }, [tab]);
       const [showSignOut, setShowSignOut] = useState(false);
       const [createdCode, setCreatedCode] = useState(null);
       const [showClearListPrompt, setShowClearListPrompt] = useState(false);
@@ -4911,10 +5050,14 @@ function ensurePickState(recipe) {
               showAdders={showAdders}
               setShowAdders={setShowAdders}
               tab={tab}
-              setTab={setTab}
+              setTab={selectTab}
               lists={lists}
               activeListId={activeListId}
-              onPickList={(id)=>setActiveListId(id)}
+              onPickList={(id)=>{
+                setActiveListId(id);
+                if (tab !== 'list') setTab('list');
+                else focusMainContent();
+              }}
               onCreateList={handleCreateList}
               onDeleteList={handleDeleteList}
               onClearList={handleClearActiveList}
@@ -4922,6 +5065,12 @@ function ensurePickState(recipe) {
               onSignOut={()=> setShowSignOut(true)}
             />
 
+            <main
+              ref={mainContentRef}
+              tabIndex="-1"
+              aria-label={tab === 'list' ? 'Boodschappenlijst' : (tab === 'products' ? 'Producten' : 'Recepten')}
+              className="outline-none"
+            >
             {tab === 'list' ? (
               <ListTab
                 householdId={householdId}
@@ -4955,6 +5104,7 @@ function ensurePickState(recipe) {
                 currentUser={user}
               />
             )}
+            </main>
           </div>
 
           {createdCode && (

@@ -9,8 +9,33 @@
   }
 }
 
-/* Better tap targets on mobile */
-button, input, select { -webkit-tap-highlight-color: transparent; }
+/* Better tap targets and immediate-feeling taps on mobile. */
+button, input, select, textarea, [role="button"] {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 3px solid rgb(16 185 129 / 0.35);
+  outline-offset: 2px;
+}
+
+@media (pointer: coarse) {
+  button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    min-height: 44px;
+  }
+}
 .wysiwyg { min-height: 160px; }
 .wysiwyg:empty:before {
   content: attr(data-placeholder);
