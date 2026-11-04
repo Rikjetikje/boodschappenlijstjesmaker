@@ -3167,19 +3167,50 @@ useEffect(() => {
       const [planDraft, setPlanDraft] = useState(null);
       const [ingredientDraft, setIngredientDraft] = useState(null);
       const [feedback, setFeedback] = useState('');
-      const [quickDate, setQuickDate] = useState(() => suggestedMealPlanDate(mealPlans));
-      const [quickQuery, setQuickQuery] = useState('');
-      const [quickSaving, setQuickSaving] = useState(false);
+      const [scheduleStartDate, setScheduleStartDate] = useState(() => {
+        const stored = householdId ? window.localStorage.getItem(`meal-plan-start:${householdId}`) : '';
+        const firstUpcoming = [...(mealPlans || [])]
+          .map(plan => plan.date)
+          .filter(date => date && date >= localDateKey())
+          .sort()[0];
+        return stored || firstUpcoming || shiftDateKey(localDateKey(), 1);
+      });
+      const [draggingPlanId, setDraggingPlanId] = useState('');
+      const [dragOverDate, setDragOverDate] = useState('');
       const feedbackTimerRef = useRef(null);
-      const quickInputRef = useRef(null);
+      const pointerDragRef = useRef(null);
       const today = localDateKey();
 
       useEffect(() => () => {
         if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
       }, []);
 
+      useEffect(() => {
+        if (!householdId || !scheduleStartDate) return;
+        window.localStorage.setItem(`meal-plan-start:${householdId}`, scheduleStartDate);
+      }, [householdId, scheduleStartDate]);
+
       const productById = useMemo(() => new Map((products || []).map(product => [product.id, product])), [products]);
       const recipeById = useMemo(() => new Map((recipes || []).map(recipe => [recipe.id, recipe])), [recipes]);
+      const listItemByProductId = useMemo(() => {
+        const result = new Map();
+        (items || []).forEach(item => {
+          if (!item.productId) return;
+          const current = result.get(item.productId);
+          if (!current || (current.checked && !item.checked)) result.set(item.productId, item);
+        });
+        return result;
+      }, [items]);
+      const listItemByName = useMemo(() => {
+        const result = new Map();
+        (items || []).forEach(item => {
+          const key = String(item.nameSnapshot || item.name || '').trim().toLowerCase();
+          if (!key) return;
+          const current = result.get(key);
+          if (!current || (current.checked && !item.checked)) result.set(key, item);
+        });
+        return result;
+      }, [items]);
 
       function showFeedback(message) {
         setFeedback(message);
@@ -3194,57 +3225,23 @@ useEffect(() => {
         return snapshotRecipeForMealPlan(recipe, products);
       }
 
-      async function saveQuickPlan({ recipe = null, customName = '' }) {
-        const name = String(customName || recipe?.name || '').trim();
-        if (!householdId || !quickDate || !name || quickSaving) return;
-        const id = genId('mp');
-        const recipeSnapshot = recipe ? snapshotRecipe(recipe) : null;
-        setQuickSaving(true);
-        try {
-          await db.doc(`households/${householdId}/meal_plans/${id}`).set({
-            id,
-            date: quickDate,
-            sourceType: recipe ? 'recipe' : 'custom',
-            name,
-            recipeId: recipe?.id || '',
-            recipeSnapshot,
-            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-            createdBy: currentUser?.uid || '',
-            createdByName: currentUser?.displayName || '',
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-            updatedBy: currentUser?.uid || '',
-          });
-          const plannedDate = quickDate;
-          setQuickQuery('');
-          setQuickDate(shiftDateKey(plannedDate, 1));
-          showFeedback(`${name} staat op ${formatMealPlanDate(plannedDate).toLowerCase()}.`);
-          window.requestAnimationFrame(() => quickInputRef.current?.focus());
-        } finally {
-          setQuickSaving(false);
+      function findIngredientListItem(ingredient) {
+        if (ingredient.productId && listItemByProductId.has(ingredient.productId)) {
+          return listItemByProductId.get(ingredient.productId);
         }
+        const product = ingredient.productId ? productById.get(ingredient.productId) : null;
+        const nameKey = String(product?.name || ingredient.name || '').trim().toLowerCase();
+        return nameKey ? listItemByName.get(nameKey) || null : null;
       }
 
-      function openNewPlan(initialRecipe = null) {
+      function openCustomPlan() {
         setPlanDraft({
           id: '',
-          sourceType: initialRecipe ? 'recipe' : ((recipes || []).length ? 'recipe' : 'custom'),
-          date: suggestedMealPlanDate(mealPlans),
+          sourceType: 'custom',
+          date: scheduleStartDate,
           name: '',
-          recipeId: initialRecipe?.id || recipes?.[0]?.id || '',
-          recipeSnapshot: initialRecipe ? snapshotRecipe(initialRecipe) : null,
-          search: '',
-          legacyPlan: null,
-        });
-      }
-
-      function openEditPlan(plan) {
-        setPlanDraft({
-          id: plan.id,
-          sourceType: plan.sourceType || (plan.recipeId ? 'recipe' : 'custom'),
-          date: plan.date || suggestedMealPlanDate(mealPlans),
-          name: plan.sourceType === 'custom' ? (plan.name || '') : '',
-          recipeId: plan.recipeId || '',
-          recipeSnapshot: plan.recipeSnapshot || null,
+          recipeId: '',
+          recipeSnapshot: null,
           search: '',
           legacyPlan: null,
         });
@@ -3305,6 +3302,10 @@ useEffect(() => {
         }
 
         const existing = (mealPlans || []).find(plan => plan.id === id);
+        const alreadyPlanned = !existing && payload.recipeId && (mealPlans || []).some(plan => (
+          plan.recipeId === payload.recipeId && (!plan.date || plan.date >= today)
+        ));
+        if (alreadyPlanned && !confirm('Nog een keer toevoegen aan de planning?')) return;
         await db.doc(`households/${householdId}/meal_plans/${id}`).set({
           ...payload,
           createdAt: existing?.createdAt || firebase.firestore.FieldValue.serverTimestamp(),
@@ -3334,7 +3335,7 @@ useEffect(() => {
         const qtys = {};
         ingredients.forEach((ingredient, index) => {
           const key = ingredient.ingredientId || ingredient.productId || String(index);
-          picks[key] = true;
+          picks[key] = !findIngredientListItem(ingredient);
           qtys[key] = Math.max(1, Number(ingredient.buyQty) || 1);
         });
         setIngredientDraft({ plan, picks, qtys });
@@ -3452,22 +3453,78 @@ useEffect(() => {
         showFeedback(`${added} product${added === 1 ? '' : 'en'} toegevoegd aan je lijst.`);
       }
 
-      const quickMatches = useMemo(() => {
-        const query = quickQuery.trim().toLowerCase();
-        if (!query) return [];
-        return (recipes || [])
-          .filter(recipe => String(recipe.name || '').toLowerCase().includes(query))
-          .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'nl'))
-          .slice(0, 6);
-      }, [recipes, quickQuery]);
+      const firstDayChoices = useMemo(() => (
+        Array.from({ length: 21 }, (_, index) => shiftDateKey(today, index))
+      ), [today]);
+      const scheduleDates = useMemo(() => (
+        Array.from({ length: 7 }, (_, index) => shiftDateKey(scheduleStartDate, index))
+      ), [scheduleStartDate]);
+      const planDateChoices = useMemo(() => (
+        Array.from({ length: 14 }, (_, index) => shiftDateKey(scheduleStartDate, index))
+      ), [scheduleStartDate]);
 
-      function handleQuickKeyDown(event) {
-        if (event.key !== 'Enter' || !quickQuery.trim()) return;
+      function shortDateLabel(value) {
+        const date = dateFromKey(value);
+        if (!date) return 'Dag kiezen';
+        const formatted = new Intl.DateTimeFormat('nl-NL', {
+          weekday: 'short',
+          day: 'numeric',
+          month: 'short',
+        }).format(date);
+        return formatted.charAt(0).toUpperCase() + formatted.slice(1).replace('.', '');
+      }
+
+      async function movePlanToDate(planOrId, date) {
+        const plan = typeof planOrId === 'string'
+          ? (mealPlans || []).find(candidate => candidate.id === planOrId)
+          : planOrId;
+        if (!householdId || !plan?.id || !date || plan.date === date) return;
+        await db.doc(`households/${householdId}/meal_plans/${plan.id}`).update({
+          date,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          updatedBy: currentUser?.uid || '',
+        });
+        showFeedback(`${plan.name || plan.recipeSnapshot?.name || 'Gerecht'} staat op ${formatMealPlanDate(date).toLowerCase()}.`);
+      }
+
+      function startPointerDrag(event, plan) {
+        if (event.pointerType === 'mouse') return;
         event.preventDefault();
-        const normalized = quickQuery.trim().toLowerCase();
-        const exactRecipe = (recipes || []).find(recipe => String(recipe.name || '').trim().toLowerCase() === normalized);
-        if (exactRecipe) saveQuickPlan({ recipe: exactRecipe });
-        else saveQuickPlan({ customName: quickQuery });
+        pointerDragRef.current = { pointerId: event.pointerId, planId: plan.id };
+        event.currentTarget.setPointerCapture?.(event.pointerId);
+        setDraggingPlanId(plan.id);
+      }
+
+      function updatePointerDrag(event) {
+        if (pointerDragRef.current?.pointerId !== event.pointerId) return;
+        const target = document.elementFromPoint(event.clientX, event.clientY)?.closest?.('[data-plan-date]');
+        const date = target?.dataset?.planDate || '';
+        pointerDragRef.current.date = date;
+        setDragOverDate(date);
+      }
+
+      function finishPointerDrag(event) {
+        if (pointerDragRef.current?.pointerId !== event.pointerId) return;
+        const planId = pointerDragRef.current.planId;
+        const date = pointerDragRef.current.date || '';
+        pointerDragRef.current = null;
+        setDraggingPlanId('');
+        setDragOverDate('');
+        if (date) movePlanToDate(planId, date);
+      }
+
+      function startMouseDrag(event, plan) {
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', plan.id);
+        setDraggingPlanId(plan.id);
+      }
+
+      function dropPlan(event, date) {
+        event.preventDefault();
+        const planId = event.dataTransfer.getData('text/plain') || draggingPlanId;
+        setDraggingPlanId('');
+        setDragOverDate('');
+        if (planId) movePlanToDate(planId, date);
       }
 
       const sortedPlans = useMemo(() => [...(mealPlans || [])].sort((a,b) => (
@@ -3477,67 +3534,74 @@ useEffect(() => {
       const pastPlans = sortedPlans.filter(plan => plan.date && plan.date < today).reverse();
       const undatedPlans = sortedPlans.filter(plan => !plan.date);
 
-      function renderPlanGroups(plans, muted = false) {
-        const groups = plans.reduce((result, plan) => {
-          const key = plan.date || '';
-          if (!result[key]) result[key] = [];
-          result[key].push(plan);
-          return result;
-        }, {});
-        return Object.entries(groups).map(([date, dayPlans]) => (
-          <section key={date || 'zonder-datum'} className="mb-4">
-            <div className="flex items-center gap-2 px-1 mb-1.5">
-              <h3 className={"text-xs font-bold " + (date === today ? "text-emerald-700" : "text-slate-500")}>
-                {formatMealPlanDate(date)}
-              </h3>
-              {date === today && <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-bold">Vandaag</span>}
-            </div>
-            <div className="space-y-2">
-              {dayPlans.map(plan => {
-                const recipeSnapshot = plan.recipeSnapshot;
-                const hasIngredients = (recipeSnapshot?.ingredients || []).length > 0;
-                return (
-                  <Card key={plan.id}>
-                    <div className={"px-3 py-3 " + (muted ? "opacity-70" : "")}>
-                      <div className="flex items-start gap-3">
-                        <div className={"w-9 h-9 rounded-xl flex items-center justify-center shrink-0 " + (plan.sourceType === 'custom' ? "bg-sky-50" : "bg-amber-50")}>
-                          {plan.sourceType === 'custom' ? '✏️' : '🍳'}
-                        </div>
-                        <div className="min-w-0 flex-1 pt-0.5">
-                          <div className="font-semibold text-sm text-slate-800">{plan.name || recipeSnapshot?.name || 'Gerecht'}</div>
-                          <div className="text-[11px] text-slate-500 mt-0.5">
-                            {plan.sourceType === 'custom' ? 'Zelf ingevoerd' : `Recept · basis ${recipeSnapshot?.baseServings || 5} pers.`}
-                          </div>
-                        </div>
-                        <button type="button" onClick={() => openEditPlan(plan)} className="w-10 h-10 rounded-full text-slate-500 flex items-center justify-center" aria-label="Planning aanpassen">
-                          <EditIcon className="w-4 h-4" />
+      function renderPlans(plans, muted = false) {
+        return (
+          <div className="space-y-2">
+            {plans.map(plan => {
+              const recipeSnapshot = plan.recipeSnapshot;
+              const hasIngredients = (recipeSnapshot?.ingredients || []).length > 0;
+              const dateChoices = plan.date && !planDateChoices.includes(plan.date)
+                ? [plan.date, ...planDateChoices]
+                : planDateChoices;
+              return (
+                <Card key={plan.id}>
+                  <div className={"px-3 py-3 transition " + (muted ? "opacity-65" : "") + (draggingPlanId === plan.id ? " scale-[0.99] opacity-60" : "")}>
+                    <div className="flex items-start gap-2">
+                      {!muted && (
+                        <button type="button" draggable="true"
+                          onDragStart={event => startMouseDrag(event, plan)}
+                          onDragEnd={() => { setDraggingPlanId(''); setDragOverDate(''); }}
+                          onPointerDown={event => startPointerDrag(event, plan)}
+                          onPointerMove={updatePointerDrag}
+                          onPointerUp={finishPointerDrag}
+                          onPointerCancel={finishPointerDrag}
+                          style={{ touchAction: 'none' }}
+                          className="w-10 h-10 rounded-xl bg-slate-100 text-slate-400 flex items-center justify-center shrink-0 cursor-grab active:cursor-grabbing"
+                          aria-label={`${plan.name || recipeSnapshot?.name || 'Gerecht'} verslepen`}>
+                          <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor" aria-hidden="true">
+                            <circle cx="8" cy="6" r="1.5" /><circle cx="16" cy="6" r="1.5" />
+                            <circle cx="8" cy="12" r="1.5" /><circle cx="16" cy="12" r="1.5" />
+                            <circle cx="8" cy="18" r="1.5" /><circle cx="16" cy="18" r="1.5" />
+                          </svg>
                         </button>
-                        <button type="button" onClick={() => deletePlan(plan)} className="w-10 h-10 rounded-full text-rose-600 flex items-center justify-center" aria-label="Uit planning verwijderen">
-                          <TrashIcon className="w-4 h-4" />
-                        </button>
-                      </div>
-                      {hasIngredients && (
-                        <div className="mt-2">
-                          <button type="button" onClick={() => openIngredients(plan)}
-                            className="w-full min-h-11 px-3 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-800 text-xs font-semibold">
-                            {plan.shoppingAddedAt ? 'Ingrediënten nogmaals op lijst' : 'Ingrediënten op boodschappenlijst'}
-                          </button>
-                          {plan.shoppingAddedAt && <div className="mt-1 text-center text-[10px] text-slate-500">Al eerder aan een lijst toegevoegd</div>}
-                        </div>
                       )}
+                      <div className="min-w-0 flex-1 pt-0.5">
+                        <div className="font-semibold text-sm text-slate-800 truncate">{plan.name || recipeSnapshot?.name || 'Gerecht'}</div>
+                        <div className="text-[11px] text-slate-500 mt-0.5">
+                          {plan.sourceType === 'custom' ? 'Zelf ingevoerd' : 'Recept'}
+                        </div>
+                      </div>
+                      <button type="button" onClick={() => deletePlan(plan)} className="w-10 h-10 rounded-full text-rose-600 flex items-center justify-center shrink-0" aria-label="Uit planning verwijderen">
+                        <TrashIcon className="w-4 h-4" />
+                      </button>
                     </div>
-                  </Card>
-                );
-              })}
-            </div>
-          </section>
-        ));
+
+                    {!muted && (
+                      <label className="block mt-2">
+                        <span className="sr-only">Dag voor {plan.name || recipeSnapshot?.name || 'gerecht'}</span>
+                        <select value={plan.date || ''} onChange={event => movePlanToDate(plan, event.target.value)}
+                          className="w-full h-11 px-3 rounded-xl border border-slate-200 bg-white text-sm font-semibold text-slate-700">
+                          {!plan.date && <option value="">Dag kiezen</option>}
+                          {dateChoices.map(date => <option key={date} value={date}>{shortDateLabel(date)}</option>)}
+                        </select>
+                      </label>
+                    )}
+                    {muted && <div className="mt-1 text-xs font-semibold text-slate-500">{formatMealPlanDate(plan.date)}</div>}
+
+                    {hasIngredients && !muted && (
+                      <button type="button" onClick={() => openIngredients(plan)}
+                        className="w-full min-h-11 mt-2 px-3 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-800 text-xs font-semibold">
+                        Check ingrediënten
+                      </button>
+                    )}
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        );
       }
 
-      const dialogRecipes = (recipes || []).filter(recipe => {
-        const query = String(planDraft?.search || '').trim().toLowerCase();
-        return !query || String(recipe.name || '').toLowerCase().includes(query);
-      });
       const dialogCanSave = planDraft?.date && (
         planDraft.sourceType === 'custom'
           ? String(planDraft.name || '').trim()
@@ -3548,64 +3612,54 @@ useEffect(() => {
         <div className="pb-24">
           <Card>
             <div className="p-3">
-              <div className="flex items-center justify-between gap-3 mb-2.5">
+              <div className="flex items-center justify-between gap-3 mb-3">
                 <div>
-                  <div className="text-sm font-bold text-slate-800">Snel plannen</div>
-                  <div className="text-[11px] text-slate-500 mt-0.5">Tik een recept aan; Enter plant je invoer direct.</div>
+                  <div className="text-sm font-bold text-slate-800">Eerste dag</div>
+                  <div className="text-[11px] text-slate-500 mt-0.5">De dagen erna volgen automatisch.</div>
                 </div>
-                <button type="button" onClick={() => openNewPlan()} className="shrink-0 text-[11px] font-semibold text-emerald-700">
-                  Meer opties
+                <button type="button" onClick={openCustomPlan}
+                  className="shrink-0 min-h-10 px-3 rounded-xl bg-sky-50 text-sky-700 text-xs font-semibold">
+                  + Eigen gerecht
                 </button>
               </div>
 
-              <div className="flex items-center gap-2 mb-2">
-                <button type="button" onClick={() => setQuickDate(date => shiftDateKey(date, -1))}
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={() => setScheduleStartDate(date => shiftDateKey(date, -1))}
                   className="w-11 h-11 rounded-xl border border-slate-200 bg-white text-slate-600 text-xl" aria-label="Vorige dag">‹</button>
-                <label className="min-w-0 flex-1">
-                  <span className="sr-only">Datum</span>
-                  <input type="date" value={quickDate} onChange={event => setQuickDate(event.target.value)}
-                    className="w-full h-11 px-3 rounded-xl border border-slate-200 bg-white text-sm font-semibold text-slate-700" />
+                <label className="min-w-0 flex-1 relative">
+                  <span className="sr-only">Eerste dag van de planning</span>
+                  <select value={scheduleStartDate} onChange={event => setScheduleStartDate(event.target.value)}
+                    className="w-full h-11 px-3 rounded-xl border border-slate-200 bg-white text-sm font-semibold text-slate-700">
+                    {!firstDayChoices.includes(scheduleStartDate) && <option value={scheduleStartDate}>{shortDateLabel(scheduleStartDate)}</option>}
+                    {firstDayChoices.map(date => <option key={date} value={date}>{shortDateLabel(date)}</option>)}
+                  </select>
                 </label>
-                <button type="button" onClick={() => setQuickDate(date => shiftDateKey(date, 1))}
+                <button type="button" onClick={() => setScheduleStartDate(date => shiftDateKey(date, 1))}
                   className="w-11 h-11 rounded-xl border border-slate-200 bg-white text-slate-600 text-xl" aria-label="Volgende dag">›</button>
               </div>
 
-              <div className="relative">
-                <div className="h-12 rounded-xl border-2 border-emerald-200 bg-white flex items-center gap-2 px-3 focus-within:border-emerald-500 focus-within:ring-4 focus-within:ring-emerald-500/10">
-                  <svg viewBox="0 0 24 24" className="w-5 h-5 text-slate-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-                    <path d="m21 21-4.3-4.3" /><circle cx="10.8" cy="10.8" r="7.2" />
-                  </svg>
-                  <input ref={quickInputRef} value={quickQuery} onChange={event => setQuickQuery(event.target.value)} onKeyDown={handleQuickKeyDown}
-                    disabled={quickSaving} placeholder="Zoek recept of typ bijv. frietjes…"
-                    className="min-w-0 flex-1 bg-transparent outline-none text-sm text-slate-900 placeholder:text-slate-400" />
-                  {quickQuery && <button type="button" onClick={() => setQuickQuery('')} className="w-8 h-8 rounded-full text-slate-400 text-lg" aria-label="Leegmaken">×</button>}
-                </div>
-
-                {quickQuery.trim() && (
-                  <div className="mt-2 rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-                    {quickMatches.map(recipe => (
-                      <button key={recipe.id} type="button" onClick={() => saveQuickPlan({ recipe })} disabled={quickSaving}
-                        className="w-full min-h-12 px-3 py-2 flex items-center gap-3 text-left border-b border-slate-100 last:border-b-0 hover:bg-emerald-50 disabled:opacity-50">
-                        <span className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center shrink-0">🍳</span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block text-sm font-semibold text-slate-800 truncate">{recipe.name || 'Recept'}</span>
-                          <span className="block text-[11px] text-slate-500">Direct op {formatMealPlanDate(quickDate).toLowerCase()}</span>
+              <div className="mt-3 overflow-x-auto pb-1">
+                <div className="grid grid-cols-7 gap-1.5 min-w-[460px]">
+                  {scheduleDates.map(date => {
+                    const dateObject = dateFromKey(date);
+                    const isDropTarget = dragOverDate === date;
+                    return (
+                      <div key={date} data-plan-date={date}
+                        onDragOver={event => { event.preventDefault(); setDragOverDate(date); }}
+                        onDragLeave={() => setDragOverDate(current => current === date ? '' : current)}
+                        onDrop={event => dropPlan(event, date)}
+                        className={"min-h-14 rounded-xl border flex flex-col items-center justify-center transition " + (isDropTarget ? "border-emerald-500 bg-emerald-100 scale-[1.03]" : (date === today ? "border-emerald-300 bg-emerald-50" : "border-slate-200 bg-slate-50"))}>
+                        <span className="text-[10px] font-bold uppercase text-slate-500">
+                          {new Intl.DateTimeFormat('nl-NL', { weekday: 'short' }).format(dateObject).replace('.', '')}
                         </span>
-                        <span className="text-emerald-700 font-bold">+</span>
-                      </button>
-                    ))}
-                    <button type="button" onClick={() => saveQuickPlan({ customName: quickQuery })} disabled={quickSaving}
-                      className="w-full min-h-12 px-3 py-2 flex items-center gap-3 text-left bg-sky-50/60 hover:bg-sky-50 disabled:opacity-50">
-                      <span className="w-8 h-8 rounded-lg bg-sky-100 flex items-center justify-center shrink-0">✏️</span>
-                      <span className="min-w-0 flex-1 text-sm font-semibold text-slate-800 truncate">‘{quickQuery.trim()}’ zelf invoeren</span>
-                      <span className="text-sky-700 font-bold">+</span>
-                    </button>
-                  </div>
-                )}
+                        <span className="text-sm font-bold text-slate-800">{dateObject?.getDate()}</span>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-
-              <div className="mt-2 text-[10px] text-slate-500 text-center">
-                Na toevoegen springt de datum automatisch één dag vooruit.
+              <div className="mt-1 text-[10px] text-slate-500 text-center">
+                Sleep een gerecht aan de greep naar een dag, of kies de dag op het gerecht.
               </div>
             </div>
           </Card>
@@ -3634,7 +3688,7 @@ useEffect(() => {
           {upcomingPlans.length ? (
             <div className="mt-4">
               <div className="px-1 mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-500">Komende planning</div>
-              {renderPlanGroups(upcomingPlans)}
+              {renderPlans(upcomingPlans)}
             </div>
           ) : (
             <div className="mt-4 py-10 text-center text-slate-500">
@@ -3644,12 +3698,12 @@ useEffect(() => {
             </div>
           )}
 
-          {undatedPlans.length > 0 && <div>{renderPlanGroups(undatedPlans)}</div>}
+          {undatedPlans.length > 0 && <div className="mt-3">{renderPlans(undatedPlans)}</div>}
 
           {pastPlans.length > 0 && (
             <details className="mt-4">
               <summary className="min-h-11 flex items-center px-1 text-xs font-semibold text-slate-500 cursor-pointer">Eerdere planning ({pastPlans.length})</summary>
-              <div className="mt-2">{renderPlanGroups(pastPlans, true)}</div>
+              <div className="mt-2">{renderPlans(pastPlans, true)}</div>
             </details>
           )}
 
@@ -3676,22 +3730,15 @@ useEffect(() => {
 
           {planDraft && (
             <Modal
-              title={planDraft.id ? 'Planning aanpassen' : (planDraft.legacyPlan ? 'Weekmenu overzetten' : 'Gerecht inplannen')}
+              title={planDraft.legacyPlan ? 'Weekmenu overzetten' : 'Eigen gerecht'}
               onClose={() => setPlanDraft(null)}
-              footer={<Button onClick={savePlan} disabled={!dialogCanSave} className="w-full bg-emerald-600 text-white">{planDraft.id ? 'Wijzigingen opslaan' : 'Inplannen'}</Button>}
+              footer={<Button onClick={savePlan} disabled={!dialogCanSave} className="w-full bg-emerald-600 text-white">{planDraft.legacyPlan ? 'Overzetten' : 'Inplannen'}</Button>}
             >
               <div className="space-y-4">
                 <div>
                   <div className="text-xs font-semibold text-slate-500 mb-1">Dag</div>
                   <input type="date" value={planDraft.date || ''} onChange={event => setPlanDraft(previous => ({ ...previous, date: event.target.value }))}
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white" />
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <button type="button" onClick={() => setPlanDraft(previous => ({ ...previous, sourceType: 'recipe' }))}
-                    className={"min-h-11 px-3 rounded-xl border text-sm font-semibold " + (planDraft.sourceType === 'recipe' ? "bg-emerald-600 border-emerald-600 text-white" : "bg-white border-slate-200 text-slate-600")}>Uit recepten</button>
-                  <button type="button" onClick={() => setPlanDraft(previous => ({ ...previous, sourceType: 'custom' }))}
-                    className={"min-h-11 px-3 rounded-xl border text-sm font-semibold " + (planDraft.sourceType === 'custom' ? "bg-emerald-600 border-emerald-600 text-white" : "bg-white border-slate-200 text-slate-600")}>Zelf invoeren</button>
                 </div>
 
                 {planDraft.sourceType === 'custom' ? (
@@ -3703,23 +3750,9 @@ useEffect(() => {
                     <div className="mt-1.5 text-[11px] text-slate-500">Dit wordt niet automatisch een recept in de app.</div>
                   </div>
                 ) : (
-                  <div>
-                    <input value={planDraft.search || ''} onChange={event => setPlanDraft(previous => ({ ...previous, search: event.target.value }))}
-                      placeholder="Zoek een recept…"
-                      className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white mb-2" />
-                    <div className="max-h-72 overflow-auto space-y-1.5">
-                      {dialogRecipes.map(recipe => (
-                        <button key={recipe.id} type="button" onClick={() => setPlanDraft(previous => ({ ...previous, recipeId: recipe.id, recipeSnapshot: snapshotRecipe(recipe) }))}
-                          className={"w-full min-h-12 px-3 py-2.5 rounded-xl border flex items-center gap-3 text-left " + (planDraft.recipeId === recipe.id ? "bg-emerald-50 border-emerald-400" : "bg-white border-slate-200")}>
-                          <span className={"w-4 h-4 rounded-full border-2 shrink-0 " + (planDraft.recipeId === recipe.id ? "border-emerald-600 bg-emerald-600 ring-2 ring-inset ring-white" : "border-slate-300")}></span>
-                          <span className="min-w-0 flex-1">
-                            <span className="block text-sm font-semibold text-slate-800 truncate">{recipe.name || 'Recept'}</span>
-                            <span className="block text-[11px] text-slate-500">{(recipe.ingredients || []).length} ingrediënten</span>
-                          </span>
-                        </button>
-                      ))}
-                      {!dialogRecipes.length && <div className="py-5 text-center text-sm text-slate-500">Geen recepten gevonden.</div>}
-                    </div>
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3">
+                    <div className="text-sm font-semibold text-slate-800">{planDraft.recipeSnapshot?.name || 'Recept'}</div>
+                    <div className="text-xs text-slate-500 mt-0.5">{(planDraft.recipeSnapshot?.ingredients || []).length} ingrediënten</div>
                   </div>
                 )}
               </div>
@@ -3728,32 +3761,44 @@ useEffect(() => {
 
           {ingredientDraft && (
             <Modal
-              title={ingredientDraft.plan.name || ingredientDraft.plan.recipeSnapshot?.name || 'Ingrediënten'}
+              title="Check ingrediënten"
               onClose={() => setIngredientDraft(null)}
-              footer={<Button onClick={addIngredientsToList} disabled={!Object.values(ingredientDraft.picks).some(Boolean)} className="w-full bg-emerald-600 text-white">Voeg geselecteerde producten toe</Button>}
+              footer={<Button onClick={addIngredientsToList} disabled={!Object.values(ingredientDraft.picks).some(Boolean)} className="w-full bg-emerald-600 text-white">Zet geselecteerde op de lijst</Button>}
             >
-              <div className="text-xs font-semibold text-slate-500 mb-2">Vink uit wat je al in huis hebt.</div>
+              <div className="text-sm font-semibold text-slate-800 mb-0.5">{ingredientDraft.plan.name || ingredientDraft.plan.recipeSnapshot?.name || 'Gerecht'}</div>
+              <div className="text-xs text-slate-500 mb-3">Wat al op je boodschappenlijst staat, is alvast uitgevinkt.</div>
               <div className="space-y-1">
                 {(ingredientDraft.plan.recipeSnapshot?.ingredients || []).map((ingredient, index) => {
                   const key = ingredient.ingredientId || ingredient.productId || String(index);
                   const checked = ingredientDraft.picks[key] !== false;
                   const need = ingredient.need || {};
                   const amount = need.value != null ? formatNum(Number(need.value)) : String(need.valueText || '').trim();
+                  const existingItem = findIngredientListItem(ingredient);
+                  const existingLabel = existingItem
+                    ? (existingItem.checked
+                      ? 'Afgevinkt op lijst'
+                      : (existingItem.needsByRecipe?.[ingredientDraft.plan.id] ? 'Al via dit gerecht' : 'Al op lijst'))
+                    : 'Nog niet op lijst';
                   return (
                     <div key={key} className="flex items-center gap-2 py-2 border-b border-slate-100 last:border-b-0">
                       <button type="button" onClick={() => setIngredientDraft(previous => ({ ...previous, picks: { ...previous.picks, [key]: !checked } }))}
                         className="min-w-0 flex-1 min-h-11 flex items-center gap-2 text-left">
                         <span className={"w-6 h-6 rounded-lg border flex items-center justify-center text-xs shrink-0 " + (checked ? "bg-emerald-600 border-emerald-600 text-white" : "bg-white border-slate-300")}>{checked ? '✓' : ''}</span>
                         <span className="min-w-0 flex-1">
-                          <span className={"block text-sm truncate " + (checked ? "text-slate-800" : "text-slate-400 line-through")}>{ingredient.name || 'Product'}</span>
+                          <span className={"block text-sm truncate " + (checked ? "text-slate-800" : "text-slate-500")}>{ingredient.name || 'Product'}</span>
                           {(amount || need.unit) && <span className="block text-[11px] text-slate-500 truncate">nodig: {amount} {need.unit || ''}</span>}
+                          <span className={"inline-flex mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold " + (existingItem ? "bg-amber-100 text-amber-800" : "bg-slate-100 text-slate-600")}>
+                            {existingLabel}
+                          </span>
                         </span>
                       </button>
-                      <QuantityControl
-                        qty={Number(ingredientDraft.qtys[key]) || 1}
-                        onDec={() => setIngredientDraft(previous => ({ ...previous, qtys: { ...previous.qtys, [key]: Math.max(1, (Number(previous.qtys[key]) || 1) - 1) } }))}
-                        onInc={() => setIngredientDraft(previous => ({ ...previous, qtys: { ...previous.qtys, [key]: Math.min(99, (Number(previous.qtys[key]) || 1) + 1) } }))}
-                      />
+                      <div className={checked ? '' : 'opacity-40'}>
+                        <QuantityControl
+                          qty={Number(ingredientDraft.qtys[key]) || 1}
+                          onDec={() => setIngredientDraft(previous => ({ ...previous, qtys: { ...previous.qtys, [key]: Math.max(1, (Number(previous.qtys[key]) || 1) - 1) } }))}
+                          onInc={() => setIngredientDraft(previous => ({ ...previous, qtys: { ...previous.qtys, [key]: Math.min(99, (Number(previous.qtys[key]) || 1) + 1) } }))}
+                        />
+                      </div>
                     </div>
                   );
                 })}
@@ -3972,6 +4017,10 @@ useEffect(() => {
 
       async function quickPlanRecipe(recipe) {
         if (!householdId || !recipe) return;
+        const alreadyPlanned = (mealPlans || []).some(plan => (
+          plan.recipeId === recipe.id && (!plan.date || plan.date >= localDateKey())
+        ));
+        if (alreadyPlanned && !confirm('Nog een keer toevoegen aan de planning?')) return;
         const date = nextRecipePlanDate || suggestedMealPlanDate(mealPlans);
         const id = genId('mp');
         setNextRecipePlanDate(shiftDateKey(date, 1));
