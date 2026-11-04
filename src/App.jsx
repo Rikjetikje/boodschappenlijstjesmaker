@@ -3175,10 +3175,8 @@ useEffect(() => {
           .sort()[0];
         return stored || firstUpcoming || shiftDateKey(localDateKey(), 1);
       });
-      const [draggingPlanId, setDraggingPlanId] = useState('');
-      const [dragOverDate, setDragOverDate] = useState('');
       const feedbackTimerRef = useRef(null);
-      const pointerDragRef = useRef(null);
+      const planDayStripRefs = useRef(new Map());
       const today = localDateKey();
 
       useEffect(() => () => {
@@ -3189,6 +3187,19 @@ useEffect(() => {
         if (!householdId || !scheduleStartDate) return;
         window.localStorage.setItem(`meal-plan-start:${householdId}`, scheduleStartDate);
       }, [householdId, scheduleStartDate]);
+
+      useEffect(() => {
+        const frame = window.requestAnimationFrame(() => {
+          const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+          planDayStripRefs.current.forEach(strip => {
+            const selected = strip?.querySelector('[aria-pressed="true"]');
+            if (!selected) return;
+            const left = selected.offsetLeft - ((strip.clientWidth - selected.offsetWidth) / 2);
+            strip.scrollTo({ left: Math.max(0, left), behavior: reduceMotion ? 'auto' : 'smooth' });
+          });
+        });
+        return () => window.cancelAnimationFrame(frame);
+      }, [mealPlans, scheduleStartDate]);
 
       const productById = useMemo(() => new Map((products || []).map(product => [product.id, product])), [products]);
       const recipeById = useMemo(() => new Map((recipes || []).map(recipe => [recipe.id, recipe])), [recipes]);
@@ -3456,9 +3467,6 @@ useEffect(() => {
       const firstDayChoices = useMemo(() => (
         Array.from({ length: 21 }, (_, index) => shiftDateKey(today, index))
       ), [today]);
-      const scheduleDates = useMemo(() => (
-        Array.from({ length: 7 }, (_, index) => shiftDateKey(scheduleStartDate, index))
-      ), [scheduleStartDate]);
       const planDateChoices = useMemo(() => (
         Array.from({ length: 14 }, (_, index) => shiftDateKey(scheduleStartDate, index))
       ), [scheduleStartDate]);
@@ -3474,57 +3482,13 @@ useEffect(() => {
         return formatted.charAt(0).toUpperCase() + formatted.slice(1).replace('.', '');
       }
 
-      async function movePlanToDate(planOrId, date) {
-        const plan = typeof planOrId === 'string'
-          ? (mealPlans || []).find(candidate => candidate.id === planOrId)
-          : planOrId;
+      async function movePlanToDate(plan, date) {
         if (!householdId || !plan?.id || !date || plan.date === date) return;
         await db.doc(`households/${householdId}/meal_plans/${plan.id}`).update({
           date,
           updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
           updatedBy: currentUser?.uid || '',
         });
-        showFeedback(`${plan.name || plan.recipeSnapshot?.name || 'Gerecht'} staat op ${formatMealPlanDate(date).toLowerCase()}.`);
-      }
-
-      function startPointerDrag(event, plan) {
-        if (event.pointerType === 'mouse') return;
-        event.preventDefault();
-        pointerDragRef.current = { pointerId: event.pointerId, planId: plan.id };
-        event.currentTarget.setPointerCapture?.(event.pointerId);
-        setDraggingPlanId(plan.id);
-      }
-
-      function updatePointerDrag(event) {
-        if (pointerDragRef.current?.pointerId !== event.pointerId) return;
-        const target = document.elementFromPoint(event.clientX, event.clientY)?.closest?.('[data-plan-date]');
-        const date = target?.dataset?.planDate || '';
-        pointerDragRef.current.date = date;
-        setDragOverDate(date);
-      }
-
-      function finishPointerDrag(event) {
-        if (pointerDragRef.current?.pointerId !== event.pointerId) return;
-        const planId = pointerDragRef.current.planId;
-        const date = pointerDragRef.current.date || '';
-        pointerDragRef.current = null;
-        setDraggingPlanId('');
-        setDragOverDate('');
-        if (date) movePlanToDate(planId, date);
-      }
-
-      function startMouseDrag(event, plan) {
-        event.dataTransfer.effectAllowed = 'move';
-        event.dataTransfer.setData('text/plain', plan.id);
-        setDraggingPlanId(plan.id);
-      }
-
-      function dropPlan(event, date) {
-        event.preventDefault();
-        const planId = event.dataTransfer.getData('text/plain') || draggingPlanId;
-        setDraggingPlanId('');
-        setDragOverDate('');
-        if (planId) movePlanToDate(planId, date);
       }
 
       const sortedPlans = useMemo(() => [...(mealPlans || [])].sort((a,b) => (
@@ -3540,36 +3504,14 @@ useEffect(() => {
             {plans.map(plan => {
               const recipeSnapshot = plan.recipeSnapshot;
               const hasIngredients = (recipeSnapshot?.ingredients || []).length > 0;
-              const dateChoices = plan.date && !planDateChoices.includes(plan.date)
-                ? [plan.date, ...planDateChoices]
-                : planDateChoices;
+              const dateChoices = [...new Set([...(plan.date ? [plan.date] : []), ...planDateChoices])].sort();
               return (
                 <Card key={plan.id}>
-                  <div className={"px-3 py-3 transition " + (muted ? "opacity-65" : "") + (draggingPlanId === plan.id ? " scale-[0.99] opacity-60" : "")}>
-                    <div className="flex items-start gap-2">
-                      {!muted && (
-                        <button type="button" draggable="true"
-                          onDragStart={event => startMouseDrag(event, plan)}
-                          onDragEnd={() => { setDraggingPlanId(''); setDragOverDate(''); }}
-                          onPointerDown={event => startPointerDrag(event, plan)}
-                          onPointerMove={updatePointerDrag}
-                          onPointerUp={finishPointerDrag}
-                          onPointerCancel={finishPointerDrag}
-                          style={{ touchAction: 'none' }}
-                          className="w-10 h-10 rounded-xl bg-slate-100 text-slate-400 flex items-center justify-center shrink-0 cursor-grab active:cursor-grabbing"
-                          aria-label={`${plan.name || recipeSnapshot?.name || 'Gerecht'} verslepen`}>
-                          <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor" aria-hidden="true">
-                            <circle cx="8" cy="6" r="1.5" /><circle cx="16" cy="6" r="1.5" />
-                            <circle cx="8" cy="12" r="1.5" /><circle cx="16" cy="12" r="1.5" />
-                            <circle cx="8" cy="18" r="1.5" /><circle cx="16" cy="18" r="1.5" />
-                          </svg>
-                        </button>
-                      )}
-                      <div className="min-w-0 flex-1 pt-0.5">
+                  <div className={"px-3 py-2.5 " + (muted ? "opacity-70" : "")}>
+                    <div className="flex items-center gap-2">
+                      <div className="min-w-0 flex-1">
                         <div className="font-semibold text-sm text-slate-800 truncate">{plan.name || recipeSnapshot?.name || 'Gerecht'}</div>
-                        <div className="text-[11px] text-slate-500 mt-0.5">
-                          {plan.sourceType === 'custom' ? 'Zelf ingevoerd' : 'Recept'}
-                        </div>
+                        {plan.sourceType === 'custom' && <div className="text-[10px] text-slate-400 mt-0.5">Eigen gerecht</div>}
                       </div>
                       <button type="button" onClick={() => deletePlan(plan)} className="w-10 h-10 rounded-full text-rose-600 flex items-center justify-center shrink-0" aria-label="Uit planning verwijderen">
                         <TrashIcon className="w-4 h-4" />
@@ -3577,22 +3519,37 @@ useEffect(() => {
                     </div>
 
                     {!muted && (
-                      <label className="block mt-2">
-                        <span className="sr-only">Dag voor {plan.name || recipeSnapshot?.name || 'gerecht'}</span>
-                        <select value={plan.date || ''} onChange={event => movePlanToDate(plan, event.target.value)}
-                          className="w-full h-11 px-3 rounded-xl border border-slate-200 bg-white text-sm font-semibold text-slate-700">
-                          {!plan.date && <option value="">Dag kiezen</option>}
-                          {dateChoices.map(date => <option key={date} value={date}>{shortDateLabel(date)}</option>)}
-                        </select>
-                      </label>
+                      <div className="relative mt-1.5 -mx-3">
+                        <div ref={node => {
+                          if (node) planDayStripRefs.current.set(plan.id, node);
+                          else planDayStripRefs.current.delete(plan.id);
+                        }} className="bm-day-scroll flex gap-1 overflow-x-auto px-3 pb-1">
+                          {dateChoices.map(date => {
+                            const dateObject = dateFromKey(date);
+                            const selected = plan.date === date;
+                            const weekday = new Intl.DateTimeFormat('nl-NL', { weekday: 'short' }).format(dateObject).replace('.', '');
+                            return (
+                              <button key={date} type="button" aria-pressed={selected}
+                                aria-label={`${plan.name || recipeSnapshot?.name || 'Gerecht'} op ${formatMealPlanDate(date)}`}
+                                onClick={() => movePlanToDate(plan, date)}
+                                className={"snap-center shrink-0 min-w-14 h-10 px-2 rounded-xl border flex items-center justify-center gap-1.5 transition-colors " + (selected ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-transparent bg-slate-50 text-slate-500")}>
+                                <span className="text-[10px] font-bold uppercase">{weekday}</span>
+                                <span className="text-xs font-semibold">{dateObject?.getDate()}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
                     )}
                     {muted && <div className="mt-1 text-xs font-semibold text-slate-500">{formatMealPlanDate(plan.date)}</div>}
 
                     {hasIngredients && !muted && (
-                      <button type="button" onClick={() => openIngredients(plan)}
-                        className="w-full min-h-11 mt-2 px-3 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-800 text-xs font-semibold">
-                        Check ingrediënten
-                      </button>
+                      <div className="flex justify-end mt-0.5">
+                        <button type="button" onClick={() => openIngredients(plan)}
+                          className="min-h-9 px-2.5 rounded-lg text-emerald-700 text-[11px] font-semibold">
+                          Check ingrediënten ›
+                        </button>
+                      </div>
                     )}
                   </div>
                 </Card>
@@ -3610,59 +3567,20 @@ useEffect(() => {
 
       return (
         <div className="pb-24">
-          <Card>
-            <div className="p-3">
-              <div className="flex items-center justify-between gap-3 mb-3">
-                <div>
-                  <div className="text-sm font-bold text-slate-800">Eerste dag</div>
-                  <div className="text-[11px] text-slate-500 mt-0.5">De dagen erna volgen automatisch.</div>
-                </div>
-                <button type="button" onClick={openCustomPlan}
-                  className="shrink-0 min-h-10 px-3 rounded-xl bg-sky-50 text-sky-700 text-xs font-semibold">
-                  + Eigen gerecht
-                </button>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button type="button" onClick={() => setScheduleStartDate(date => shiftDateKey(date, -1))}
-                  className="w-11 h-11 rounded-xl border border-slate-200 bg-white text-slate-600 text-xl" aria-label="Vorige dag">‹</button>
-                <label className="min-w-0 flex-1 relative">
-                  <span className="sr-only">Eerste dag van de planning</span>
-                  <select value={scheduleStartDate} onChange={event => setScheduleStartDate(event.target.value)}
-                    className="w-full h-11 px-3 rounded-xl border border-slate-200 bg-white text-sm font-semibold text-slate-700">
-                    {!firstDayChoices.includes(scheduleStartDate) && <option value={scheduleStartDate}>{shortDateLabel(scheduleStartDate)}</option>}
-                    {firstDayChoices.map(date => <option key={date} value={date}>{shortDateLabel(date)}</option>)}
-                  </select>
-                </label>
-                <button type="button" onClick={() => setScheduleStartDate(date => shiftDateKey(date, 1))}
-                  className="w-11 h-11 rounded-xl border border-slate-200 bg-white text-slate-600 text-xl" aria-label="Volgende dag">›</button>
-              </div>
-
-              <div className="mt-3 overflow-x-auto pb-1">
-                <div className="grid grid-cols-7 gap-1.5 min-w-[460px]">
-                  {scheduleDates.map(date => {
-                    const dateObject = dateFromKey(date);
-                    const isDropTarget = dragOverDate === date;
-                    return (
-                      <div key={date} data-plan-date={date}
-                        onDragOver={event => { event.preventDefault(); setDragOverDate(date); }}
-                        onDragLeave={() => setDragOverDate(current => current === date ? '' : current)}
-                        onDrop={event => dropPlan(event, date)}
-                        className={"min-h-14 rounded-xl border flex flex-col items-center justify-center transition " + (isDropTarget ? "border-emerald-500 bg-emerald-100 scale-[1.03]" : (date === today ? "border-emerald-300 bg-emerald-50" : "border-slate-200 bg-slate-50"))}>
-                        <span className="text-[10px] font-bold uppercase text-slate-500">
-                          {new Intl.DateTimeFormat('nl-NL', { weekday: 'short' }).format(dateObject).replace('.', '')}
-                        </span>
-                        <span className="text-sm font-bold text-slate-800">{dateObject?.getDate()}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-              <div className="mt-1 text-[10px] text-slate-500 text-center">
-                Sleep een gerecht aan de greep naar een dag, of kies de dag op het gerecht.
-              </div>
-            </div>
-          </Card>
+          <div className="flex items-center gap-2 mb-3">
+            <label className="min-w-0 flex-1 h-11 px-2.5 rounded-xl border border-slate-200 bg-white flex items-center gap-2">
+              <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-slate-400">Vanaf</span>
+              <select value={scheduleStartDate} onChange={event => setScheduleStartDate(event.target.value)}
+                className="min-w-0 flex-1 h-10 bg-transparent text-sm font-semibold text-slate-700 outline-none">
+                {!firstDayChoices.includes(scheduleStartDate) && <option value={scheduleStartDate}>{shortDateLabel(scheduleStartDate)}</option>}
+                {firstDayChoices.map(date => <option key={date} value={date}>{shortDateLabel(date)}</option>)}
+              </select>
+            </label>
+            <button type="button" onClick={openCustomPlan}
+              className="shrink-0 h-11 px-3 rounded-xl bg-sky-50 text-sky-700 text-xs font-semibold">
+              + Eigen
+            </button>
+          </div>
 
           {feedback && <div className="mt-3 mb-3 px-3 py-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold">{feedback}</div>}
 
