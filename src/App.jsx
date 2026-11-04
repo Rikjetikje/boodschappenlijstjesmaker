@@ -53,6 +53,56 @@ const APP_ICONS = {
       return s.replace('.', ',');
     }
 
+    function localDateKey(date = new Date()) {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+
+    function dateFromKey(value) {
+      const [year, month, day] = String(value || '').split('-').map(Number);
+      if (![year, month, day].every(Number.isFinite)) return null;
+      return new Date(year, month - 1, day, 12);
+    }
+
+    function shiftDateKey(value, days) {
+      const date = dateFromKey(value) || new Date();
+      date.setDate(date.getDate() + days);
+      return localDateKey(date);
+    }
+
+    function formatMealPlanDate(value) {
+      const date = dateFromKey(value);
+      if (!date) return 'Datum kiezen';
+      const formatted = new Intl.DateTimeFormat('nl-NL', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+      }).format(date);
+      return formatted.charAt(0).toUpperCase() + formatted.slice(1);
+    }
+
+    function suggestedMealPlanDate(plans) {
+      const today = localDateKey();
+      const tomorrow = shiftDateKey(today, 1);
+      const upcomingDates = (plans || [])
+        .map(plan => plan.date)
+        .filter(date => date && date >= today)
+        .sort();
+      return upcomingDates.length ? shiftDateKey(upcomingDates[upcomingDates.length - 1], 1) : tomorrow;
+    }
+
+    function nextDateForWeekday(dayKey) {
+      const targetIndex = MENU_WEEKDAYS.findIndex(day => day.key === dayKey);
+      if (targetIndex < 0) return suggestedMealPlanDate([]);
+      const today = new Date();
+      const todayIndex = (today.getDay() + 6) % 7;
+      const offset = (targetIndex - todayIndex + 7) % 7;
+      today.setDate(today.getDate() + offset);
+      return localDateKey(today);
+    }
+
     const MENU_WEEKDAYS = [
       { key: 'ma', short: 'Ma', label: 'Maandag' },
       { key: 'di', short: 'Di', label: 'Dinsdag' },
@@ -344,13 +394,14 @@ const APP_ICONS = {
       const [items, setItems] = useState([]);
       const [recipes, setRecipes] = useState([]);
       const [plannedRecipes, setPlannedRecipes] = useState([]);
+      const [mealPlans, setMealPlans] = useState([]);
       const [menuWeeks, setMenuWeeks] = useState([]);
       const [plannedRecipesLoaded, setPlannedRecipesLoaded] = useState(false);
       const [syncing, setSyncing] = useState(false);
 
       useEffect(() => {
         if (!user || !householdId) {
-          setMembers([]); setLists([]); setProducts([]); setItems([]); setRecipes([]); setPlannedRecipes([]); setMenuWeeks([]);
+          setMembers([]); setLists([]); setProducts([]); setItems([]); setRecipes([]); setPlannedRecipes([]); setMealPlans([]); setMenuWeeks([]);
           setPlannedRecipesLoaded(false);
           return;
         }
@@ -399,6 +450,14 @@ const APP_ICONS = {
           }, err => console.error("Menu weeks listener error:", err))
         );
 
+        unsubs.push(
+          db.collection(`households/${hid}/meal_plans`).onSnapshot(snap => {
+            const plans = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+              .sort((a,b) => String(a.date || '').localeCompare(String(b.date || '')) || (a.createdAt?.seconds||0) - (b.createdAt?.seconds||0));
+            setMealPlans(plans);
+          }, err => console.error("Meal plans listener error:", err))
+        );
+
         return () => unsubs.forEach(fn => fn());
       }, [user, householdId]);
 
@@ -436,7 +495,7 @@ const APP_ICONS = {
         if (lists.length > 0 && !activeListId) setActiveListId(lists[0].id);
       }, [lists, householdId, activeListId, setActiveListId]);
 
-      return { members, lists, products, items, recipes, plannedRecipes, menuWeeks, plannedRecipesLoaded, syncing };
+      return { members, lists, products, items, recipes, plannedRecipes, mealPlans, menuWeeks, plannedRecipesLoaded, syncing };
     }
 
     // ---------------- UI bits ----------------
@@ -975,6 +1034,15 @@ const APP_ICONS = {
       }
 
       function TabIcon({ type, active = false }) {
+        if (type === 'planning') {
+          return (
+            <svg viewBox="0 0 24 24" className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <rect x="3" y="5" width="18" height="16" rx="2" />
+              <path d="M16 3v4M8 3v4M3 10h18" />
+              <path d="m8 15 2 2 5-5" />
+            </svg>
+          );
+        }
         const src = APP_ICONS[type] || APP_ICONS.list;
         return (
           <img
@@ -1119,8 +1187,9 @@ const APP_ICONS = {
             </div>
 
             {!storeMode ? (
-              <div className="grid grid-cols-3 gap-2 min-w-0">
+              <div className="grid grid-cols-4 gap-1.5 min-w-0">
                 <HeaderTab id="list" label="Lijst" />
+                <HeaderTab id="planning" label="Planning" />
                 <HeaderTab id="recipes" label="Recepten" />
                 <HeaderTab id="products" label="Producten" />
               </div>
@@ -1253,6 +1322,7 @@ const APP_ICONS = {
                         await deleteCollection(`households/${householdId}/lists_meta`);
                         await deleteCollection(`households/${householdId}/products`);
                         await deleteCollection(`households/${householdId}/recipes`);
+                        await deleteCollection(`households/${householdId}/meal_plans`);
                         await deleteCollection(`households/${householdId}/menu_weeks`);
                         await deleteCollection(`households/${householdId}/members`);
 
@@ -3065,6 +3135,530 @@ useEffect(() => {
       );
     }
 
+    // ---------------- Planning tab ----------------
+    function PlanningTab({ householdId, activeListId, recipes, products, items, mealPlans, legacyPlans, menuWeeks, currentUser }) {
+      const [planDraft, setPlanDraft] = useState(null);
+      const [ingredientDraft, setIngredientDraft] = useState(null);
+      const [feedback, setFeedback] = useState('');
+      const feedbackTimerRef = useRef(null);
+      const today = localDateKey();
+
+      useEffect(() => () => {
+        if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
+      }, []);
+
+      const productById = useMemo(() => new Map((products || []).map(product => [product.id, product])), [products]);
+      const recipeById = useMemo(() => new Map((recipes || []).map(recipe => [recipe.id, recipe])), [recipes]);
+
+      function showFeedback(message) {
+        setFeedback(message);
+        if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
+        feedbackTimerRef.current = setTimeout(() => {
+          setFeedback('');
+          feedbackTimerRef.current = null;
+        }, 5000);
+      }
+
+      function snapshotRecipe(recipe) {
+        return {
+          id: recipe.id,
+          name: recipe.name || 'Recept',
+          url: recipe.url || '',
+          baseServings: recipe.baseServings || 5,
+          ingredients: (recipe.ingredients || []).map((ingredient, index) => {
+            const product = ingredient.productId ? productById.get(ingredient.productId) : null;
+            let unit = ingredient.unit ?? ingredient.unitText ?? 'st';
+            if (String(unit).toLowerCase() === 'g') unit = 'gr';
+            const amountText = String(ingredient.amount ?? ingredient.qty ?? ingredient.quantity ?? '').trim();
+            const amountNumber = parseFloat(amountText.replace(',', '.'));
+            return {
+              ingredientId: ingredient._id || String(index),
+              productId: product?.id || ingredient.productId || '',
+              name: product?.name || ingredient.nameSnapshot || 'Product',
+              category: product?.category || ingredient.categorySnapshot || 'Overig',
+              buyQty: Math.max(1, Number(ingredient.buyQty) || 1),
+              need: isFinite(amountNumber)
+                ? { value: amountNumber, unit: String(unit || 'st') }
+                : { valueText: amountText, unit: String(unit || 'st') },
+            };
+          }),
+        };
+      }
+
+      function openNewPlan(initialRecipe = null) {
+        setPlanDraft({
+          id: '',
+          sourceType: initialRecipe ? 'recipe' : ((recipes || []).length ? 'recipe' : 'custom'),
+          date: suggestedMealPlanDate(mealPlans),
+          name: '',
+          recipeId: initialRecipe?.id || recipes?.[0]?.id || '',
+          recipeSnapshot: initialRecipe ? snapshotRecipe(initialRecipe) : null,
+          search: '',
+          legacyPlan: null,
+        });
+      }
+
+      function openEditPlan(plan) {
+        setPlanDraft({
+          id: plan.id,
+          sourceType: plan.sourceType || (plan.recipeId ? 'recipe' : 'custom'),
+          date: plan.date || suggestedMealPlanDate(mealPlans),
+          name: plan.sourceType === 'custom' ? (plan.name || '') : '',
+          recipeId: plan.recipeId || '',
+          recipeSnapshot: plan.recipeSnapshot || null,
+          search: '',
+          legacyPlan: null,
+        });
+      }
+
+      function openLegacyPlan(plan) {
+        const recipe = recipeById.get(plan.recipeId || plan.id) || null;
+        const currentSnapshot = recipe ? snapshotRecipe(recipe) : null;
+        const legacySnapshot = {
+          id: plan.recipeId || plan.id || '',
+          name: recipe?.name || plan.recipeName || 'Recept',
+          url: recipe?.url || '',
+          baseServings: plan.baseServings || recipe?.baseServings || 5,
+          ingredients: (plan.ingredients || []).length ? plan.ingredients : (currentSnapshot?.ingredients || []),
+        };
+        setPlanDraft({
+          id: '',
+          sourceType: 'recipe',
+          date: nextDateForWeekday(plannedDayKey(plan)),
+          name: '',
+          recipeId: legacySnapshot.id,
+          recipeSnapshot: legacySnapshot,
+          search: '',
+          legacyPlan: plan,
+        });
+      }
+
+      async function savePlan() {
+        if (!householdId || !planDraft?.date) return;
+        const id = planDraft.id || genId('mp');
+        let payload;
+
+        if (planDraft.sourceType === 'custom') {
+          const name = String(planDraft.name || '').trim();
+          if (!name) return;
+          payload = {
+            id,
+            date: planDraft.date,
+            sourceType: 'custom',
+            name,
+            recipeId: '',
+            recipeSnapshot: null,
+          };
+        } else {
+          const recipe = recipeById.get(planDraft.recipeId);
+          const recipeSnapshot = planDraft.legacyPlan
+            ? planDraft.recipeSnapshot
+            : (recipe ? snapshotRecipe(recipe) : planDraft.recipeSnapshot);
+          if (!recipeSnapshot) return;
+          payload = {
+            id,
+            date: planDraft.date,
+            sourceType: 'recipe',
+            name: recipeSnapshot.name || 'Recept',
+            recipeId: recipeSnapshot.id || planDraft.recipeId,
+            recipeSnapshot,
+          };
+        }
+
+        const existing = (mealPlans || []).find(plan => plan.id === id);
+        await db.doc(`households/${householdId}/meal_plans/${id}`).set({
+          ...payload,
+          createdAt: existing?.createdAt || firebase.firestore.FieldValue.serverTimestamp(),
+          createdBy: existing?.createdBy || currentUser?.uid || '',
+          createdByName: existing?.createdByName || currentUser?.displayName || '',
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          updatedBy: currentUser?.uid || '',
+        }, { merge: true });
+
+        if (planDraft.legacyPlan && activeListId) {
+          const legacyId = planDraft.legacyPlan.id || planDraft.legacyPlan.recipeId;
+          await db.doc(`households/${householdId}/lists/${activeListId}/planned_recipes/${legacyId}`).delete();
+        }
+
+        setPlanDraft(null);
+        showFeedback(existing ? 'Planning aangepast.' : 'Gerecht ingepland.');
+      }
+
+      async function deletePlan(plan) {
+        if (!confirm(`‘${plan.name || plan.recipeSnapshot?.name || 'Dit gerecht'}’ uit de planning verwijderen?`)) return;
+        await db.doc(`households/${householdId}/meal_plans/${plan.id}`).delete();
+      }
+
+      function openIngredients(plan) {
+        const ingredients = plan.recipeSnapshot?.ingredients || [];
+        const picks = {};
+        const qtys = {};
+        ingredients.forEach((ingredient, index) => {
+          const key = ingredient.ingredientId || ingredient.productId || String(index);
+          picks[key] = true;
+          qtys[key] = Math.max(1, Number(ingredient.buyQty) || 1);
+        });
+        setIngredientDraft({ plan, picks, qtys });
+      }
+
+      function combineNeed(previousNeed, nextNeed) {
+        if (!previousNeed) return nextNeed;
+        const previousUnit = String(previousNeed.unit || '').trim().toLowerCase();
+        const nextUnit = String(nextNeed.unit || '').trim().toLowerCase();
+        const previousValue = Number(previousNeed.value);
+        const nextValue = Number(nextNeed.value);
+        if (isFinite(previousValue) && isFinite(nextValue) && previousUnit === nextUnit) {
+          return { value: previousValue + nextValue, unit: nextNeed.unit || previousNeed.unit || '' };
+        }
+        if (previousNeed.valueText === nextNeed.valueText && previousUnit === nextUnit) {
+          return { ...nextNeed, times: Math.max(1, Number(previousNeed.times) || 1) + 1 };
+        }
+        const previousText = previousNeed.value != null
+          ? `${previousNeed.value} ${previousNeed.unit || ''}`.trim()
+          : `${previousNeed.valueText || ''} ${previousNeed.unit || ''}`.trim();
+        const nextText = nextNeed.value != null
+          ? `${nextNeed.value} ${nextNeed.unit || ''}`.trim()
+          : `${nextNeed.valueText || ''} ${nextNeed.unit || ''}`.trim();
+        return { valueText: [previousText, nextText].filter(Boolean).join(' + '), unit: '' };
+      }
+
+      async function addIngredientsToList() {
+        const plan = ingredientDraft?.plan;
+        if (!householdId || !activeListId || !plan) return;
+        const ingredients = plan.recipeSnapshot?.ingredients || [];
+        const existingByProductId = new Map();
+        (items || []).forEach(item => {
+          if (!item.productId) return;
+          const current = existingByProductId.get(item.productId);
+          if (!current || (current.checked && !item.checked)) existingByProductId.set(item.productId, item);
+        });
+        const productsByName = new Map((products || []).map(product => [String(product.name || '').trim().toLowerCase(), product]));
+        const createdProductsByName = new Map();
+        const batch = db.batch();
+        let added = 0;
+
+        ingredients.forEach((ingredient, index) => {
+          const key = ingredient.ingredientId || ingredient.productId || String(index);
+          if (ingredientDraft.picks[key] === false) return;
+          const name = String(ingredient.name || '').trim();
+          if (!name) return;
+          const nameKey = name.toLowerCase();
+          let product = ingredient.productId ? productById.get(ingredient.productId) : null;
+          product = product || productsByName.get(nameKey) || createdProductsByName.get(nameKey) || null;
+          if (!product) {
+            product = {
+              id: ingredient.productId || genId('p'),
+              schemaVersion: 2,
+              name,
+              category: ingredient.category || 'Overig',
+              updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+              updatedBy: currentUser?.uid || '',
+              updatedByName: currentUser?.displayName || '',
+              updatedByPhotoURL: currentUser?.photoURL || '',
+            };
+            createdProductsByName.set(nameKey, product);
+            batch.set(db.doc(`households/${householdId}/products/${product.id}`), product, { merge: true });
+          }
+
+          const buyQty = clamp(Math.round(Number(ingredientDraft.qtys[key]) || 1), 1, 99);
+          const existing = existingByProductId.get(product.id);
+          const itemId = existing?.id || itemIdForProduct(product.id);
+          const itemRef = db.doc(`households/${householdId}/lists/${activeListId}/items/${itemId}`);
+          const needKey = plan.id;
+          const need = combineNeed(existing?.needsByRecipe?.[needKey], ingredient.need || { valueText: '', unit: 'st' });
+
+          if (existing) {
+            batch.update(itemRef, {
+              qty: firebase.firestore.FieldValue.increment(buyQty),
+              checked: false,
+              [`needsByRecipe.${needKey}`]: need,
+              updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+              updatedBy: currentUser?.uid || '',
+              updatedByName: currentUser?.displayName || '',
+              updatedByPhotoURL: currentUser?.photoURL || '',
+            });
+          } else {
+            batch.set(itemRef, {
+              id: itemId,
+              productId: product.id,
+              nameSnapshot: product.name || name,
+              categorySnapshot: product.category || ingredient.category || 'Overig',
+              qty: buyQty,
+              checked: false,
+              needsByRecipe: { [needKey]: need },
+              createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+              createdBy: currentUser?.uid || '',
+              createdByName: currentUser?.displayName || '',
+              createdByPhotoURL: currentUser?.photoURL || '',
+              updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+              updatedBy: currentUser?.uid || '',
+              updatedByName: currentUser?.displayName || '',
+              updatedByPhotoURL: currentUser?.photoURL || '',
+              source: `meal-plan:${plan.id}`,
+            }, { merge: true });
+            existingByProductId.set(product.id, { id: itemId, productId: product.id });
+          }
+          added += 1;
+        });
+
+        if (!added) return;
+        batch.set(db.doc(`households/${householdId}/meal_plans/${plan.id}`), {
+          shoppingAddedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          shoppingListId: activeListId,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          updatedBy: currentUser?.uid || '',
+        }, { merge: true });
+        await batch.commit();
+        setIngredientDraft(null);
+        showFeedback(`${added} product${added === 1 ? '' : 'en'} toegevoegd aan je lijst.`);
+      }
+
+      const sortedPlans = useMemo(() => [...(mealPlans || [])].sort((a,b) => (
+        String(a.date || '').localeCompare(String(b.date || '')) || (a.createdAt?.seconds||0) - (b.createdAt?.seconds||0)
+      )), [mealPlans]);
+      const upcomingPlans = sortedPlans.filter(plan => plan.date && plan.date >= today);
+      const pastPlans = sortedPlans.filter(plan => plan.date && plan.date < today).reverse();
+      const undatedPlans = sortedPlans.filter(plan => !plan.date);
+
+      function renderPlanGroups(plans, muted = false) {
+        const groups = plans.reduce((result, plan) => {
+          const key = plan.date || '';
+          if (!result[key]) result[key] = [];
+          result[key].push(plan);
+          return result;
+        }, {});
+        return Object.entries(groups).map(([date, dayPlans]) => (
+          <section key={date || 'zonder-datum'} className="mb-4">
+            <div className="flex items-center gap-2 px-1 mb-1.5">
+              <h3 className={"text-xs font-bold " + (date === today ? "text-emerald-700" : "text-slate-500")}>
+                {formatMealPlanDate(date)}
+              </h3>
+              {date === today && <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-bold">Vandaag</span>}
+            </div>
+            <div className="space-y-2">
+              {dayPlans.map(plan => {
+                const recipeSnapshot = plan.recipeSnapshot;
+                const hasIngredients = (recipeSnapshot?.ingredients || []).length > 0;
+                return (
+                  <Card key={plan.id}>
+                    <div className={"px-3 py-3 " + (muted ? "opacity-70" : "")}>
+                      <div className="flex items-start gap-3">
+                        <div className={"w-9 h-9 rounded-xl flex items-center justify-center shrink-0 " + (plan.sourceType === 'custom' ? "bg-sky-50" : "bg-amber-50")}>
+                          {plan.sourceType === 'custom' ? '✏️' : '🍳'}
+                        </div>
+                        <div className="min-w-0 flex-1 pt-0.5">
+                          <div className="font-semibold text-sm text-slate-800">{plan.name || recipeSnapshot?.name || 'Gerecht'}</div>
+                          <div className="text-[11px] text-slate-500 mt-0.5">
+                            {plan.sourceType === 'custom' ? 'Zelf ingevoerd' : `Recept · basis ${recipeSnapshot?.baseServings || 5} pers.`}
+                          </div>
+                        </div>
+                        <button type="button" onClick={() => openEditPlan(plan)} className="w-10 h-10 rounded-full text-slate-500 flex items-center justify-center" aria-label="Planning aanpassen">
+                          <EditIcon className="w-4 h-4" />
+                        </button>
+                        <button type="button" onClick={() => deletePlan(plan)} className="w-10 h-10 rounded-full text-rose-600 flex items-center justify-center" aria-label="Uit planning verwijderen">
+                          <TrashIcon className="w-4 h-4" />
+                        </button>
+                      </div>
+                      {hasIngredients && (
+                        <div className="mt-2">
+                          <button type="button" onClick={() => openIngredients(plan)}
+                            className="w-full min-h-11 px-3 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-800 text-xs font-semibold">
+                            {plan.shoppingAddedAt ? 'Ingrediënten nogmaals op lijst' : 'Ingrediënten op boodschappenlijst'}
+                          </button>
+                          {plan.shoppingAddedAt && <div className="mt-1 text-center text-[10px] text-slate-500">Al eerder aan een lijst toegevoegd</div>}
+                        </div>
+                      )}
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          </section>
+        ));
+      }
+
+      const dialogRecipes = (recipes || []).filter(recipe => {
+        const query = String(planDraft?.search || '').trim().toLowerCase();
+        return !query || String(recipe.name || '').toLowerCase().includes(query);
+      });
+      const dialogCanSave = planDraft?.date && (
+        planDraft.sourceType === 'custom'
+          ? String(planDraft.name || '').trim()
+          : (recipeById.has(planDraft.recipeId) || planDraft.recipeSnapshot)
+      );
+
+      return (
+        <div className="pb-24">
+          <Card>
+            <div className="p-4 flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0">
+                <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <rect x="3" y="5" width="18" height="16" rx="2" /><path d="M16 3v4M8 3v4M3 10h18" /><path d="m8 15 2 2 5-5" />
+                </svg>
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-bold text-slate-800">Plan de dagen die je nodig hebt</div>
+                <div className="text-xs text-slate-500 mt-1 leading-relaxed">Geen weeknummer of vaste periode. Begin bijvoorbeeld op vrijdag en vul later gewoon nieuwe dagen aan.</div>
+              </div>
+            </div>
+          </Card>
+
+          <Button onClick={() => openNewPlan()} className="w-full mt-3 mb-4 bg-emerald-600 text-white">+ Gerecht inplannen</Button>
+
+          {feedback && <div className="mb-3 px-3 py-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold">{feedback}</div>}
+
+          {(legacyPlans || []).length > 0 && (
+            <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 overflow-hidden">
+              <div className="px-3 py-3">
+                <div className="text-sm font-bold text-amber-900">Huidig weekmenu overzetten</div>
+                <div className="text-xs text-amber-800/80 mt-0.5 mb-2">Kies per gerecht één concrete datum. Daarna staat het los van je boodschappenlijst.</div>
+                <div className="space-y-1.5">
+                  {(legacyPlans || []).map(plan => (
+                    <button key={plan.id || plan.recipeId} type="button" onClick={() => openLegacyPlan(plan)}
+                      className="w-full min-h-11 px-3 rounded-xl border border-amber-200 bg-white flex items-center gap-3 text-left">
+                      <span className="w-20 shrink-0 text-[11px] font-bold text-amber-800">{formatPlannedDay(plan)}</span>
+                      <span className="min-w-0 flex-1 text-sm font-semibold text-slate-800 truncate">{plan.recipeName || 'Recept'}</span>
+                      <span className="text-amber-700">›</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {upcomingPlans.length ? (
+            <div>
+              <div className="px-1 mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-500">Komende planning</div>
+              {renderPlanGroups(upcomingPlans)}
+            </div>
+          ) : (
+            <div className="py-10 text-center text-slate-500">
+              <div className="text-4xl mb-2">🍽️</div>
+              <div className="text-sm font-semibold">Nog niets gepland</div>
+              <div className="text-xs mt-1">Kies een recept of voer zelf een gerecht in.</div>
+            </div>
+          )}
+
+          {undatedPlans.length > 0 && <div>{renderPlanGroups(undatedPlans)}</div>}
+
+          {pastPlans.length > 0 && (
+            <details className="mt-4">
+              <summary className="min-h-11 flex items-center px-1 text-xs font-semibold text-slate-500 cursor-pointer">Eerdere planning ({pastPlans.length})</summary>
+              <div className="mt-2">{renderPlanGroups(pastPlans, true)}</div>
+            </details>
+          )}
+
+          {(menuWeeks || []).length > 0 && (
+            <details className="mt-3 rounded-2xl border border-slate-200 bg-white overflow-hidden">
+              <summary className="min-h-12 flex items-center px-3 text-sm font-semibold text-slate-700 cursor-pointer">Bewaarde weekmenu’s ({menuWeeks.length})</summary>
+              <div className="border-t border-slate-200">
+                {(menuWeeks || []).map(menuWeek => (
+                  <div key={menuWeek.id} className="px-3 py-3 border-b border-slate-100 last:border-b-0">
+                    <div className="text-sm font-semibold text-slate-800">{menuWeek.label || 'Weekmenu'}</div>
+                    <div className="mt-1 space-y-1">
+                      {(menuWeek.recipes || []).map((recipe, index) => (
+                        <div key={recipe.recipeId || index} className="flex items-baseline gap-2 text-xs">
+                          <span className="w-20 shrink-0 font-semibold text-emerald-700">{formatPlannedDay(recipe)}</span>
+                          <span className="min-w-0 flex-1 text-slate-600">{recipe.recipeName || 'Recept'}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+
+          {planDraft && (
+            <Modal
+              title={planDraft.id ? 'Planning aanpassen' : (planDraft.legacyPlan ? 'Weekmenu overzetten' : 'Gerecht inplannen')}
+              onClose={() => setPlanDraft(null)}
+              footer={<Button onClick={savePlan} disabled={!dialogCanSave} className="w-full bg-emerald-600 text-white">{planDraft.id ? 'Wijzigingen opslaan' : 'Inplannen'}</Button>}
+            >
+              <div className="space-y-4">
+                <div>
+                  <div className="text-xs font-semibold text-slate-500 mb-1">Dag</div>
+                  <input type="date" value={planDraft.date || ''} onChange={event => setPlanDraft(previous => ({ ...previous, date: event.target.value }))}
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white" />
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <button type="button" onClick={() => setPlanDraft(previous => ({ ...previous, sourceType: 'recipe' }))}
+                    className={"min-h-11 px-3 rounded-xl border text-sm font-semibold " + (planDraft.sourceType === 'recipe' ? "bg-emerald-600 border-emerald-600 text-white" : "bg-white border-slate-200 text-slate-600")}>Uit recepten</button>
+                  <button type="button" onClick={() => setPlanDraft(previous => ({ ...previous, sourceType: 'custom' }))}
+                    className={"min-h-11 px-3 rounded-xl border text-sm font-semibold " + (planDraft.sourceType === 'custom' ? "bg-emerald-600 border-emerald-600 text-white" : "bg-white border-slate-200 text-slate-600")}>Zelf invoeren</button>
+                </div>
+
+                {planDraft.sourceType === 'custom' ? (
+                  <div>
+                    <div className="text-xs font-semibold text-slate-500 mb-1">Wat eten jullie?</div>
+                    <input value={planDraft.name || ''} onChange={event => setPlanDraft(previous => ({ ...previous, name: event.target.value }))}
+                      placeholder="Bijv. frietjes of een recept uit een kookboek"
+                      className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white" />
+                    <div className="mt-1.5 text-[11px] text-slate-500">Dit wordt niet automatisch een recept in de app.</div>
+                  </div>
+                ) : (
+                  <div>
+                    <input value={planDraft.search || ''} onChange={event => setPlanDraft(previous => ({ ...previous, search: event.target.value }))}
+                      placeholder="Zoek een recept…"
+                      className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white mb-2" />
+                    <div className="max-h-72 overflow-auto space-y-1.5">
+                      {dialogRecipes.map(recipe => (
+                        <button key={recipe.id} type="button" onClick={() => setPlanDraft(previous => ({ ...previous, recipeId: recipe.id, recipeSnapshot: snapshotRecipe(recipe) }))}
+                          className={"w-full min-h-12 px-3 py-2.5 rounded-xl border flex items-center gap-3 text-left " + (planDraft.recipeId === recipe.id ? "bg-emerald-50 border-emerald-400" : "bg-white border-slate-200")}>
+                          <span className={"w-4 h-4 rounded-full border-2 shrink-0 " + (planDraft.recipeId === recipe.id ? "border-emerald-600 bg-emerald-600 ring-2 ring-inset ring-white" : "border-slate-300")}></span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-sm font-semibold text-slate-800 truncate">{recipe.name || 'Recept'}</span>
+                            <span className="block text-[11px] text-slate-500">{(recipe.ingredients || []).length} ingrediënten</span>
+                          </span>
+                        </button>
+                      ))}
+                      {!dialogRecipes.length && <div className="py-5 text-center text-sm text-slate-500">Geen recepten gevonden.</div>}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </Modal>
+          )}
+
+          {ingredientDraft && (
+            <Modal
+              title={ingredientDraft.plan.name || ingredientDraft.plan.recipeSnapshot?.name || 'Ingrediënten'}
+              onClose={() => setIngredientDraft(null)}
+              footer={<Button onClick={addIngredientsToList} disabled={!Object.values(ingredientDraft.picks).some(Boolean)} className="w-full bg-emerald-600 text-white">Voeg geselecteerde producten toe</Button>}
+            >
+              <div className="text-xs font-semibold text-slate-500 mb-2">Vink uit wat je al in huis hebt.</div>
+              <div className="space-y-1">
+                {(ingredientDraft.plan.recipeSnapshot?.ingredients || []).map((ingredient, index) => {
+                  const key = ingredient.ingredientId || ingredient.productId || String(index);
+                  const checked = ingredientDraft.picks[key] !== false;
+                  const need = ingredient.need || {};
+                  const amount = need.value != null ? formatNum(Number(need.value)) : String(need.valueText || '').trim();
+                  return (
+                    <div key={key} className="flex items-center gap-2 py-2 border-b border-slate-100 last:border-b-0">
+                      <button type="button" onClick={() => setIngredientDraft(previous => ({ ...previous, picks: { ...previous.picks, [key]: !checked } }))}
+                        className="min-w-0 flex-1 min-h-11 flex items-center gap-2 text-left">
+                        <span className={"w-6 h-6 rounded-lg border flex items-center justify-center text-xs shrink-0 " + (checked ? "bg-emerald-600 border-emerald-600 text-white" : "bg-white border-slate-300")}>{checked ? '✓' : ''}</span>
+                        <span className="min-w-0 flex-1">
+                          <span className={"block text-sm truncate " + (checked ? "text-slate-800" : "text-slate-400 line-through")}>{ingredient.name || 'Product'}</span>
+                          {(amount || need.unit) && <span className="block text-[11px] text-slate-500 truncate">nodig: {amount} {need.unit || ''}</span>}
+                        </span>
+                      </button>
+                      <QuantityControl
+                        qty={Number(ingredientDraft.qtys[key]) || 1}
+                        onDec={() => setIngredientDraft(previous => ({ ...previous, qtys: { ...previous.qtys, [key]: Math.max(1, (Number(previous.qtys[key]) || 1) - 1) } }))}
+                        onInc={() => setIngredientDraft(previous => ({ ...previous, qtys: { ...previous.qtys, [key]: Math.min(99, (Number(previous.qtys[key]) || 1) + 1) } }))}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </Modal>
+          )}
+        </div>
+      );
+    }
+
     // ---------------- Recipes tab ----------------
     function RecipesTab({ householdId, recipes, products, items, plannedRecipes, menuWeeks, plannedRecipesLoaded, activeListId, currentUser }) {
       const [query, setQuery] = useState('');
@@ -3112,20 +3706,9 @@ useEffect(() => {
         const q = query.trim().toLowerCase();
         let rs = recipes || [];
         if (q) rs = rs.filter(r => (r.name||'').toLowerCase().includes(q));
-        rs = [...rs].sort((a,b) => {
-          const aPlan = plannedRecipeById.get(a.id);
-          const bPlan = plannedRecipeById.get(b.id);
-          const aPlanned = !!aPlan;
-          const bPlanned = !!bPlan;
-          if (aPlanned !== bPlanned) return aPlanned ? -1 : 1;
-          if (aPlanned && bPlanned) {
-            const dayDifference = plannedDayOrder(aPlan) - plannedDayOrder(bPlan);
-            if (dayDifference !== 0) return dayDifference;
-          }
-          return (a.name||'').localeCompare(b.name||'', 'nl');
-        });
+        rs = [...rs].sort((a,b) => (a.name||'').localeCompare(b.name||'', 'nl'));
         return rs;
-      }, [recipes, query, plannedRecipeById]);
+      }, [recipes, query]);
 
       function newRecipe(initialName = '') {
         const id = genId('r');
@@ -3440,59 +4023,6 @@ useEffect(() => {
         )) || null;
       }
 
-      // Recepten die vóór deze functie zijn toegevoegd, hebben al verwijzingen
-      // op lijstregels maar nog geen los menu-item. Leg die één keer alsnog vast,
-      // zodat ze niet verdwijnen zodra later een product wordt verwijderd.
-      useEffect(() => {
-        if (!householdId || !activeListId || !plannedRecipesLoaded) return;
-        const existingPlanIds = new Set((plannedRecipes || []).map(p => p.recipeId || p.id));
-        const recipeById = new Map((recipes || []).map(r => [r.id, r]));
-        const productById = new Map((products || []).map(p => [p.id, p]));
-        const referencedRecipeIds = new Set();
-        (items || []).forEach(item => {
-          Object.keys(item.needsByRecipe || {}).forEach(recipeId => referencedRecipeIds.add(recipeId));
-        });
-
-        const missingPlanIds = Array.from(referencedRecipeIds).filter(recipeId => {
-          const key = `${activeListId}:${recipeId}`;
-          return !existingPlanIds.has(recipeId) && !backfilledMenuKeysRef.current.has(key);
-        });
-        if (!missingPlanIds.length) return;
-
-        const batch = db.batch();
-        missingPlanIds.forEach(recipeId => {
-          backfilledMenuKeysRef.current.add(`${activeListId}:${recipeId}`);
-          const recipe = recipeById.get(recipeId);
-          const ingredients = (items || []).filter(item => item.needsByRecipe?.[recipeId] && item.productId).map(item => {
-            const product = productById.get(item.productId);
-            return {
-              productId: item.productId,
-              name: product?.name || item.nameSnapshot || 'Product',
-              category: product?.category || item.categorySnapshot || 'Overig',
-              buyQty: Math.max(1, Number(item.qty) || 1),
-              need: item.needsByRecipe[recipeId],
-            };
-          });
-          batch.set(db.doc(`households/${householdId}/lists/${activeListId}/planned_recipes/${recipeId}`), {
-            id: recipeId,
-            recipeId,
-            recipeName: recipe?.name || 'Recept',
-            plannedDay: '',
-            plannedDate: '',
-            ingredients,
-            addedAt: firebase.firestore.FieldValue.serverTimestamp(),
-            addedBy: currentUser?.uid || '',
-            addedByName: currentUser?.displayName || '',
-            backfilled: true,
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-          }, { merge: true });
-        });
-        batch.commit().catch(error => {
-          missingPlanIds.forEach(recipeId => backfilledMenuKeysRef.current.delete(`${activeListId}:${recipeId}`));
-          console.error('Backfill planned recipes failed:', error);
-        });
-      }, [householdId, activeListId, plannedRecipesLoaded, plannedRecipes, recipes, products, items, currentUser]);
-
       const DISCRETE_UNITS = ['st','stuk','bl','blik','zak','pak','pot','fles','tube','bol','krop','teen','tenen','knol','bus'];
 
       function scaleAmountText(amountText, unitText, base, target) {
@@ -3541,7 +4071,7 @@ useEffect(() => {
         return s + ` ×${m}`;
       }
 
-async function addRecipeToList(r, targetServings, pickState, plannedDay = '') {
+async function addRecipeToList(r, targetServings, pickState) {
         if (!householdId || !activeListId) { alert('Geen actieve lijst gevonden.'); return; }
         // Ingrediënten in recepten zijn al ingevoerd voor de opgegeven basisporties; we schalen hier (nog) niet.
         const base = r.baseServings || r.servings || r.persons || 5;
@@ -3574,11 +4104,6 @@ async function addRecipeToList(r, targetServings, pickState, plannedDay = '') {
         let added = 0;
         const undoItems = [];
         const undoItemIds = new Set();
-        const priorPlan = (plannedRecipes || []).find(plan => (plan.recipeId || plan.id) === r.id) || null;
-        const plannedIngredientMap = new Map((priorPlan?.ingredients || [])
-          .filter(ing => ing?.productId)
-          .map(ing => [ing.productId, ing]));
-
         ings.forEach((ing, idx) => {
           const key = ing._id || String(idx);
           const include = pickState?.picks ? (pickState.picks[key] !== false) : true;
@@ -3652,15 +4177,6 @@ async function addRecipeToList(r, targetServings, pickState, plannedDay = '') {
           const needObj = isFinite(needNum)
             ? { value: needNum, unit: String(unit || 'st') }
             : { valueText: origAmount, unit: String(unit || 'st') };
-
-          plannedIngredientMap.set(ensuredProductId, {
-            ingredientId: key,
-            productId: ensuredProductId,
-            name,
-            category: (ensuredProduct?.category) || cat,
-            buyQty: Math.max(1, buyInc || 1),
-            need: needObj,
-          });
 
           // bestaat het item al op de lijst?
           const existing = existingByProductId.get(ensuredProductId);
@@ -3753,23 +4269,6 @@ async function addRecipeToList(r, targetServings, pickState, plannedDay = '') {
           existingByProductId.set(ensuredProductId, { id, productId: ensuredProductId });
         });
 
-        if (added > 0) {
-          batch.set(db.doc(`households/${householdId}/lists/${activeListId}/planned_recipes/${r.id}`), {
-            id: r.id,
-            recipeId: r.id,
-            recipeName: r.name || 'Recept',
-            plannedDay: priorPlan ? plannedDayKey(priorPlan) : (plannedDay || ''),
-            plannedDate: priorPlan?.plannedDate || '',
-            baseServings: base,
-            ingredients: Array.from(plannedIngredientMap.values()),
-            addedAt: priorPlan?.addedAt || firebase.firestore.FieldValue.serverTimestamp(),
-            addedBy: priorPlan?.addedBy || currentUser?.uid || '',
-            addedByName: priorPlan?.addedByName || currentUser?.displayName || '',
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-            updatedBy: currentUser?.uid || '',
-          }, { merge: true });
-        }
-
         await batch.commit();
         if (added > 0) {
           setAddFeedback({
@@ -3777,7 +4276,6 @@ async function addRecipeToList(r, targetServings, pickState, plannedDay = '') {
             message: `${added} product${added === 1 ? '' : 'en'} toegevoegd aan je lijst.`,
             listId: activeListId,
             undoItems,
-            planBefore: priorPlan,
           });
           setExpandedId(null);
           setPickMap(prev => {
@@ -4067,6 +4565,7 @@ function ensurePickState(recipe) {
       
       return (
         <div className="pb-24">
+          {false && (
           <div className="mb-3 rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
             <div className="px-3 py-3">
               <div className="flex items-start justify-between gap-3 mb-2">
@@ -4266,6 +4765,7 @@ function ensurePickState(recipe) {
               </div>
             )}
           </div>
+          )}
 
           <div className="mb-3 relative left-1/2 w-screen -translate-x-1/2 px-3">
             <div className={"bg-white border-2 rounded-2xl shadow-sm h-14 flex items-center gap-2 px-3 transition-colors " + (query.trim() ? "border-emerald-500 ring-4 ring-emerald-500/10" : "border-slate-300")}>
@@ -4318,14 +4818,8 @@ function ensurePickState(recipe) {
               ) : filtered.map((r, index) => {
                 const isOpen = expandedId === r.id;
                 const st = pickMap[r.id];
-                const menuStatus = menuStatusByRecipe.get(r.id);
-                const previousRecipe = index > 0 ? filtered[index - 1] : null;
-                const previousMenuStatus = previousRecipe ? menuStatusByRecipe.get(previousRecipe.id) : null;
-                const currentDayKey = plannedDayKey(menuStatus);
-                const previousDayKey = plannedDayKey(previousMenuStatus);
-                const groupHeading = menuStatus
-                  ? (!previousMenuStatus || currentDayKey !== previousDayKey ? formatPlannedDay(menuStatus) : null)
-                  : (previousMenuStatus ? 'Alle recepten' : null);
+                const menuStatus = null;
+                const groupHeading = null;
                 return (
                   <React.Fragment key={r.id}>
                   {groupHeading && (
@@ -4381,7 +4875,7 @@ function ensurePickState(recipe) {
                           <div className="text-xs text-slate-500 mb-2">Nog geen online recept gekoppeld.</div>
                         )}
 
-                        {!menuStatus && (
+                        {false && !menuStatus && (
                           <div className="mb-2 rounded-xl border border-emerald-200 bg-emerald-50/60 px-3 py-3">
                             <div className="text-sm font-semibold text-emerald-900">Bewaar dit recept op je menu</div>
                             <div className="text-xs text-emerald-800/80 mt-0.5 mb-2">Dat kan ook zonder de producten nu al toe te voegen.</div>
@@ -4525,10 +5019,10 @@ function ensurePickState(recipe) {
                   </div>
                 ) : (
                   <Button
-                    onClick={() => addRecipeToList(expandedRecipe, null, expandedPickState, plannedDayDrafts[expandedRecipe.id] || '')}
+                    onClick={() => addRecipeToList(expandedRecipe, null, expandedPickState)}
                     className="w-full bg-slate-900 text-white shadow-lg"
                   >
-                    {menuStatusByRecipe.has(expandedRecipe.id) ? 'Voeg geselecteerde producten toe' : 'Bewaar op menu en voeg producten toe'}
+                    Voeg geselecteerde producten toe
                   </Button>
                 )}
               </div>
@@ -4933,7 +5427,7 @@ function ensurePickState(recipe) {
         return () => { cancelled = true; };
       }, [user, householdId]);
 
-      const { members, lists, products, items, recipes, plannedRecipes, menuWeeks, plannedRecipesLoaded, syncing } = useHouseholdData(user, householdId, activeListId, setActiveListId);
+      const { members, lists, products, items, recipes, plannedRecipes, mealPlans, menuWeeks, plannedRecipesLoaded, syncing } = useHouseholdData(user, householdId, activeListId, setActiveListId);
 
       async function handleCreateList(name) {
         if (!householdId || !user) return;
@@ -5077,7 +5571,7 @@ function ensurePickState(recipe) {
             <main
               ref={mainContentRef}
               tabIndex="-1"
-              aria-label={tab === 'list' ? 'Boodschappenlijst' : (tab === 'products' ? 'Producten' : 'Recepten')}
+              aria-label={tab === 'list' ? 'Boodschappenlijst' : (tab === 'planning' ? 'Planning' : (tab === 'products' ? 'Producten' : 'Recepten'))}
               className="outline-none"
             >
             {tab === 'list' ? (
@@ -5091,6 +5585,18 @@ function ensurePickState(recipe) {
                 showAdders={showAdders}
                 onClearList={handleClearActiveList}
                 onListCompleted={() => clearActiveMenuPlans().catch(error => console.error('Complete menu failed:', error))}
+              />
+            ) : tab === 'planning' ? (
+              <PlanningTab
+                householdId={householdId}
+                activeListId={activeListId}
+                recipes={recipes}
+                products={products}
+                items={items}
+                mealPlans={mealPlans}
+                legacyPlans={plannedRecipes}
+                menuWeeks={menuWeeks}
+                currentUser={user}
               />
             ) : tab === 'products' ? (
               <ProductsTab
