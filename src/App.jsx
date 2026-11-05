@@ -107,12 +107,15 @@ const APP_ICONS = {
     function suggestedMealPlanDate(plans, startDate = '') {
       const today = localDateKey();
       if (startDate) {
-        const cycleEnd = shiftDateKey(startDate, 6);
-        const cycleDates = (plans || [])
-          .map(plan => plan.date)
-          .filter(date => date && date >= startDate && date <= cycleEnd)
-          .sort();
-        return cycleDates.length ? shiftDateKey(cycleDates[cycleDates.length - 1], 1) : startDate;
+        const startWeekday = dateFromKey(startDate)?.getDay();
+        const plannedPositions = (plans || [])
+          .filter(plan => plan.date && plan.date >= today)
+          .map(plan => dateFromKey(plan.date)?.getDay())
+          .filter(weekday => Number.isFinite(weekday) && Number.isFinite(startWeekday))
+          .map(weekday => (weekday - startWeekday + 7) % 7);
+        return plannedPositions.length
+          ? shiftDateKey(startDate, Math.max(...plannedPositions) + 1)
+          : startDate;
       }
       const upcomingDates = (plans || [])
         .map(plan => plan.date)
