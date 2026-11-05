@@ -83,6 +83,13 @@ const APP_ICONS = {
       return formatted.charAt(0).toUpperCase() + formatted.slice(1);
     }
 
+    function formatMealPlanWeekday(value) {
+      const date = dateFromKey(value);
+      if (!date) return 'Dag kiezen';
+      const formatted = new Intl.DateTimeFormat('nl-NL', { weekday: 'long' }).format(date);
+      return formatted.charAt(0).toUpperCase() + formatted.slice(1);
+    }
+
     function suggestedMealPlanDate(plans) {
       const today = localDateKey();
       const tomorrow = shiftDateKey(today, 1);
@@ -3173,7 +3180,10 @@ useEffect(() => {
           .map(plan => plan.date)
           .filter(date => date && date >= localDateKey())
           .sort()[0];
-        return stored || firstUpcoming || shiftDateKey(localDateKey(), 1);
+        const preferred = stored || firstUpcoming || shiftDateKey(localDateKey(), 1);
+        const preferredWeekday = dateFromKey(preferred)?.getDay() ?? 1;
+        const currentWeekday = dateFromKey(localDateKey())?.getDay() ?? 0;
+        return shiftDateKey(localDateKey(), (preferredWeekday - currentWeekday + 7) % 7);
       });
       const feedbackTimerRef = useRef(null);
       const planDayStripRefs = useRef(new Map());
@@ -3189,6 +3199,12 @@ useEffect(() => {
       }, [householdId, scheduleStartDate]);
 
       useEffect(() => {
+        if (!scheduleStartDate || (scheduleStartDate >= today && scheduleStartDate <= shiftDateKey(today, 6))) return;
+        const weekday = dateFromKey(scheduleStartDate)?.getDay();
+        if (Number.isFinite(weekday)) setScheduleStartDate(startDateForWeekday(weekday));
+      }, [scheduleStartDate, today]);
+
+      useEffect(() => {
         const frame = window.requestAnimationFrame(() => {
           const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
           planDayStripRefs.current.forEach(strip => {
@@ -3199,7 +3215,7 @@ useEffect(() => {
           });
         });
         return () => window.cancelAnimationFrame(frame);
-      }, [mealPlans, scheduleStartDate]);
+      }, [mealPlans, scheduleStartDate, planDraft?.date]);
 
       const productById = useMemo(() => new Map((products || []).map(product => [product.id, product])), [products]);
       const recipeById = useMemo(() => new Map((recipes || []).map(recipe => [recipe.id, recipe])), [recipes]);
@@ -3464,22 +3480,51 @@ useEffect(() => {
         showFeedback(`${added} product${added === 1 ? '' : 'en'} toegevoegd aan je lijst.`);
       }
 
-      const firstDayChoices = useMemo(() => (
-        Array.from({ length: 21 }, (_, index) => shiftDateKey(today, index))
-      ), [today]);
       const planDateChoices = useMemo(() => (
-        Array.from({ length: 14 }, (_, index) => shiftDateKey(scheduleStartDate, index))
+        Array.from({ length: 7 }, (_, index) => shiftDateKey(scheduleStartDate, index))
       ), [scheduleStartDate]);
+      const startWeekday = dateFromKey(scheduleStartDate)?.getDay() ?? 1;
 
-      function shortDateLabel(value) {
+      function weekdayLabel(value, format = 'short') {
         const date = dateFromKey(value);
-        if (!date) return 'Dag kiezen';
-        const formatted = new Intl.DateTimeFormat('nl-NL', {
-          weekday: 'short',
-          day: 'numeric',
-          month: 'short',
-        }).format(date);
+        if (!date) return 'Dag';
+        const formatted = new Intl.DateTimeFormat('nl-NL', { weekday: format }).format(date).replace('.', '');
         return formatted.charAt(0).toUpperCase() + formatted.slice(1).replace('.', '');
+      }
+
+      function startDateForWeekday(weekday) {
+        const currentWeekday = dateFromKey(today)?.getDay() ?? 0;
+        return shiftDateKey(today, (weekday - currentWeekday + 7) % 7);
+      }
+
+      function dayPosition(value) {
+        const weekday = dateFromKey(value)?.getDay();
+        return Number.isFinite(weekday) ? (weekday - startWeekday + 7) % 7 : 7;
+      }
+
+      function renderDayPicker({ value, onChange, stripKey, label }) {
+        const selectedWeekday = dateFromKey(value)?.getDay();
+        return (
+          <div className="relative -mx-3">
+            <div ref={node => {
+              if (node) planDayStripRefs.current.set(stripKey, node);
+              else planDayStripRefs.current.delete(stripKey);
+            }} className="bm-day-scroll flex gap-1 overflow-x-auto px-3 pb-1">
+              {planDateChoices.map(date => {
+                const weekday = dateFromKey(date)?.getDay();
+                const selected = weekday === selectedWeekday;
+                return (
+                  <button key={date} type="button" aria-pressed={selected}
+                    aria-label={`${label} op ${weekdayLabel(date, 'long')}`}
+                    onClick={() => onChange(date)}
+                    className={"snap-center shrink-0 min-w-16 h-10 px-3 rounded-xl border text-[11px] font-bold uppercase transition-colors " + (selected ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-transparent bg-slate-50 text-slate-500")}>
+                    {weekdayLabel(date)}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        );
       }
 
       async function movePlanToDate(plan, date) {
@@ -3494,7 +3539,11 @@ useEffect(() => {
       const sortedPlans = useMemo(() => [...(mealPlans || [])].sort((a,b) => (
         String(a.date || '').localeCompare(String(b.date || '')) || (a.createdAt?.seconds||0) - (b.createdAt?.seconds||0)
       )), [mealPlans]);
-      const upcomingPlans = sortedPlans.filter(plan => plan.date && plan.date >= today);
+      const upcomingPlans = sortedPlans
+        .filter(plan => plan.date && plan.date >= today)
+        .sort((a, b) => dayPosition(a.date) - dayPosition(b.date)
+          || String(a.date || '').localeCompare(String(b.date || ''))
+          || (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0));
       const pastPlans = sortedPlans.filter(plan => plan.date && plan.date < today).reverse();
       const undatedPlans = sortedPlans.filter(plan => !plan.date);
 
@@ -3504,7 +3553,7 @@ useEffect(() => {
             {plans.map(plan => {
               const recipeSnapshot = plan.recipeSnapshot;
               const hasIngredients = (recipeSnapshot?.ingredients || []).length > 0;
-              const dateChoices = [...new Set([...(plan.date ? [plan.date] : []), ...planDateChoices])].sort();
+              const recipeUrl = String(recipeById.get(plan.recipeId)?.url || recipeSnapshot?.url || '').trim();
               return (
                 <Card key={plan.id}>
                   <div className={"px-3 py-2.5 " + (muted ? "opacity-70" : "")}>
@@ -3519,36 +3568,32 @@ useEffect(() => {
                     </div>
 
                     {!muted && (
-                      <div className="relative mt-1.5 -mx-3">
-                        <div ref={node => {
-                          if (node) planDayStripRefs.current.set(plan.id, node);
-                          else planDayStripRefs.current.delete(plan.id);
-                        }} className="bm-day-scroll flex gap-1 overflow-x-auto px-3 pb-1">
-                          {dateChoices.map(date => {
-                            const dateObject = dateFromKey(date);
-                            const selected = plan.date === date;
-                            const weekday = new Intl.DateTimeFormat('nl-NL', { weekday: 'short' }).format(dateObject).replace('.', '');
-                            return (
-                              <button key={date} type="button" aria-pressed={selected}
-                                aria-label={`${plan.name || recipeSnapshot?.name || 'Gerecht'} op ${formatMealPlanDate(date)}`}
-                                onClick={() => movePlanToDate(plan, date)}
-                                className={"snap-center shrink-0 min-w-14 h-10 px-2 rounded-xl border flex items-center justify-center gap-1.5 transition-colors " + (selected ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-transparent bg-slate-50 text-slate-500")}>
-                                <span className="text-[10px] font-bold uppercase">{weekday}</span>
-                                <span className="text-xs font-semibold">{dateObject?.getDate()}</span>
-                              </button>
-                            );
-                          })}
-                        </div>
+                      <div className="mt-1.5">
+                        {renderDayPicker({
+                          value: plan.date,
+                          onChange: date => movePlanToDate(plan, date),
+                          stripKey: plan.id,
+                          label: plan.name || recipeSnapshot?.name || 'Gerecht',
+                        })}
                       </div>
                     )}
                     {muted && <div className="mt-1 text-xs font-semibold text-slate-500">{formatMealPlanDate(plan.date)}</div>}
 
-                    {hasIngredients && !muted && (
-                      <div className="flex justify-end mt-0.5">
-                        <button type="button" onClick={() => openIngredients(plan)}
-                          className="min-h-9 px-2.5 rounded-lg text-emerald-700 text-[11px] font-semibold">
-                          Check ingrediënten ›
-                        </button>
+                    {!muted && (recipeUrl || hasIngredients) && (
+                      <div className="flex items-center justify-end gap-1 mt-0.5">
+                        {recipeUrl && (
+                          <a href={/^https?:\/\//i.test(recipeUrl) ? recipeUrl : `https://${recipeUrl}`}
+                            target="_blank" rel="noopener noreferrer"
+                            className="min-h-9 px-2.5 rounded-lg text-slate-500 text-[11px] font-semibold inline-flex items-center">
+                            Bekijk recept ↗
+                          </a>
+                        )}
+                        {hasIngredients && (
+                          <button type="button" onClick={() => openIngredients(plan)}
+                            className="min-h-9 px-2.5 rounded-lg text-emerald-700 text-[11px] font-semibold">
+                            Check ingrediënten ›
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -3570,10 +3615,11 @@ useEffect(() => {
           <div className="flex items-center gap-2 mb-3">
             <label className="min-w-0 flex-1 h-11 px-2.5 rounded-xl border border-slate-200 bg-white flex items-center gap-2">
               <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-slate-400">Vanaf</span>
-              <select value={scheduleStartDate} onChange={event => setScheduleStartDate(event.target.value)}
+              <select value={String(startWeekday)} onChange={event => setScheduleStartDate(startDateForWeekday(Number(event.target.value)))}
                 className="min-w-0 flex-1 h-10 bg-transparent text-sm font-semibold text-slate-700 outline-none">
-                {!firstDayChoices.includes(scheduleStartDate) && <option value={scheduleStartDate}>{shortDateLabel(scheduleStartDate)}</option>}
-                {firstDayChoices.map(date => <option key={date} value={date}>{shortDateLabel(date)}</option>)}
+                {MENU_WEEKDAYS.map((day, index) => (
+                  <option key={day.key} value={String((index + 1) % 7)}>{day.label}</option>
+                ))}
               </select>
             </label>
             <button type="button" onClick={openCustomPlan}
@@ -3588,7 +3634,7 @@ useEffect(() => {
             <div className="mt-4 mb-4 rounded-2xl border border-amber-200 bg-amber-50 overflow-hidden">
               <div className="px-3 py-3">
                 <div className="text-sm font-bold text-amber-900">Huidig weekmenu overzetten</div>
-                <div className="text-xs text-amber-800/80 mt-0.5 mb-2">Kies per gerecht één concrete datum. Daarna staat het los van je boodschappenlijst.</div>
+                <div className="text-xs text-amber-800/80 mt-0.5 mb-2">Kies per gerecht een dag. Daarna staat het los van je boodschappenlijst.</div>
                 <div className="space-y-1.5">
                   {(legacyPlans || []).map(plan => (
                     <button key={plan.id || plan.recipeId} type="button" onClick={() => openLegacyPlan(plan)}
@@ -3655,8 +3701,12 @@ useEffect(() => {
               <div className="space-y-4">
                 <div>
                   <div className="text-xs font-semibold text-slate-500 mb-1">Dag</div>
-                  <input type="date" value={planDraft.date || ''} onChange={event => setPlanDraft(previous => ({ ...previous, date: event.target.value }))}
-                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white" />
+                  {renderDayPicker({
+                    value: planDraft.date,
+                    onChange: date => setPlanDraft(previous => ({ ...previous, date })),
+                    stripKey: 'plan-draft',
+                    label: planDraft.name || planDraft.recipeSnapshot?.name || 'Gerecht',
+                  })}
                 </div>
 
                 {planDraft.sourceType === 'custom' ? (
@@ -4937,7 +4987,7 @@ function ensurePickState(recipe) {
           {recipePlanFeedback && (
             <div className="mb-3 px-3 py-2.5 rounded-xl border border-emerald-200 bg-emerald-50 flex items-center gap-3">
               <div className="min-w-0 flex-1 text-xs font-semibold text-emerald-900 truncate">
-                {recipePlanFeedback.name} · {formatMealPlanDate(recipePlanFeedback.date)}
+                {recipePlanFeedback.name} · {formatMealPlanWeekday(recipePlanFeedback.date)}
               </div>
               <button type="button" onClick={undoQuickPlan} className="shrink-0 text-xs font-bold text-emerald-800 underline">
                 Ongedaan maken
@@ -4989,8 +5039,8 @@ function ensurePickState(recipe) {
                       </button>
 
                       <button type="button" onClick={() => quickPlanRecipe(r)}
-                        title={`Plan voor ${formatMealPlanDate(nextRecipePlanDate)}`}
-                        aria-label={`${r.name || 'Recept'} plannen voor ${formatMealPlanDate(nextRecipePlanDate)}`}
+                        title={`Plan voor ${formatMealPlanWeekday(nextRecipePlanDate)}`}
+                        aria-label={`${r.name || 'Recept'} plannen voor ${formatMealPlanWeekday(nextRecipePlanDate)}`}
                         className="w-11 h-11 rounded-full bg-emerald-50 text-emerald-700 flex items-center justify-center">
                         <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                           <rect x="3" y="5" width="18" height="16" rx="2" />
