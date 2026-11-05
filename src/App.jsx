@@ -4075,13 +4075,11 @@ useEffect(() => {
       const [archiveRecipeDraft, setArchiveRecipeDraft] = useState({ recipeId: '', plannedDay: '' });
       const [savingMenuWeek, setSavingMenuWeek] = useState(false);
       const [menuWeekFeedback, setMenuWeekFeedback] = useState('');
-      const [recipePlanFeedback, setRecipePlanFeedback] = useState(null);
       const [nextRecipePlanDate, setNextRecipePlanDate] = useState(() => {
         const startDate = preferredMealPlanStartDate(householdId, mealPlans);
         return suggestedMealPlanDate(mealPlans, startDate);
       });
       const addFeedbackTimerRef = useRef(null);
-      const recipePlanFeedbackTimerRef = useRef(null);
       const backfilledMenuKeysRef = useRef(new Set());
       const openedDefaultMenuWeekRef = useRef(false);
       const recipeTitleRefs = useRef(new Map());
@@ -4089,7 +4087,6 @@ useEffect(() => {
       useEffect(() => {
         return () => {
           if (addFeedbackTimerRef.current) clearTimeout(addFeedbackTimerRef.current);
-          if (recipePlanFeedbackTimerRef.current) clearTimeout(recipePlanFeedbackTimerRef.current);
         };
       }, []);
 
@@ -4254,56 +4251,6 @@ useEffect(() => {
         const name = (p?.name) || ing.nameSnapshot || '';
         const cat = (p?.category) || ing.categorySnapshot || 'Overig';
         return { name, cat };
-      }
-
-      function showRecipePlanFeedback(feedback) {
-        setRecipePlanFeedback(feedback);
-        if (recipePlanFeedbackTimerRef.current) clearTimeout(recipePlanFeedbackTimerRef.current);
-        recipePlanFeedbackTimerRef.current = setTimeout(() => {
-          setRecipePlanFeedback(null);
-          recipePlanFeedbackTimerRef.current = null;
-        }, 6000);
-      }
-
-      async function quickPlanRecipe(recipe) {
-        if (!householdId || !recipe) return;
-        const alreadyPlanned = (mealPlans || []).some(plan => (
-          plan.recipeId === recipe.id && (!plan.date || plan.date >= localDateKey())
-        ));
-        if (alreadyPlanned && !confirm('Nog een keer toevoegen aan de planning?')) return;
-        const startDate = preferredMealPlanStartDate(householdId, mealPlans);
-        const date = nextRecipePlanDate || suggestedMealPlanDate(mealPlans, startDate);
-        const id = genId('mp');
-        setNextRecipePlanDate(shiftDateKey(date, 1));
-        try {
-          await db.doc(`households/${householdId}/meal_plans/${id}`).set({
-            id,
-            date,
-            sourceType: 'recipe',
-            name: recipe.name || 'Recept',
-            recipeId: recipe.id,
-            recipeSnapshot: snapshotRecipeForMealPlan(recipe, products),
-            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-            createdBy: currentUser?.uid || '',
-            createdByName: currentUser?.displayName || '',
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-            updatedBy: currentUser?.uid || '',
-          });
-          showRecipePlanFeedback({ id, date, name: recipe.name || 'Recept' });
-        } catch (error) {
-          setNextRecipePlanDate(date);
-          throw error;
-        }
-      }
-
-      async function undoQuickPlan() {
-        if (!householdId || !recipePlanFeedback?.id) return;
-        const { id, date } = recipePlanFeedback;
-        await db.doc(`households/${householdId}/meal_plans/${id}`).delete();
-        setNextRecipePlanDate(date);
-        setRecipePlanFeedback(null);
-        if (recipePlanFeedbackTimerRef.current) clearTimeout(recipePlanFeedbackTimerRef.current);
-        recipePlanFeedbackTimerRef.current = null;
       }
 
       const menuPlans = useMemo(() => {
@@ -4532,6 +4479,14 @@ useEffect(() => {
 
 async function addRecipeToList(r, targetServings, pickState) {
         if (!householdId || !activeListId) { alert('Geen actieve lijst gevonden.'); return; }
+        const alreadyPlanned = (mealPlans || []).some(plan => (
+          plan.recipeId === r.id && (!plan.date || plan.date >= localDateKey())
+        ));
+        if (alreadyPlanned && !confirm('Nog een keer toevoegen aan de planning?')) return;
+        const planningStartDate = preferredMealPlanStartDate(householdId, mealPlans);
+        const planDate = nextRecipePlanDate || suggestedMealPlanDate(mealPlans, planningStartDate);
+        const mealPlanId = genId('mp');
+
         // Ingrediënten in recepten zijn al ingevoerd voor de opgegeven basisporties; we schalen hier (nog) niet.
         const base = r.baseServings || r.servings || r.persons || 5;
         const target = base;
@@ -4728,31 +4683,57 @@ async function addRecipeToList(r, targetServings, pickState) {
           existingByProductId.set(ensuredProductId, { id, productId: ensuredProductId });
         });
 
-        await batch.commit();
-        if (added > 0) {
-          setAddFeedback({
-            recipeId: r.id,
-            message: `${added} product${added === 1 ? '' : 'en'} toegevoegd aan je lijst.`,
-            listId: activeListId,
-            undoItems,
-          });
-          setExpandedId(null);
-          setPickMap(prev => {
-            const next = { ...prev };
-            delete next[r.id];
-            return next;
-          });
-          if (addFeedbackTimerRef.current) clearTimeout(addFeedbackTimerRef.current);
-          addFeedbackTimerRef.current = setTimeout(() => {
-            setAddFeedback(null);
-            addFeedbackTimerRef.current = null;
-          }, 5000);
+        batch.set(db.doc(`households/${householdId}/meal_plans/${mealPlanId}`), {
+          id: mealPlanId,
+          date: planDate,
+          sourceType: 'recipe',
+          name: r.name || 'Recept',
+          recipeId: r.id,
+          recipeSnapshot: snapshotRecipeForMealPlan(r, products),
+          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+          createdBy: currentUser?.uid || '',
+          createdByName: currentUser?.displayName || '',
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          updatedBy: currentUser?.uid || '',
+        });
+
+        setNextRecipePlanDate(shiftDateKey(planDate, 1));
+        try {
+          await batch.commit();
+        } catch (error) {
+          setNextRecipePlanDate(planDate);
+          throw error;
         }
+
+        const dayLabel = formatMealPlanWeekday(planDate).toLowerCase();
+        setAddFeedback({
+          recipeId: r.id,
+          message: added > 0
+            ? `${added} product${added === 1 ? '' : 'en'} toegevoegd; ${r.name || 'Recept'} staat op ${dayLabel} op je menu.`
+            : `${r.name || 'Recept'} staat op ${dayLabel} op je menu.`,
+          listId: activeListId,
+          undoItems,
+          mealPlanId,
+          mealPlanDate: planDate,
+        });
+        setExpandedId(null);
+        setPickMap(prev => {
+          const next = { ...prev };
+          delete next[r.id];
+          return next;
+        });
+        if (addFeedbackTimerRef.current) clearTimeout(addFeedbackTimerRef.current);
+        addFeedbackTimerRef.current = setTimeout(() => {
+          setAddFeedback(null);
+          addFeedbackTimerRef.current = null;
+        }, 6000);
       }
 
       async function undoAddFeedback() {
         const listId = addFeedback?.listId || activeListId;
-        if (!householdId || !listId || !addFeedback?.undoItems?.length) {
+        const canUndoItems = !!addFeedback?.undoItems?.length;
+        const canUndoMealPlan = !!addFeedback?.mealPlanId;
+        if (!householdId || !listId || (!canUndoItems && !canUndoMealPlan)) {
           setAddFeedback(null);
           return;
         }
@@ -4761,17 +4742,21 @@ async function addRecipeToList(r, targetServings, pickState) {
           addFeedbackTimerRef.current = null;
         }
         const batch = db.batch();
-        addFeedback.undoItems.forEach(({ id, before }) => {
+        (addFeedback.undoItems || []).forEach(({ id, before }) => {
           const ref = db.doc(`households/${householdId}/lists/${listId}/items/${id}`);
           if (before) batch.set(ref, before);
           else batch.delete(ref);
         });
+        if (addFeedback.mealPlanId) {
+          batch.delete(db.doc(`households/${householdId}/meal_plans/${addFeedback.mealPlanId}`));
+        }
         if (Object.prototype.hasOwnProperty.call(addFeedback, 'planBefore') && addFeedback.recipeId) {
           const planRef = db.doc(`households/${householdId}/lists/${listId}/planned_recipes/${addFeedback.recipeId}`);
           if (addFeedback.planBefore) batch.set(planRef, addFeedback.planBefore);
           else batch.delete(planRef);
         }
         await batch.commit();
+        if (addFeedback.mealPlanDate) setNextRecipePlanDate(addFeedback.mealPlanDate);
         setAddFeedback(null);
       }
 
@@ -5267,21 +5252,6 @@ function ensurePickState(recipe) {
             </div>
           </div>
 
-          {recipePlanFeedback && (
-            <div className={"fixed left-0 right-0 z-50 px-3 pointer-events-none " + ((addFeedback || (expandedRecipe && expandedPickState)) ? "bottom-[calc(env(safe-area-inset-bottom)+5.25rem)]" : "bottom-[calc(env(safe-area-inset-bottom)+0.75rem)]")} role="status" aria-live="polite">
-              <div className="max-w-xl mx-auto bg-slate-900 text-white rounded-xl shadow-lg px-4 py-3 flex items-center gap-3 pointer-events-auto">
-                <div className="min-w-0 flex-1 text-sm font-semibold truncate">
-                  {recipePlanFeedback.name} · {formatMealPlanWeekday(recipePlanFeedback.date)}
-                </div>
-                <button type="button" onClick={undoQuickPlan}
-                  className="shrink-0 h-9 px-3 rounded-full bg-white/10 text-white flex items-center gap-1.5 text-xs font-semibold">
-                  <UndoCircleIcon className="w-4 h-4" />
-                  Ongedaan maken
-                </button>
-              </div>
-            </div>
-          )}
-
           <div className="relative left-1/2 w-screen -translate-x-1/2">
             <div className="bg-white border-y border-slate-200/80">
               {filtered.length === 0 ? (
@@ -5466,17 +5436,6 @@ function ensurePickState(recipe) {
                           })}
                         </div>
 
-                        <div className="mt-3 pt-3 border-t border-slate-200">
-                          <button type="button" onClick={() => quickPlanRecipe(r)}
-                            aria-label={`${r.name || 'Recept'} toevoegen aan planning voor ${formatMealPlanWeekday(nextRecipePlanDate)}`}
-                            className="w-full min-h-11 px-3 rounded-xl bg-emerald-50 text-emerald-800 text-sm font-semibold flex items-center justify-center gap-2">
-                            <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                              <rect x="3" y="5" width="18" height="16" rx="2" />
-                              <path d="M16 3v4M8 3v4M3 10h18M12 13v5M9.5 15.5h5" />
-                            </svg>
-                            Toevoegen aan planning · {formatMealPlanWeekday(nextRecipePlanDate)}
-                          </button>
-                        </div>
                       </div>
                     )}
                   </div>
@@ -5508,7 +5467,7 @@ function ensurePickState(recipe) {
                     onClick={() => addRecipeToList(expandedRecipe, null, expandedPickState)}
                     className="w-full bg-slate-900 text-white shadow-lg"
                   >
-                    Voeg geselecteerde producten toe
+                    Voeg toe aan lijst en menu · {formatMealPlanWeekday(nextRecipePlanDate).toLowerCase()}
                   </Button>
                 )}
               </div>
