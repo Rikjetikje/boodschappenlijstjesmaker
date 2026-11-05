@@ -40,18 +40,9 @@ button:focus-visible,
   color: #94a3b8;
 }
 
-.bm-day-scroll {
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-  scroll-snap-type: x proximity;
-  overscroll-behavior-x: contain;
-  -webkit-overflow-scrolling: touch;
-  -webkit-mask-image: linear-gradient(to right, transparent, #000 12px, #000 calc(100% - 12px), transparent);
-  mask-image: linear-gradient(to right, transparent, #000 12px, #000 calc(100% - 12px), transparent);
-}
-
-.bm-day-scroll::-webkit-scrollbar {
-  display: none;
+.bm-day-grid > button {
+  min-width: 0;
+  min-height: 40px;
 }
 
 @keyframes bmflash {

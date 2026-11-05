@@ -257,6 +257,28 @@ const APP_ICONS = {
       );
     }
 
+    function RecipeIcon({ className = "w-5 h-5" }) {
+      return (
+        <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H11a2 2 0 0 1 2 2v15a2 2 0 0 0-2-2H6.5A2.5 2.5 0 0 0 4 20.5z" />
+          <path d="M20 5.5A2.5 2.5 0 0 0 17.5 3H13v17a2 2 0 0 1 2-2h2.5a2.5 2.5 0 0 1 2.5 2.5z" />
+        </svg>
+      );
+    }
+
+    function IngredientsIcon({ className = "w-5 h-5" }) {
+      return (
+        <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="m4 7 1.5 1.5L8 6" />
+          <path d="M11 7h9" />
+          <path d="m4 12 1.5 1.5L8 11" />
+          <path d="M11 12h9" />
+          <path d="m4 17 1.5 1.5L8 16" />
+          <path d="M11 17h9" />
+        </svg>
+      );
+    }
+
     function UndoCircleIcon({ className = "w-5 h-5" }) {
       return (
         <svg
@@ -3186,7 +3208,6 @@ useEffect(() => {
         return shiftDateKey(localDateKey(), (preferredWeekday - currentWeekday + 7) % 7);
       });
       const feedbackTimerRef = useRef(null);
-      const planDayStripRefs = useRef(new Map());
       const today = localDateKey();
 
       useEffect(() => () => {
@@ -3203,19 +3224,6 @@ useEffect(() => {
         const weekday = dateFromKey(scheduleStartDate)?.getDay();
         if (Number.isFinite(weekday)) setScheduleStartDate(startDateForWeekday(weekday));
       }, [scheduleStartDate, today]);
-
-      useEffect(() => {
-        const frame = window.requestAnimationFrame(() => {
-          const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-          planDayStripRefs.current.forEach(strip => {
-            const selected = strip?.querySelector('[aria-pressed="true"]');
-            if (!selected) return;
-            const left = selected.offsetLeft - ((strip.clientWidth - selected.offsetWidth) / 2);
-            strip.scrollTo({ left: Math.max(0, left), behavior: reduceMotion ? 'auto' : 'smooth' });
-          });
-        });
-        return () => window.cancelAnimationFrame(frame);
-      }, [mealPlans, scheduleStartDate, planDraft?.date]);
 
       const productById = useMemo(() => new Map((products || []).map(product => [product.id, product])), [products]);
       const recipeById = useMemo(() => new Map((recipes || []).map(recipe => [recipe.id, recipe])), [recipes]);
@@ -3502,14 +3510,10 @@ useEffect(() => {
         return Number.isFinite(weekday) ? (weekday - startWeekday + 7) % 7 : 7;
       }
 
-      function renderDayPicker({ value, onChange, stripKey, label }) {
+      function renderDayPicker({ value, onChange, label }) {
         const selectedWeekday = dateFromKey(value)?.getDay();
         return (
-          <div className="relative -mx-3">
-            <div ref={node => {
-              if (node) planDayStripRefs.current.set(stripKey, node);
-              else planDayStripRefs.current.delete(stripKey);
-            }} className="bm-day-scroll flex gap-1 overflow-x-auto px-3 pb-1">
+          <div className="bm-day-grid grid grid-cols-7 gap-1">
               {planDateChoices.map(date => {
                 const weekday = dateFromKey(date)?.getDay();
                 const selected = weekday === selectedWeekday;
@@ -3517,12 +3521,11 @@ useEffect(() => {
                   <button key={date} type="button" aria-pressed={selected}
                     aria-label={`${label} op ${weekdayLabel(date, 'long')}`}
                     onClick={() => onChange(date)}
-                    className={"snap-center shrink-0 min-w-16 h-10 px-3 rounded-xl border text-[11px] font-bold uppercase transition-colors " + (selected ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-transparent bg-slate-50 text-slate-500")}>
+                    className={"h-10 rounded-lg border text-[10px] font-bold uppercase transition-colors " + (selected ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-transparent bg-slate-50 text-slate-500")}>
                     {weekdayLabel(date)}
                   </button>
                 );
               })}
-            </div>
           </div>
         );
       }
@@ -3562,6 +3565,33 @@ useEffect(() => {
                         <div className="font-semibold text-sm text-slate-800 truncate">{plan.name || recipeSnapshot?.name || 'Gerecht'}</div>
                         {plan.sourceType === 'custom' && <div className="text-[10px] text-slate-400 mt-0.5">Eigen gerecht</div>}
                       </div>
+                      {!muted && (recipeUrl ? (
+                        <a href={/^https?:\/\//i.test(recipeUrl) ? recipeUrl : `https://${recipeUrl}`}
+                          target="_blank" rel="noopener noreferrer" title="Bekijk recept"
+                          aria-label={`Bekijk recept voor ${plan.name || recipeSnapshot?.name || 'gerecht'}`}
+                          className="w-10 h-10 rounded-full text-slate-600 hover:bg-slate-100 flex items-center justify-center shrink-0">
+                          <RecipeIcon className="w-[18px] h-[18px]" />
+                        </a>
+                      ) : (
+                        <button type="button" disabled title="Geen receptlink"
+                          aria-label="Geen receptlink beschikbaar"
+                          className="w-10 h-10 rounded-full text-slate-300 flex items-center justify-center shrink-0 cursor-default">
+                          <RecipeIcon className="w-[18px] h-[18px]" />
+                        </button>
+                      ))}
+                      {!muted && (hasIngredients ? (
+                        <button type="button" onClick={() => openIngredients(plan)} title="Check ingrediënten"
+                          aria-label={`Check ingrediënten voor ${plan.name || recipeSnapshot?.name || 'gerecht'}`}
+                          className="w-10 h-10 rounded-full text-emerald-700 hover:bg-emerald-50 flex items-center justify-center shrink-0">
+                          <IngredientsIcon className="w-[18px] h-[18px]" />
+                        </button>
+                      ) : (
+                        <button type="button" disabled title="Geen ingrediënten"
+                          aria-label="Geen ingrediënten beschikbaar"
+                          className="w-10 h-10 rounded-full text-slate-300 flex items-center justify-center shrink-0 cursor-default">
+                          <IngredientsIcon className="w-[18px] h-[18px]" />
+                        </button>
+                      ))}
                       <button type="button" onClick={() => deletePlan(plan)} className="w-10 h-10 rounded-full text-rose-600 flex items-center justify-center shrink-0" aria-label="Uit planning verwijderen">
                         <TrashIcon className="w-4 h-4" />
                       </button>
@@ -3572,30 +3602,11 @@ useEffect(() => {
                         {renderDayPicker({
                           value: plan.date,
                           onChange: date => movePlanToDate(plan, date),
-                          stripKey: plan.id,
                           label: plan.name || recipeSnapshot?.name || 'Gerecht',
                         })}
                       </div>
                     )}
                     {muted && <div className="mt-1 text-xs font-semibold text-slate-500">{formatMealPlanDate(plan.date)}</div>}
-
-                    {!muted && (recipeUrl || hasIngredients) && (
-                      <div className="flex items-center justify-end gap-1 mt-0.5">
-                        {recipeUrl && (
-                          <a href={/^https?:\/\//i.test(recipeUrl) ? recipeUrl : `https://${recipeUrl}`}
-                            target="_blank" rel="noopener noreferrer"
-                            className="min-h-9 px-2.5 rounded-lg text-slate-500 text-[11px] font-semibold inline-flex items-center">
-                            Bekijk recept ↗
-                          </a>
-                        )}
-                        {hasIngredients && (
-                          <button type="button" onClick={() => openIngredients(plan)}
-                            className="min-h-9 px-2.5 rounded-lg text-emerald-700 text-[11px] font-semibold">
-                            Check ingrediënten ›
-                          </button>
-                        )}
-                      </div>
-                    )}
                   </div>
                 </Card>
               );
@@ -3704,7 +3715,6 @@ useEffect(() => {
                   {renderDayPicker({
                     value: planDraft.date,
                     onChange: date => setPlanDraft(previous => ({ ...previous, date })),
-                    stripKey: 'plan-draft',
                     label: planDraft.name || planDraft.recipeSnapshot?.name || 'Gerecht',
                   })}
                 </div>
