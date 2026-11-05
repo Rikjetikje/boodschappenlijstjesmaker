@@ -4995,13 +4995,17 @@ function ensurePickState(recipe) {
           </div>
 
           {recipePlanFeedback && (
-            <div className="mb-3 px-3 py-2.5 rounded-xl border border-emerald-200 bg-emerald-50 flex items-center gap-3">
-              <div className="min-w-0 flex-1 text-xs font-semibold text-emerald-900 truncate">
-                {recipePlanFeedback.name} · {formatMealPlanWeekday(recipePlanFeedback.date)}
+            <div className={"fixed left-0 right-0 z-50 px-3 pointer-events-none " + ((addFeedback || (expandedRecipe && expandedPickState)) ? "bottom-[calc(env(safe-area-inset-bottom)+5.25rem)]" : "bottom-[calc(env(safe-area-inset-bottom)+0.75rem)]")} role="status" aria-live="polite">
+              <div className="max-w-xl mx-auto bg-slate-900 text-white rounded-xl shadow-lg px-4 py-3 flex items-center gap-3 pointer-events-auto">
+                <div className="min-w-0 flex-1 text-sm font-semibold truncate">
+                  {recipePlanFeedback.name} · {formatMealPlanWeekday(recipePlanFeedback.date)}
+                </div>
+                <button type="button" onClick={undoQuickPlan}
+                  className="shrink-0 h-9 px-3 rounded-full bg-white/10 text-white flex items-center gap-1.5 text-xs font-semibold">
+                  <UndoCircleIcon className="w-4 h-4" />
+                  Ongedaan maken
+                </button>
               </div>
-              <button type="button" onClick={undoQuickPlan} className="shrink-0 text-xs font-bold text-emerald-800 underline">
-                Ongedaan maken
-              </button>
             </div>
           )}
 
