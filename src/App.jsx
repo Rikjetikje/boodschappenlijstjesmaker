@@ -3195,6 +3195,10 @@ useEffect(() => {
     function PlanningTab({ householdId, activeListId, recipes, products, items, mealPlans, legacyPlans, menuWeeks, currentUser }) {
       const [planDraft, setPlanDraft] = useState(null);
       const [ingredientDraft, setIngredientDraft] = useState(null);
+      const [planActionsOpen, setPlanActionsOpen] = useState(false);
+      const [savePlanningOpen, setSavePlanningOpen] = useState(false);
+      const [savePlanningLabel, setSavePlanningLabel] = useState('');
+      const [planningBusy, setPlanningBusy] = useState(false);
       const [feedback, setFeedback] = useState('');
       const [scheduleStartDate, setScheduleStartDate] = useState(() => {
         const stored = householdId ? window.localStorage.getItem(`meal-plan-start:${householdId}`) : '';
@@ -3549,6 +3553,173 @@ useEffect(() => {
           || (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0));
       const pastPlans = sortedPlans.filter(plan => plan.date && plan.date < today).reverse();
       const undatedPlans = sortedPlans.filter(plan => !plan.date);
+      const currentPlans = [...upcomingPlans, ...undatedPlans];
+
+      function archivedDayPosition(recipe, index = 0) {
+        const dayIndex = MENU_WEEKDAYS.findIndex(day => day.key === plannedDayKey(recipe));
+        if (dayIndex < 0) return 7 + index;
+        const weekday = (dayIndex + 1) % 7;
+        return (weekday - startWeekday + 7) % 7;
+      }
+
+      function archivedDate(recipe, index) {
+        const dayIndex = MENU_WEEKDAYS.findIndex(day => day.key === plannedDayKey(recipe));
+        if (dayIndex < 0) return planDateChoices[index % planDateChoices.length];
+        const weekday = (dayIndex + 1) % 7;
+        return shiftDateKey(scheduleStartDate, (weekday - startWeekday + 7) % 7);
+      }
+
+      function openSavePlanning() {
+        const labelDate = dateFromKey(upcomingPlans[0]?.date || scheduleStartDate);
+        const dateLabel = labelDate
+          ? new Intl.DateTimeFormat('nl-NL', { day: 'numeric', month: 'long' }).format(labelDate)
+          : '';
+        setSavePlanningLabel(`Planning vanaf ${dateLabel}`.trim());
+        setPlanActionsOpen(false);
+        setSavePlanningOpen(true);
+      }
+
+      async function saveCurrentPlanning() {
+        if (!householdId || !currentPlans.length || planningBusy) return;
+        const label = String(savePlanningLabel || '').trim();
+        if (!label) return;
+        const existing = (menuWeeks || []).find(menuWeek => (
+          String(menuWeek.label || '').trim().toLowerCase() === label.toLowerCase()
+        ));
+        if (existing && !confirm(`${label} bestaat al. Wil je de bewaarde planning vervangen?`)) return;
+
+        setPlanningBusy(true);
+        try {
+          const id = existing?.id || genId('mw');
+          const recipesSnapshot = currentPlans.map(plan => {
+            const recipeSnapshot = plan.recipeSnapshot || null;
+            const date = dateFromKey(plan.date);
+            const plannedDay = date ? MENU_WEEKDAYS[(date.getDay() + 6) % 7]?.key || '' : '';
+            return {
+              archiveItemId: genId('mwi'),
+              sourceType: plan.sourceType === 'custom' ? 'custom' : 'recipe',
+              recipeId: plan.recipeId || '',
+              recipeName: plan.name || recipeSnapshot?.name || 'Gerecht',
+              recipeUrl: recipeSnapshot?.url || '',
+              plannedDay,
+              baseServings: recipeSnapshot?.baseServings || 5,
+              ingredients: (recipeSnapshot?.ingredients || []).map(ingredient => ({
+                ingredientId: ingredient.ingredientId || '',
+                productId: ingredient.productId || '',
+                name: ingredient.name || 'Product',
+                category: ingredient.category || 'Overig',
+                buyQty: Math.max(1, Number(ingredient.buyQty) || 1),
+                need: ingredient.need || null,
+              })),
+            };
+          });
+          await db.doc(`households/${householdId}/menu_weeks/${id}`).set({
+            id,
+            label,
+            recipes: recipesSnapshot,
+            archiveVersion: 2,
+            sourceListId: activeListId || '',
+            createdAt: existing?.createdAt || firebase.firestore.FieldValue.serverTimestamp(),
+            createdBy: existing?.createdBy || currentUser?.uid || '',
+            createdByName: existing?.createdByName || currentUser?.displayName || '',
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            updatedBy: currentUser?.uid || '',
+          }, { merge: true });
+          setSavePlanningOpen(false);
+          showFeedback(`${label} is bewaard.`);
+        } catch (error) {
+          console.error('Planning bewaren mislukt:', error);
+          showFeedback('Bewaren is niet gelukt. Probeer het nog eens.');
+        } finally {
+          setPlanningBusy(false);
+        }
+      }
+
+      async function clearCurrentPlanning() {
+        setPlanActionsOpen(false);
+        if (!householdId || !currentPlans.length) return;
+        const count = currentPlans.length;
+        if (!confirm(`Planning leegmaken? ${count} gerecht${count === 1 ? '' : 'en'} word${count === 1 ? 't' : 'en'} verwijderd. Bewaarde planningen blijven bestaan.`)) return;
+
+        setPlanningBusy(true);
+        try {
+          const batch = db.batch();
+          currentPlans.forEach(plan => batch.delete(db.doc(`households/${householdId}/meal_plans/${plan.id}`)));
+          await batch.commit();
+          showFeedback('De planning is leeggemaakt.');
+        } catch (error) {
+          console.error('Planning leegmaken mislukt:', error);
+          showFeedback('Leegmaken is niet gelukt. Probeer het nog eens.');
+        } finally {
+          setPlanningBusy(false);
+        }
+      }
+
+      async function restorePlanning(menuWeek) {
+        if (!householdId || planningBusy) return;
+        const archivedRecipes = menuWeek?.recipes || [];
+        if (!archivedRecipes.length) return;
+
+        const seenRecipeIds = new Set(currentPlans.map(plan => plan.recipeId).filter(Boolean));
+        const duplicateNames = [];
+        archivedRecipes.forEach(recipe => {
+          if (!recipe.recipeId) return;
+          if (seenRecipeIds.has(recipe.recipeId)) duplicateNames.push(recipe.recipeName || 'Dit recept');
+          seenRecipeIds.add(recipe.recipeId);
+        });
+        if (duplicateNames.length) {
+          const uniqueNames = [...new Set(duplicateNames)];
+          const names = uniqueNames.length === 1
+            ? `‘${uniqueNames[0]}’ staat al op de planning.`
+            : `${uniqueNames.length} recepten staan al op de planning.`;
+          if (!confirm(`${names}\n\nNog een keer toevoegen aan de planning?`)) return;
+        }
+
+        setPlanningBusy(true);
+        try {
+          const batch = db.batch();
+          archivedRecipes.forEach((recipe, index) => {
+            const id = genId('mp');
+            const isCustom = recipe.sourceType === 'custom' || !recipe.recipeId;
+            const name = recipe.recipeName || 'Gerecht';
+            const recipeSnapshot = isCustom ? null : {
+              id: recipe.recipeId,
+              name,
+              url: recipe.recipeUrl || '',
+              baseServings: recipe.baseServings || 5,
+              ingredients: (recipe.ingredients || []).map(ingredient => ({
+                ingredientId: ingredient.ingredientId || '',
+                productId: ingredient.productId || '',
+                name: ingredient.name || 'Product',
+                category: ingredient.category || 'Overig',
+                buyQty: Math.max(1, Number(ingredient.buyQty) || 1),
+                need: ingredient.need || null,
+              })),
+            };
+            batch.set(db.doc(`households/${householdId}/meal_plans/${id}`), {
+              id,
+              date: archivedDate(recipe, index),
+              sourceType: isCustom ? 'custom' : 'recipe',
+              name,
+              recipeId: isCustom ? '' : recipe.recipeId,
+              recipeSnapshot,
+              restoredFromMenuWeekId: menuWeek.id,
+              createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+              createdBy: currentUser?.uid || '',
+              createdByName: currentUser?.displayName || '',
+              updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+              updatedBy: currentUser?.uid || '',
+            });
+          });
+          await batch.commit();
+          showFeedback(`${menuWeek.label || 'De bewaarde planning'} is opnieuw ingepland.`);
+        } catch (error) {
+          console.error('Planning opnieuw inplannen mislukt:', error);
+          showFeedback('Opnieuw inplannen is niet gelukt. Probeer het nog eens.');
+        } finally {
+          setPlanningBusy(false);
+        }
+      }
 
       function renderPlans(plans, muted = false) {
         return (
@@ -3637,9 +3808,35 @@ useEffect(() => {
               className="shrink-0 h-11 px-3 rounded-xl bg-sky-50 text-sky-700 text-xs font-semibold">
               + Eigen
             </button>
+            <div className="relative shrink-0">
+              <button type="button" onClick={() => setPlanActionsOpen(value => !value)}
+                disabled={planningBusy} aria-label="Planning beheren" aria-expanded={planActionsOpen}
+                className="w-11 h-11 rounded-xl border border-slate-200 bg-white text-xl leading-none font-bold text-slate-500 disabled:opacity-40">
+                ⋯
+              </button>
+              {planActionsOpen && (
+                <>
+                  <button type="button" aria-label="Menu sluiten" onClick={() => setPlanActionsOpen(false)} className="fixed inset-0 z-30 cursor-default" />
+                  <div className="absolute right-0 top-full z-40 mt-1.5 w-52 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
+                    <button type="button" onClick={openSavePlanning} disabled={!currentPlans.length}
+                      className="w-full min-h-11 px-3 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:text-slate-300 disabled:hover:bg-white">
+                      Planning bewaren
+                    </button>
+                    <button type="button" onClick={clearCurrentPlanning} disabled={!currentPlans.length}
+                      className="w-full min-h-11 px-3 border-t border-slate-100 text-left text-sm font-semibold text-rose-600 hover:bg-rose-50 disabled:text-slate-300 disabled:hover:bg-white">
+                      Planning leegmaken
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
 
-          {feedback && <div className="mt-3 mb-3 px-3 py-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold">{feedback}</div>}
+          {feedback && (
+            <div role="status" className="fixed left-1/2 bottom-24 z-50 w-[calc(100%_-_2rem)] max-w-md -translate-x-1/2 rounded-xl bg-slate-900 px-4 py-3 text-center text-sm font-semibold text-white shadow-xl">
+              {feedback}
+            </div>
+          )}
 
           {(legacyPlans || []).length > 0 && (
             <div className="mt-4 mb-4 rounded-2xl border border-amber-200 bg-amber-50 overflow-hidden">
@@ -3684,23 +3881,59 @@ useEffect(() => {
 
           {(menuWeeks || []).length > 0 && (
             <details className="mt-3 rounded-2xl border border-slate-200 bg-white overflow-hidden">
-              <summary className="min-h-12 flex items-center px-3 text-sm font-semibold text-slate-700 cursor-pointer">Bewaarde weekmenu’s ({menuWeeks.length})</summary>
+              <summary className="min-h-12 flex items-center px-3 text-sm font-semibold text-slate-700 cursor-pointer">Bewaarde planningen ({menuWeeks.length})</summary>
               <div className="border-t border-slate-200">
-                {(menuWeeks || []).map(menuWeek => (
-                  <div key={menuWeek.id} className="px-3 py-3 border-b border-slate-100 last:border-b-0">
-                    <div className="text-sm font-semibold text-slate-800">{menuWeek.label || 'Weekmenu'}</div>
-                    <div className="mt-1 space-y-1">
-                      {(menuWeek.recipes || []).map((recipe, index) => (
-                        <div key={recipe.recipeId || index} className="flex items-baseline gap-2 text-xs">
-                          <span className="w-20 shrink-0 font-semibold text-emerald-700">{formatPlannedDay(recipe)}</span>
-                          <span className="min-w-0 flex-1 text-slate-600">{recipe.recipeName || 'Recept'}</span>
+                {(menuWeeks || []).map(menuWeek => {
+                  const archivedRecipes = [...(menuWeek.recipes || [])].sort((a, b) => (
+                    archivedDayPosition(a) - archivedDayPosition(b)
+                    || String(a.recipeName || '').localeCompare(String(b.recipeName || ''), 'nl')
+                  ));
+                  return (
+                    <div key={menuWeek.id} className="px-3 py-3 border-b border-slate-100 last:border-b-0">
+                      <div className="flex items-center gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm font-semibold text-slate-800 truncate">{menuWeek.label || 'Planning'}</div>
+                          <div className="text-[11px] text-slate-500">{archivedRecipes.length} gerecht{archivedRecipes.length === 1 ? '' : 'en'}</div>
                         </div>
-                      ))}
+                        <button type="button" onClick={() => restorePlanning(menuWeek)} disabled={!archivedRecipes.length || planningBusy}
+                          className="shrink-0 min-h-10 px-3 rounded-xl bg-emerald-50 text-emerald-700 text-xs font-semibold disabled:opacity-40">
+                          Opnieuw inplannen
+                        </button>
+                      </div>
+                      <div className="mt-2 space-y-1">
+                        {archivedRecipes.map((recipe, index) => (
+                          <div key={recipe.archiveItemId || `${recipe.recipeId || 'custom'}-${index}`} className="flex items-baseline gap-2 text-xs">
+                            <span className="w-20 shrink-0 font-semibold text-emerald-700">{formatPlannedDay(recipe)}</span>
+                            <span className="min-w-0 flex-1 truncate text-slate-600">{recipe.recipeName || 'Gerecht'}</span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </details>
+          )}
+
+          {savePlanningOpen && (
+            <Modal
+              title="Planning bewaren"
+              onClose={() => !planningBusy && setSavePlanningOpen(false)}
+              footer={<Button onClick={saveCurrentPlanning} disabled={!String(savePlanningLabel || '').trim() || planningBusy} className="w-full bg-emerald-600 text-white">{planningBusy ? 'Bewaren…' : 'Bewaren'}</Button>}
+            >
+              <div>
+                <div className="text-xs font-semibold text-slate-500 mb-1">Naam</div>
+                <input autoFocus value={savePlanningLabel} onChange={event => setSavePlanningLabel(event.target.value)}
+                  onKeyDown={event => {
+                    if (event.key !== 'Enter' || planningBusy) return;
+                    event.preventDefault();
+                    saveCurrentPlanning();
+                  }}
+                  placeholder="Bijv. Favorieten van november"
+                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white" />
+                <div className="mt-2 text-xs text-slate-500">De gerechten en gekozen dagen worden als kopie bewaard.</div>
+              </div>
+            </Modal>
           )}
 
           {planDraft && (
