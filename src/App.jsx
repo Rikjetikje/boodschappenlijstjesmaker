@@ -90,14 +90,35 @@ const APP_ICONS = {
       return formatted.charAt(0).toUpperCase() + formatted.slice(1);
     }
 
-    function suggestedMealPlanDate(plans) {
+    function preferredMealPlanStartDate(householdId, plans) {
       const today = localDateKey();
-      const tomorrow = shiftDateKey(today, 1);
+      const stored = householdId ? window.localStorage.getItem(`meal-plan-start:${householdId}`) : '';
       const upcomingDates = (plans || [])
         .map(plan => plan.date)
         .filter(date => date && date >= today)
         .sort();
-      return upcomingDates.length ? shiftDateKey(upcomingDates[upcomingDates.length - 1], 1) : tomorrow;
+      const preferred = stored || upcomingDates[0] || shiftDateKey(today, 1);
+      if (preferred >= today && preferred <= shiftDateKey(today, 6)) return preferred;
+      const preferredWeekday = dateFromKey(preferred)?.getDay() ?? 1;
+      const currentWeekday = dateFromKey(today)?.getDay() ?? 0;
+      return shiftDateKey(today, (preferredWeekday - currentWeekday + 7) % 7);
+    }
+
+    function suggestedMealPlanDate(plans, startDate = '') {
+      const today = localDateKey();
+      if (startDate) {
+        const cycleEnd = shiftDateKey(startDate, 6);
+        const cycleDates = (plans || [])
+          .map(plan => plan.date)
+          .filter(date => date && date >= startDate && date <= cycleEnd)
+          .sort();
+        return cycleDates.length ? shiftDateKey(cycleDates[cycleDates.length - 1], 1) : startDate;
+      }
+      const upcomingDates = (plans || [])
+        .map(plan => plan.date)
+        .filter(date => date && date >= today)
+        .sort();
+      return upcomingDates.length ? shiftDateKey(upcomingDates[upcomingDates.length - 1], 1) : shiftDateKey(today, 1);
     }
 
     function snapshotRecipeForMealPlan(recipe, products) {
@@ -3200,17 +3221,7 @@ useEffect(() => {
       const [savePlanningLabel, setSavePlanningLabel] = useState('');
       const [planningBusy, setPlanningBusy] = useState(false);
       const [feedback, setFeedback] = useState('');
-      const [scheduleStartDate, setScheduleStartDate] = useState(() => {
-        const stored = householdId ? window.localStorage.getItem(`meal-plan-start:${householdId}`) : '';
-        const firstUpcoming = [...(mealPlans || [])]
-          .map(plan => plan.date)
-          .filter(date => date && date >= localDateKey())
-          .sort()[0];
-        const preferred = stored || firstUpcoming || shiftDateKey(localDateKey(), 1);
-        const preferredWeekday = dateFromKey(preferred)?.getDay() ?? 1;
-        const currentWeekday = dateFromKey(localDateKey())?.getDay() ?? 0;
-        return shiftDateKey(localDateKey(), (preferredWeekday - currentWeekday + 7) % 7);
-      });
+      const [scheduleStartDate, setScheduleStartDate] = useState(() => preferredMealPlanStartDate(householdId, mealPlans));
       const feedbackTimerRef = useRef(null);
       const today = localDateKey();
 
@@ -3655,6 +3666,23 @@ useEffect(() => {
         }
       }
 
+      async function deleteSavedPlanning(menuWeek) {
+        if (!householdId || !menuWeek?.id || planningBusy) return;
+        const label = menuWeek.label || 'Deze bewaarde planning';
+        if (!confirm(`‘${label}’ verwijderen? De huidige planning blijft staan.`)) return;
+
+        setPlanningBusy(true);
+        try {
+          await db.doc(`households/${householdId}/menu_weeks/${menuWeek.id}`).delete();
+          showFeedback(`${label} is verwijderd.`);
+        } catch (error) {
+          console.error('Bewaarde planning verwijderen mislukt:', error);
+          showFeedback('Verwijderen is niet gelukt. Probeer het nog eens.');
+        } finally {
+          setPlanningBusy(false);
+        }
+      }
+
       async function restorePlanning(menuWeek) {
         if (!householdId || planningBusy) return;
         const archivedRecipes = menuWeek?.recipes || [];
@@ -3899,6 +3927,11 @@ useEffect(() => {
                           className="shrink-0 min-h-10 px-3 rounded-xl bg-emerald-50 text-emerald-700 text-xs font-semibold disabled:opacity-40">
                           Opnieuw inplannen
                         </button>
+                        <button type="button" onClick={() => deleteSavedPlanning(menuWeek)} disabled={planningBusy}
+                          aria-label={`${menuWeek.label || 'Bewaarde planning'} verwijderen`}
+                          className="w-10 h-10 shrink-0 rounded-full text-rose-600 hover:bg-rose-50 flex items-center justify-center disabled:opacity-40">
+                          <TrashIcon className="w-4 h-4" />
+                        </button>
                       </div>
                       <div className="mt-2 space-y-1">
                         {archivedRecipes.map((recipe, index) => (
@@ -4040,7 +4073,10 @@ useEffect(() => {
       const [savingMenuWeek, setSavingMenuWeek] = useState(false);
       const [menuWeekFeedback, setMenuWeekFeedback] = useState('');
       const [recipePlanFeedback, setRecipePlanFeedback] = useState(null);
-      const [nextRecipePlanDate, setNextRecipePlanDate] = useState(() => suggestedMealPlanDate(mealPlans));
+      const [nextRecipePlanDate, setNextRecipePlanDate] = useState(() => {
+        const startDate = preferredMealPlanStartDate(householdId, mealPlans);
+        return suggestedMealPlanDate(mealPlans, startDate);
+      });
       const addFeedbackTimerRef = useRef(null);
       const recipePlanFeedbackTimerRef = useRef(null);
       const backfilledMenuKeysRef = useRef(new Set());
@@ -4055,9 +4091,9 @@ useEffect(() => {
       }, []);
 
       useEffect(() => {
-        const suggestedDate = suggestedMealPlanDate(mealPlans);
-        setNextRecipePlanDate(current => (!current || current < suggestedDate) ? suggestedDate : current);
-      }, [mealPlans]);
+        const startDate = preferredMealPlanStartDate(householdId, mealPlans);
+        setNextRecipePlanDate(suggestedMealPlanDate(mealPlans, startDate));
+      }, [mealPlans, householdId]);
 
       useEffect(() => {
         if (openedDefaultMenuWeekRef.current || !(menuWeeks || []).length) return;
@@ -4232,7 +4268,8 @@ useEffect(() => {
           plan.recipeId === recipe.id && (!plan.date || plan.date >= localDateKey())
         ));
         if (alreadyPlanned && !confirm('Nog een keer toevoegen aan de planning?')) return;
-        const date = nextRecipePlanDate || suggestedMealPlanDate(mealPlans);
+        const startDate = preferredMealPlanStartDate(householdId, mealPlans);
+        const date = nextRecipePlanDate || suggestedMealPlanDate(mealPlans, startDate);
         const id = genId('mp');
         setNextRecipePlanDate(shiftDateKey(date, 1));
         try {
