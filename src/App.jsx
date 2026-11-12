@@ -3222,6 +3222,7 @@ useEffect(() => {
       const [planActionsOpen, setPlanActionsOpen] = useState(false);
       const [savePlanningOpen, setSavePlanningOpen] = useState(false);
       const [savePlanningLabel, setSavePlanningLabel] = useState('');
+      const [deleteDraft, setDeleteDraft] = useState(null);
       const [planningBusy, setPlanningBusy] = useState(false);
       const [feedback, setFeedback] = useState('');
       const [scheduleStartDate, setScheduleStartDate] = useState(() => preferredMealPlanStartDate(householdId, mealPlans));
@@ -3377,9 +3378,84 @@ useEffect(() => {
         showFeedback(existing ? 'Planning aangepast.' : 'Gerecht ingepland.');
       }
 
-      async function deletePlan(plan) {
-        if (!confirm(`‘${plan.name || plan.recipeSnapshot?.name || 'Dit gerecht'}’ uit de planning verwijderen?`)) return;
-        await db.doc(`households/${householdId}/meal_plans/${plan.id}`).delete();
+      function openDeletePlan(plan) {
+        const linkKeys = [...new Set([plan.id, plan.recipeId].filter(Boolean))];
+        const linkedItems = (items || []).filter(item => (
+          linkKeys.some(key => Object.prototype.hasOwnProperty.call(item.needsByRecipe || {}, key))
+        ));
+        setDeleteDraft({ plan, linkedItems });
+      }
+
+      function shoppingQuantityForPlanItem(plan, item) {
+        const currentRecipe = plan.recipeId ? recipeById.get(plan.recipeId) : null;
+        const recipeSnapshot = plan.recipeSnapshot || (currentRecipe ? snapshotRecipe(currentRecipe) : null);
+        const itemName = String(item.nameSnapshot || item.name || '').trim().toLowerCase();
+        const quantity = (recipeSnapshot?.ingredients || []).reduce((total, ingredient) => {
+          const sameProduct = item.productId && ingredient.productId === item.productId;
+          const sameName = itemName && String(ingredient.name || '').trim().toLowerCase() === itemName;
+          return sameProduct || sameName ? total + Math.max(1, Number(ingredient.buyQty) || 1) : total;
+        }, 0);
+        return Math.max(1, quantity || 1);
+      }
+
+      async function confirmDeletePlan(removeShopping) {
+        const plan = deleteDraft?.plan;
+        if (!householdId || !plan?.id || planningBusy) return;
+        const linkedItems = deleteDraft.linkedItems || [];
+        const otherPlanUsesRecipe = !!plan.recipeId && (mealPlans || []).some(other => (
+          other.id !== plan.id && other.recipeId === plan.recipeId
+        ));
+        const removableLinkKeys = new Set();
+        if (plan.id && (plan.id !== plan.recipeId || !otherPlanUsesRecipe)) removableLinkKeys.add(plan.id);
+        if (plan.recipeId && !otherPlanUsesRecipe) removableLinkKeys.add(plan.recipeId);
+
+        setPlanningBusy(true);
+        try {
+          const batch = db.batch();
+          batch.delete(db.doc(`households/${householdId}/meal_plans/${plan.id}`));
+
+          if (removeShopping && activeListId) {
+            linkedItems.forEach(item => {
+              const itemRef = db.doc(`households/${householdId}/lists/${activeListId}/items/${item.id}`);
+              const needsByRecipe = item.needsByRecipe || {};
+              const remainingNeedKeys = Object.keys(needsByRecipe).filter(key => !removableLinkKeys.has(key));
+              const currentQuantity = Number.isFinite(Number(item.qty)) ? Math.max(0, Number(item.qty)) : 1;
+              const nextQuantity = Math.max(0, currentQuantity - shoppingQuantityForPlanItem(plan, item));
+              const sourceOwnedByPlan = item.source === `meal-plan:${plan.id}`
+                || (!!plan.recipeId && item.source === `recipe:${plan.recipeId}`);
+
+              if (!remainingNeedKeys.length && nextQuantity === 0 && sourceOwnedByPlan) {
+                batch.delete(itemRef);
+                return;
+              }
+
+              const update = {
+                qty: nextQuantity > 0 ? nextQuantity : 1,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                updatedBy: currentUser?.uid || '',
+                updatedByName: currentUser?.displayName || '',
+                updatedByPhotoURL: currentUser?.photoURL || '',
+              };
+              removableLinkKeys.forEach(key => {
+                if (Object.prototype.hasOwnProperty.call(needsByRecipe, key)) {
+                  update[`needsByRecipe.${key}`] = firebase.firestore.FieldValue.delete();
+                }
+              });
+              batch.update(itemRef, update);
+            });
+          }
+
+          await batch.commit();
+          setDeleteDraft(null);
+          showFeedback(removeShopping && linkedItems.length
+            ? `${plan.name || plan.recipeSnapshot?.name || 'Gerecht'} en de bijbehorende boodschappen zijn verwijderd.`
+            : `${plan.name || plan.recipeSnapshot?.name || 'Gerecht'} is uit de planning verwijderd.`);
+        } catch (error) {
+          console.error('Gerecht uit planning verwijderen mislukt:', error);
+          showFeedback('Verwijderen is niet gelukt. Probeer het nog eens.');
+        } finally {
+          setPlanningBusy(false);
+        }
       }
 
       function openIngredients(plan) {
@@ -3536,14 +3612,17 @@ useEffect(() => {
                 const weekday = dateFromKey(date)?.getDay();
                 const selected = weekday === selectedWeekday;
                 const passed = date < today;
+                const isToday = date === today;
                 return (
                   <button key={date} type="button" aria-pressed={selected}
-                    aria-label={`${label} op ${weekdayLabel(date, 'long')}${passed ? ' (geweest)' : ''}`}
+                    aria-label={`${label} op ${weekdayLabel(date, 'long')}${passed ? ' (geweest)' : (isToday ? ' (vandaag)' : '')}`}
                     onClick={() => onChange(date)}
-                    className={"h-10 rounded-lg border text-[10px] font-bold uppercase transition-colors " + (passed
-                      ? (selected ? "border-slate-300 bg-slate-200 text-slate-700" : "border-transparent bg-slate-100 text-slate-400")
-                      : (selected ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-transparent bg-slate-50 text-slate-500"))}>
-                    {weekdayLabel(date)}
+                    className={"relative h-10 rounded-lg border text-[10px] font-bold uppercase transition-colors "
+                      + (passed ? "bg-slate-200 text-slate-500 " : (isToday ? "bg-amber-100 text-amber-900 " : "bg-slate-50 text-slate-600 "))
+                      + (selected ? "border-emerald-500 ring-2 ring-emerald-500/25" : (isToday ? "border-amber-300" : "border-transparent"))}>
+                    <span>{weekdayLabel(date)}</span>
+                    {passed && <span aria-hidden="true" className="absolute right-1 top-0.5 text-[9px] text-slate-500">✓</span>}
+                    {isToday && <span aria-hidden="true" className="absolute left-1/2 bottom-0.5 -translate-x-1/2 text-[7px] leading-none tracking-wide">nu</span>}
                   </button>
                 );
               })}
@@ -3796,7 +3875,7 @@ useEffect(() => {
                           <IngredientsIcon className="w-[18px] h-[18px]" />
                         </button>
                       )}
-                      <button type="button" onClick={() => deletePlan(plan)} className="w-10 h-10 rounded-full text-rose-600 flex items-center justify-center shrink-0" aria-label="Uit planning verwijderen">
+                      <button type="button" onClick={() => openDeletePlan(plan)} className="w-10 h-10 rounded-full text-rose-600 flex items-center justify-center shrink-0" aria-label="Uit planning verwijderen">
                         <TrashIcon className="w-4 h-4" />
                       </button>
                     </div>
@@ -3889,7 +3968,10 @@ useEffect(() => {
 
           {datedPlans.length ? (
             <div className="mt-4">
-              <div className="px-1 mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-500">Planning</div>
+              <div className="px-1 mb-2 flex items-center justify-between gap-2">
+                <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Planning</div>
+                <div className="text-[9px] font-semibold text-slate-500">✓ geweest · <span className="text-amber-700">nu</span> vandaag</div>
+              </div>
               {renderPlans(datedPlans)}
             </div>
           ) : (
@@ -3941,6 +4023,38 @@ useEffect(() => {
                 })}
               </div>
             </details>
+          )}
+
+          {deleteDraft && (
+            <Modal
+              title="Gerecht verwijderen"
+              onClose={() => !planningBusy && setDeleteDraft(null)}
+              footer={deleteDraft.linkedItems.length ? (
+                <div className="grid gap-2">
+                  <Button onClick={() => confirmDeletePlan(true)} disabled={planningBusy} className="w-full bg-rose-600 text-white">
+                    {planningBusy ? 'Verwijderen…' : 'Gerecht en boodschappen verwijderen'}
+                  </Button>
+                  <Button onClick={() => confirmDeletePlan(false)} disabled={planningBusy} className="w-full bg-slate-100 text-slate-700">
+                    Alleen uit planning verwijderen
+                  </Button>
+                </div>
+              ) : (
+                <Button onClick={() => confirmDeletePlan(false)} disabled={planningBusy} className="w-full bg-rose-600 text-white">
+                  {planningBusy ? 'Verwijderen…' : 'Uit planning verwijderen'}
+                </Button>
+              )}
+            >
+              <div className="text-sm text-slate-700">
+                <div className="font-semibold text-slate-900">{deleteDraft.plan.name || deleteDraft.plan.recipeSnapshot?.name || 'Dit gerecht'}</div>
+                {deleteDraft.linkedItems.length ? (
+                  <div className="mt-2 leading-relaxed">
+                    Er {deleteDraft.linkedItems.length === 1 ? 'staat 1 bijbehorend product' : `staan ${deleteDraft.linkedItems.length} bijbehorende producten`} op de boodschappenlijst. Wil je die ook verwijderen?
+                  </div>
+                ) : (
+                  <div className="mt-2">Dit gerecht heeft geen gekoppelde boodschappen op de actieve lijst.</div>
+                )}
+              </div>
+            </Modal>
           )}
 
           {savePlanningOpen && (
