@@ -4192,6 +4192,7 @@ useEffect(() => {
       const [expandedId, setExpandedId] = useState(null);
       const [pickMap, setPickMap] = useState({});
       const [newIngId, setNewIngId] = useState(null);
+      const [activeIngredientSearchId, setActiveIngredientSearchId] = useState(null);
       const [addFeedback, setAddFeedback] = useState(null);
       const [plannedDayDrafts, setPlannedDayDrafts] = useState({});
       const [menuWeekLabel, setMenuWeekLabel] = useState(() => nextIsoWeekLabel());
@@ -4270,6 +4271,7 @@ useEffect(() => {
         };
         setOpenId(id);
         setDraft(rec);
+        setActiveIngredientSearchId(null);
         setRecipeImportFeedback(null);
       }
 
@@ -4285,6 +4287,7 @@ useEffect(() => {
       function editRecipe(r) {
         setOpenId(r.id);
         setDraft(JSON.parse(JSON.stringify(r)));
+        setActiveIngredientSearchId(null);
         setRecipeImportFeedback(null);
       }
 
@@ -4369,13 +4372,46 @@ useEffect(() => {
         if (!householdId || !draft) return;
         const id = draft.id || genId('r');
         const baseServings = clamp(parseInt(draft.baseServings || 5, 10) || 4, 1, 99);
+        const productsByName = new Map((products || []).map(product => [String(product.name || '').trim().toLocaleLowerCase('nl-NL'), product]));
+        const createdProductsByName = new Map();
+        const newProducts = [];
+        const ingredients = (Array.isArray(draft.ingredients) ? draft.ingredients : []).map(source => {
+          const { customProductConfirmed, ...ingredient } = source || {};
+          if (!customProductConfirmed || ingredient.productId) return ingredient;
+          const name = String(ingredient.nameSnapshot || '').trim();
+          const nameKey = name.toLocaleLowerCase('nl-NL');
+          if (!nameKey) return ingredient;
+
+          let product = productsByName.get(nameKey) || createdProductsByName.get(nameKey);
+          if (!product) {
+            product = {
+              id: genId('p'),
+              schemaVersion: 2,
+              name,
+              category: ingredient.categorySnapshot || 'Overig',
+              cycle: '',
+              updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+              updatedBy: currentUser?.uid || '',
+              updatedByName: currentUser?.displayName || '',
+              updatedByPhotoURL: currentUser?.photoURL || '',
+            };
+            createdProductsByName.set(nameKey, product);
+            newProducts.push(product);
+          }
+          return {
+            ...ingredient,
+            productId: product.id,
+            nameSnapshot: product.name,
+            categorySnapshot: product.category || 'Overig',
+          };
+        });
         const payload = {
           ...draft,
           id,
           name: (draft.name || '').trim() || 'Recept',
           baseServings,
           url: (draft.url || '').trim(),
-          ingredients: Array.isArray(draft.ingredients) ? draft.ingredients : [],
+          ingredients,
           preparationHtml: draft.preparationHtml || '',
           updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
           updatedBy: currentUser?.uid || '',
@@ -4389,9 +4425,15 @@ useEffect(() => {
           payload.createdAt = firebase.firestore.FieldValue.serverTimestamp();
           payload.createdBy = currentUser?.uid || '';
         }
-        await ref.set(payload, { merge: true });
+        const batch = db.batch();
+        newProducts.forEach(product => {
+          batch.set(db.doc(`households/${householdId}/products/${product.id}`), product);
+        });
+        batch.set(ref, payload, { merge: true });
+        await batch.commit();
         setOpenId(null);
         setDraft(null);
+        setActiveIngredientSearchId(null);
         setRecipeImportFeedback(null);
       }
 
@@ -4438,10 +4480,18 @@ useEffect(() => {
           productId: product.id,
           nameSnapshot: product.name || '',
           categorySnapshot: product.category || 'Overig',
+          customProductConfirmed: false,
         });
+        setActiveIngredientSearchId(null);
+      }
+
+      function confirmNewIngredientProduct(idx) {
+        updateIng(idx, { productId: null, customProductConfirmed: true });
+        setActiveIngredientSearchId(null);
       }
 
       function removeIng(idx) {
+        setActiveIngredientSearchId(null);
         setDraft(d => {
           const arr = [...(d.ingredients||[])];
           arr.splice(idx, 1);
@@ -5779,6 +5829,15 @@ function ensurePickState(recipe) {
                       ) : (draft.ingredients||[]).map((ing, idx) => {
                         const disp = resolveIngDisplay(ing);
                         const sugg = productSuggestions(ing.nameSnapshot || disp.name);
+                        const ingredientSearchId = ing._id || String(idx);
+                        const typedProductName = String(ing.nameSnapshot || disp.name || '').trim();
+                        const exactNameExists = (products || []).some(product => (
+                          String(product.name || '').trim().toLocaleLowerCase('nl-NL') === typedProductName.toLocaleLowerCase('nl-NL')
+                        ));
+                        const showProductChoices = activeIngredientSearchId === ingredientSearchId
+                          && !ing.productId
+                          && !ing.customProductConfirmed
+                          && typedProductName.length >= 2;
                         return (
                           <div
                             key={ing._id || idx}
@@ -5802,7 +5861,13 @@ function ensurePickState(recipe) {
                                     }}
                                     data-modal-focus-align={ing._id === newIngId ? 'top' : undefined}
                                     value={disp.name}
-                                    onChange={(e)=>updateIng(idx, { productId: null, nameSnapshot: e.target.value })}
+                                    onFocus={() => setActiveIngredientSearchId(ingredientSearchId)}
+                                    onBlur={() => {
+                                      window.setTimeout(() => {
+                                        setActiveIngredientSearchId(current => current === ingredientSearchId ? null : current);
+                                      }, 100);
+                                    }}
+                                    onChange={(e)=>updateIng(idx, { productId: null, nameSnapshot: e.target.value, customProductConfirmed: false })}
                                     placeholder="bijv. Paprika"
                                     className="w-full pl-3 pr-10 py-2 rounded-xl border border-slate-200 bg-white text-sm"
                                   />
@@ -5810,36 +5875,56 @@ function ensurePickState(recipe) {
                                     <button
                                       type="button"
                                       onMouseDown={(event) => event.preventDefault()}
-                                      onClick={() => updateIng(idx, { productId: null, nameSnapshot: '', categorySnapshot: 'Overig' })}
+                                      onClick={() => updateIng(idx, { productId: null, nameSnapshot: '', categorySnapshot: 'Overig', customProductConfirmed: false })}
                                       className="absolute right-1 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full text-slate-500 text-xl leading-none flex items-center justify-center"
                                       title="Leegmaken"
                                       aria-label="Productzoekveld leegmaken"
                                     >×</button>
                                   )}
                                 </div>
-                                {(String(ing.productId || '')==='' && (ing.nameSnapshot||'').trim().length>=2 && sugg.length>0) && (
+                                {showProductChoices && (sugg.length > 0 || !exactNameExists) && (
                                   <div className="absolute left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-30 overflow-hidden">
-                                    {sugg.map(p => (
-                                      <button key={p.id} onMouseDown={(e)=>{ e.preventDefault(); selectIngredientProduct(idx, p); }}
-                                        onClick={(e) => { e.preventDefault(); selectIngredientProduct(idx, p); }}
-                                        className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 flex items-center gap-2 border-b border-slate-100 last:border-b-0">
-                                        <span className="flex-1 truncate">{p.name}</span>
-                                        <span className="text-[11px] text-slate-500 shrink-0">{(p.category||'Overig').split(',')[0]}</span>
+                                    {sugg.length > 0 && (
+                                      <div className="max-h-48 overflow-y-auto">
+                                        {sugg.map(p => (
+                                          <button key={p.id} onMouseDown={(e)=>{ e.preventDefault(); selectIngredientProduct(idx, p); }}
+                                            onClick={(e) => { e.preventDefault(); selectIngredientProduct(idx, p); }}
+                                            className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 flex items-center gap-2 border-b border-slate-100 last:border-b-0">
+                                            <span className="flex-1 truncate">{p.name}</span>
+                                            <span className="text-[11px] text-slate-500 shrink-0">{(p.category||'Overig').split(',')[0]}</span>
+                                          </button>
+                                        ))}
+                                      </div>
+                                    )}
+                                    {!exactNameExists && (
+                                      <button
+                                        type="button"
+                                        onMouseDown={(event) => event.preventDefault()}
+                                        onClick={() => confirmNewIngredientProduct(idx)}
+                                        className="w-full text-left px-3 py-2.5 text-sm font-semibold text-emerald-700 bg-emerald-50 border-t border-emerald-100 flex items-center gap-2"
+                                      >
+                                        <span className="text-lg leading-none">+</span>
+                                        <span className="truncate">Gebruik “{typedProductName}” als nieuw product</span>
                                       </button>
-                                    ))}
+                                    )}
                                   </div>
                                 )}
                                 {String(ing.productId || '') ? (
                                   <div className="text-[11px] text-slate-500 mt-1">{disp.cat}</div>
                                 ) : (
-                                  <select
-                                    value={ing.categorySnapshot || 'Overig'}
-                                    onChange={(e)=>updateIng(idx, { categorySnapshot: e.target.value })}
-                                    className="mt-1 w-full px-2 py-1 rounded-lg border border-slate-200 bg-white text-[12px]"
-                                    title="Categorie"
-                                  >
-                                    {CATEGORY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
-                                  </select>
+                                  <>
+                                    {ing.customProductConfirmed && (
+                                      <div className="mt-1 text-[11px] font-semibold text-emerald-700">✓ Nieuw product wordt toegevoegd bij Opslaan</div>
+                                    )}
+                                    <select
+                                      value={ing.categorySnapshot || 'Overig'}
+                                      onChange={(e)=>updateIng(idx, { categorySnapshot: e.target.value })}
+                                      className="mt-1 w-full px-2 py-1 rounded-lg border border-slate-200 bg-white text-[12px]"
+                                      title="Categorie"
+                                    >
+                                      {CATEGORY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+                                    </select>
+                                  </>
                                 )}
                               </div>
                               <button type="button" onClick={()=>removeIng(idx)} className="w-10 h-10 mt-5 rounded-full bg-transparent text-slate-600 flex items-center justify-center shrink-0" title="Ingrediënt verwijderen">
