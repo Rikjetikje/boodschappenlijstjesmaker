@@ -595,8 +595,8 @@ const APP_ICONS = {
       );
     }
 
-    function Card({ children }) {
-      return <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">{children}</div>;
+    function Card({ children, className = '' }) {
+      return <div className={`border rounded-2xl shadow-sm overflow-hidden ${className || 'bg-white border-slate-200'}`}>{children}</div>;
     }
 
     function Modal({ title, onClose, children, footer }) {
@@ -3244,6 +3244,17 @@ useEffect(() => {
         if (Number.isFinite(weekday)) setScheduleStartDate(startDateForWeekday(weekday));
       }, [scheduleStartDate, today]);
 
+      useEffect(() => {
+        const recentPastDates = (mealPlans || [])
+          .map(plan => plan.date)
+          .filter(date => date && date < today && date >= shiftDateKey(today, -6))
+          .sort();
+        const earliestRecentPlan = recentPastDates[0];
+        if (!earliestRecentPlan || !scheduleStartDate) return;
+        if (earliestRecentPlan >= scheduleStartDate && earliestRecentPlan <= shiftDateKey(scheduleStartDate, 6)) return;
+        setScheduleStartDate(earliestRecentPlan);
+      }, [mealPlans, scheduleStartDate, today]);
+
       const productById = useMemo(() => new Map((products || []).map(product => [product.id, product])), [products]);
       const recipeById = useMemo(() => new Map((recipes || []).map(recipe => [recipe.id, recipe])), [recipes]);
       const listItemByProductId = useMemo(() => {
@@ -3605,24 +3616,24 @@ useEffect(() => {
       }
 
       function renderDayPicker({ value, onChange, label }) {
-        const selectedWeekday = dateFromKey(value)?.getDay();
         return (
           <div className="bm-day-grid grid grid-cols-7 gap-1">
               {planDateChoices.map(date => {
-                const weekday = dateFromKey(date)?.getDay();
-                const selected = weekday === selectedWeekday;
+                const selected = date === value;
                 const passed = date < today;
                 const isToday = date === today;
+                const tone = passed
+                  ? (selected ? 'border-slate-500 bg-slate-300 text-slate-800 ring-2 ring-slate-500/30' : 'border-slate-300 bg-slate-200 text-slate-600')
+                  : (isToday
+                    ? (selected ? 'border-amber-500 bg-amber-200 text-amber-950 ring-2 ring-amber-500/30' : 'border-amber-300 bg-amber-100 text-amber-900')
+                    : (selected ? 'border-emerald-500 bg-emerald-100 text-emerald-900 ring-2 ring-emerald-500/30' : 'border-slate-200 bg-white text-slate-600'));
                 return (
                   <button key={date} type="button" aria-pressed={selected}
                     aria-label={`${label} op ${weekdayLabel(date, 'long')}${passed ? ' (geweest)' : (isToday ? ' (vandaag)' : '')}`}
                     onClick={() => onChange(date)}
-                    className={"relative h-10 rounded-lg border text-[10px] font-bold uppercase transition-colors "
-                      + (passed ? "bg-slate-200 text-slate-500 " : (isToday ? "bg-amber-100 text-amber-900 " : "bg-slate-50 text-slate-600 "))
-                      + (selected ? "border-emerald-500 ring-2 ring-emerald-500/25" : (isToday ? "border-amber-300" : "border-transparent"))}>
-                    <span>{weekdayLabel(date)}</span>
-                    {passed && <span aria-hidden="true" className="absolute right-1 top-0.5 text-[9px] text-slate-500">✓</span>}
-                    {isToday && <span aria-hidden="true" className="absolute left-1/2 bottom-0.5 -translate-x-1/2 text-[7px] leading-none tracking-wide">nu</span>}
+                    className={`h-10 rounded-lg border flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold uppercase leading-none transition-colors ${tone}`}>
+                    <span className="flex items-center gap-0.5">{passed && <span aria-hidden="true">✓</span>}{weekdayLabel(date)}</span>
+                    {isToday && <span aria-hidden="true" className="text-[7px] tracking-wide">nu</span>}
                   </button>
                 );
               })}
@@ -3840,13 +3851,25 @@ useEffect(() => {
               const recipeSnapshot = plan.recipeSnapshot;
               const hasIngredients = (recipeSnapshot?.ingredients || []).length > 0;
               const recipeUrl = String(recipeById.get(plan.recipeId)?.url || recipeSnapshot?.url || '').trim();
+              const planPassed = !!plan.date && plan.date < today;
+              const planIsToday = plan.date === today;
+              const cardTone = planPassed
+                ? 'bg-slate-100 border-slate-300'
+                : (planIsToday ? 'bg-amber-50 border-amber-300' : 'bg-white border-slate-200');
+              const statusTone = planPassed
+                ? 'bg-slate-300 text-slate-700'
+                : (planIsToday ? 'bg-amber-200 text-amber-900' : 'bg-emerald-100 text-emerald-800');
+              const statusLabel = planPassed ? '✓ Geweest' : (planIsToday ? 'Vandaag' : 'Komt nog');
               return (
-                <Card key={plan.id}>
+                <Card key={plan.id} className={cardTone}>
                   <div className="px-3 py-2.5">
                     <div className="flex items-center gap-2">
                       <div className="min-w-0 flex-1">
                         <div className="font-semibold text-sm text-slate-800 truncate">{plan.name || recipeSnapshot?.name || 'Gerecht'}</div>
-                        {plan.sourceType === 'custom' && <div className="text-[10px] text-slate-400 mt-0.5">Eigen gerecht</div>}
+                        <div className="mt-1 flex items-center gap-1.5">
+                          <span className={`inline-flex rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ${statusTone}`}>{statusLabel}</span>
+                          {plan.sourceType === 'custom' && <span className="text-[10px] text-slate-500">Eigen gerecht</span>}
+                        </div>
                       </div>
                       {recipeUrl ? (
                         <a href={/^https?:\/\//i.test(recipeUrl) ? recipeUrl : `https://${recipeUrl}`}
