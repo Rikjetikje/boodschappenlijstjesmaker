@@ -3632,7 +3632,7 @@ useEffect(() => {
                     aria-label={`${label} op ${weekdayLabel(date, 'long')}${passed ? ' (geweest)' : (isToday ? ' (vandaag)' : '')}`}
                     onClick={() => onChange(date)}
                     className={`h-10 rounded-lg border flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold uppercase leading-none transition-colors ${tone}`}>
-                    <span className="flex items-center gap-0.5">{passed && <span aria-hidden="true">✓</span>}{weekdayLabel(date)}</span>
+                    <span>{weekdayLabel(date)}</span>
                     {isToday && <span aria-hidden="true" className="text-[7px] tracking-wide">nu</span>}
                   </button>
                 );
@@ -3856,20 +3856,18 @@ useEffect(() => {
               const cardTone = planPassed
                 ? 'bg-slate-100 border-slate-300'
                 : (planIsToday ? 'bg-amber-50 border-amber-300' : 'bg-white border-slate-200');
-              const statusTone = planPassed
-                ? 'bg-slate-300 text-slate-700'
-                : (planIsToday ? 'bg-amber-200 text-amber-900' : 'bg-emerald-100 text-emerald-800');
-              const statusLabel = planPassed ? '✓ Geweest' : (planIsToday ? 'Vandaag' : 'Komt nog');
               return (
                 <Card key={plan.id} className={cardTone}>
                   <div className="px-3 py-2.5">
                     <div className="flex items-center gap-2">
                       <div className="min-w-0 flex-1">
                         <div className="font-semibold text-sm text-slate-800 truncate">{plan.name || recipeSnapshot?.name || 'Gerecht'}</div>
-                        <div className="mt-1 flex items-center gap-1.5">
-                          <span className={`inline-flex rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ${statusTone}`}>{statusLabel}</span>
-                          {plan.sourceType === 'custom' && <span className="text-[10px] text-slate-500">Eigen gerecht</span>}
-                        </div>
+                        {(planIsToday || plan.sourceType === 'custom') && (
+                          <div className="mt-1 flex items-center gap-1.5">
+                            {planIsToday && <span className="inline-flex rounded-full bg-amber-200 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-900">Vandaag</span>}
+                            {plan.sourceType === 'custom' && <span className="text-[10px] text-slate-500">Eigen gerecht</span>}
+                          </div>
+                        )}
                       </div>
                       {recipeUrl ? (
                         <a href={/^https?:\/\//i.test(recipeUrl) ? recipeUrl : `https://${recipeUrl}`}
@@ -3991,10 +3989,7 @@ useEffect(() => {
 
           {datedPlans.length ? (
             <div className="mt-4">
-              <div className="px-1 mb-2 flex items-center justify-between gap-2">
-                <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Planning</div>
-                <div className="text-[9px] font-semibold text-slate-500">✓ geweest · <span className="text-amber-700">nu</span> vandaag</div>
-              </div>
+              <div className="px-1 mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-500">Planning</div>
               {renderPlans(datedPlans)}
             </div>
           ) : (
