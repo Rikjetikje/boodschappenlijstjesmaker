@@ -174,4 +174,4 @@ function parseRecipePage(html, sourceUrl) {
   };
 }
 
-module.exports = { parseIngredientLine, parseRecipePage };
+module.exports = { parseIngredientLine, parseRecipePage, plainText };
