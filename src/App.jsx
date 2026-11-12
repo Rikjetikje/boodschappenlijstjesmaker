@@ -1,5 +1,6 @@
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { auth, db, firebase, functions } from './firebase';
+import { findBestProductMatch, rankProductMatches } from './productMatching';
 import packageInfo from '../package.json';
 
 const APP_VERSION = packageInfo.version;
@@ -4287,20 +4288,8 @@ useEffect(() => {
         setRecipeImportFeedback(null);
       }
 
-      function normalizeProductMatch(value) {
-        return String(value || '')
-          .normalize('NFD')
-          .replace(/[\u0300-\u036f]/g, '')
-          .replace(/\([^)]*\)/g, ' ')
-          .replace(/[’']/g, '')
-          .replace(/[^a-z0-9]+/gi, ' ')
-          .trim()
-          .toLowerCase();
-      }
-
-      function exactProductForImport(name) {
-        const key = normalizeProductMatch(name);
-        return key ? (products || []).find(product => normalizeProductMatch(product.name) === key) || null : null;
+      function productForImport(name) {
+        return findBestProductMatch(name, products || [])?.product || null;
       }
 
       function recipeImportErrorMessage(error) {
@@ -4344,7 +4333,7 @@ useEffect(() => {
           const result = await callable({ householdId, url: recipeUrl });
           const imported = result.data || {};
           const ingredients = (imported.ingredients || []).map(ingredient => {
-            const product = exactProductForImport(ingredient.name);
+            const product = productForImport(ingredient.name);
             return {
               _id: genId('ing'),
               productId: product?.id || null,
@@ -5146,8 +5135,18 @@ async function addRecipeToList(r, targetServings, pickState) {
       const productSuggestions = (text) => {
         const q = (text||'').trim().toLowerCase();
         if (q.length < 2) return [];
-        return sortByRelevance((products||[]).filter(p => (p.name||'').toLowerCase().includes(q)), q)
-          .slice(0, 8);
+        const direct = sortByRelevance((products||[]).filter(p => (p.name||'').toLowerCase().includes(q)), q);
+        const interpreted = rankProductMatches(text, products || [])
+          .filter(match => match.score >= 0.3)
+          .map(match => match.product);
+        const combined = [];
+        const seen = new Set();
+        [...interpreted, ...direct].forEach(product => {
+          if (!product?.id || seen.has(product.id)) return;
+          seen.add(product.id);
+          combined.push(product);
+        });
+        return combined.slice(0, 8);
       };
 
       
@@ -5789,23 +5788,35 @@ function ensurePickState(recipe) {
                             <div className="flex items-start gap-2">
                               <div className="flex-1 min-w-0 relative">
                                 <div className="text-[11px] font-semibold text-slate-500 mb-1">Product</div>
-                                <input
-                                  ref={el => {
-                                    if (el && ing._id === newIngId) {
-                                      try {
-                                        el.focus({ preventScroll: true });
-                                      } catch (e) {
-                                        el.focus();
+                                <div className="relative">
+                                  <input
+                                    ref={el => {
+                                      if (el && ing._id === newIngId) {
+                                        try {
+                                          el.focus({ preventScroll: true });
+                                        } catch (e) {
+                                          el.focus();
+                                        }
+                                        setNewIngId(null);
                                       }
-                                      setNewIngId(null);
-                                    }
-                                  }}
-                                  data-modal-focus-align={ing._id === newIngId ? 'top' : undefined}
-                                  value={disp.name}
-                                  onChange={(e)=>updateIng(idx, { productId: null, nameSnapshot: e.target.value })}
-                                  placeholder="bijv. Paprika"
-                                  className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-sm"
-                                />
+                                    }}
+                                    data-modal-focus-align={ing._id === newIngId ? 'top' : undefined}
+                                    value={disp.name}
+                                    onChange={(e)=>updateIng(idx, { productId: null, nameSnapshot: e.target.value })}
+                                    placeholder="bijv. Paprika"
+                                    className="w-full pl-3 pr-10 py-2 rounded-xl border border-slate-200 bg-white text-sm"
+                                  />
+                                  {String(disp.name || '').trim() && (
+                                    <button
+                                      type="button"
+                                      onMouseDown={(event) => event.preventDefault()}
+                                      onClick={() => updateIng(idx, { productId: null, nameSnapshot: '', categorySnapshot: 'Overig' })}
+                                      className="absolute right-1 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full text-slate-500 text-xl leading-none flex items-center justify-center"
+                                      title="Leegmaken"
+                                      aria-label="Productzoekveld leegmaken"
+                                    >×</button>
+                                  )}
+                                </div>
                                 {(String(ing.productId || '')==='' && (ing.nameSnapshot||'').trim().length>=2 && sugg.length>0) && (
                                   <div className="absolute left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-30 overflow-hidden">
                                     {sugg.map(p => (
