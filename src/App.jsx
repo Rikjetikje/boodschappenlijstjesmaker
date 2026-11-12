@@ -5346,7 +5346,7 @@ function ensurePickState(recipe) {
                   if (e.key === 'Enter' && query.trim()) { e.preventDefault(); handleRecipeCreateAction(); }
                   if (e.key === 'Escape') { e.preventDefault(); clearRecipeSearch(); }
                 }}
-                placeholder="Zoek recept of typ iets nieuws..."
+                placeholder="Zoek recept of maak een nieuw recept"
                 className="min-w-0 flex-1 bg-transparent outline-none text-[15px] text-slate-900 placeholder:text-slate-500 font-medium" />
               {query.trim() && (
                 <div className="flex items-center gap-1 shrink-0">
