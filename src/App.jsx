@@ -1,5 +1,5 @@
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { auth, db, firebase } from './firebase';
+import { auth, db, firebase, functions } from './firebase';
 import packageInfo from '../package.json';
 
 const APP_VERSION = packageInfo.version;
@@ -4185,6 +4185,8 @@ useEffect(() => {
       const [query, setQuery] = useState('');
       const [openId, setOpenId] = useState(null); // recipe id in modal
       const [draft, setDraft] = useState(null);   // editable recipe
+      const [recipeImporting, setRecipeImporting] = useState(false);
+      const [recipeImportFeedback, setRecipeImportFeedback] = useState(null);
       const [quickServings, setQuickServings] = useState(5);
       const [expandedId, setExpandedId] = useState(null);
       const [pickMap, setPickMap] = useState({});
@@ -4267,6 +4269,7 @@ useEffect(() => {
         };
         setOpenId(id);
         setDraft(rec);
+        setRecipeImportFeedback(null);
       }
 
       function clearRecipeSearch() {
@@ -4281,6 +4284,96 @@ useEffect(() => {
       function editRecipe(r) {
         setOpenId(r.id);
         setDraft(JSON.parse(JSON.stringify(r)));
+        setRecipeImportFeedback(null);
+      }
+
+      function normalizeProductMatch(value) {
+        return String(value || '')
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .replace(/\([^)]*\)/g, ' ')
+          .replace(/[’']/g, '')
+          .replace(/[^a-z0-9]+/gi, ' ')
+          .trim()
+          .toLowerCase();
+      }
+
+      function exactProductForImport(name) {
+        const key = normalizeProductMatch(name);
+        return key ? (products || []).find(product => normalizeProductMatch(product.name) === key) || null : null;
+      }
+
+      function recipeImportErrorMessage(error) {
+        const messages = {
+          'functions/unauthenticated': 'Log opnieuw in om een recept op te halen.',
+          'functions/permission-denied': 'Je hebt geen toegang tot dit huishouden.',
+          'functions/invalid-argument': 'Controleer de receptlink en probeer het opnieuw.',
+          'functions/not-found': 'Op deze pagina zijn geen leesbare receptingrediënten gevonden.',
+          'functions/deadline-exceeded': 'De receptsite reageerde niet op tijd.',
+          'functions/resource-exhausted': 'De receptpagina is te groot om te importeren.',
+          'functions/unavailable': 'De receptsite kon niet worden opgehaald.',
+        };
+        return messages[error?.code] || error?.message || 'Het recept kon niet worden opgehaald.';
+      }
+
+      async function importRecipeFromUrl() {
+        if (!householdId || !draft || recipeImporting) return;
+        let recipeUrl = String(draft.url || '').trim();
+        if (!recipeUrl) {
+          setRecipeImportFeedback({ type: 'error', text: 'Plak eerst een link naar het recept.' });
+          return;
+        }
+        if (!/^https?:\/\//i.test(recipeUrl)) recipeUrl = `https://${recipeUrl}`;
+        try {
+          recipeUrl = new URL(recipeUrl).href;
+        } catch {
+          setRecipeImportFeedback({ type: 'error', text: 'Deze receptlink is niet geldig.' });
+          return;
+        }
+
+        const hasIngredients = (draft.ingredients || []).some(ingredient => (
+          ingredient.productId || String(ingredient.nameSnapshot || '').trim()
+        ));
+        if (hasIngredients && !confirm('De huidige ingrediënten vervangen door het voorstel uit de receptlink?')) return;
+
+        setRecipeImporting(true);
+        setRecipeImportFeedback({ type: 'info', text: 'Recept en ingrediënten ophalen…' });
+        setDraft(previous => ({ ...previous, url: recipeUrl }));
+        try {
+          const callable = functions.httpsCallable('importRecipe');
+          const result = await callable({ householdId, url: recipeUrl });
+          const imported = result.data || {};
+          const ingredients = (imported.ingredients || []).map(ingredient => {
+            const product = exactProductForImport(ingredient.name);
+            return {
+              _id: genId('ing'),
+              productId: product?.id || null,
+              nameSnapshot: product?.name || ingredient.name || '',
+              categorySnapshot: product?.category || 'Overig',
+              amount: ingredient.amount || '',
+              unit: ingredient.unit || 'st',
+              buyQty: clamp(Number(ingredient.buyQty) || 1, 1, 99),
+            };
+          });
+          if (!ingredients.length) throw new Error('Geen ingrediënten gevonden.');
+          setDraft(previous => ({
+            ...previous,
+            name: String(imported.name || '').trim() || previous.name,
+            url: imported.url || recipeUrl,
+            baseServings: clamp(Number(imported.servings) || Number(previous.baseServings) || 5, 1, 99),
+            ingredients,
+          }));
+          const linkedCount = ingredients.filter(ingredient => ingredient.productId).length;
+          setRecipeImportFeedback({
+            type: 'success',
+            text: `${ingredients.length} ingrediënt${ingredients.length === 1 ? '' : 'en'} opgehaald${linkedCount ? `; ${linkedCount} gekoppeld aan bestaande producten` : ''}. Controleer het voorstel en kies daarna Opslaan.`,
+          });
+        } catch (error) {
+          console.error('Recept importeren mislukt:', error);
+          setRecipeImportFeedback({ type: 'error', text: recipeImportErrorMessage(error) });
+        } finally {
+          setRecipeImporting(false);
+        }
       }
 
       async function saveRecipe() {
@@ -4310,6 +4403,7 @@ useEffect(() => {
         await ref.set(payload, { merge: true });
         setOpenId(null);
         setDraft(null);
+        setRecipeImportFeedback(null);
       }
 
       async function deleteRecipe(r) {
@@ -5601,18 +5695,24 @@ function ensurePickState(recipe) {
           {openId && draft && (
             <Modal
               title="Recept"
-              onClose={()=>{ setOpenId(null); setDraft(null); }}
+              onClose={()=>{
+                if (recipeImporting) return;
+                setOpenId(null);
+                setDraft(null);
+                setRecipeImportFeedback(null);
+              }}
               footer={(
                 <div className="flex flex-col sm:flex-row gap-2">
                   {(recipes || []).some(r => r.id === draft.id) && (
                     <button
                       onClick={()=>deleteRecipe(draft)}
+                      disabled={recipeImporting}
                       className="px-4 py-2.5 rounded-xl bg-rose-50 text-rose-700 text-sm font-semibold"
                     >
                       Recept verwijderen
                     </button>
                   )}
-                  <Button onClick={saveRecipe} className="flex-1 bg-emerald-600 text-white">Opslaan</Button>
+                  <Button onClick={saveRecipe} disabled={recipeImporting} className="flex-1 bg-emerald-600 text-white">Opslaan</Button>
                 </div>
               )}
             >
@@ -5634,10 +5734,36 @@ function ensurePickState(recipe) {
 
                   <div>
                     <div className="text-xs font-semibold text-slate-500 mb-1">Recept-URL (online)</div>
-                    <input type="url" inputMode="url" value={draft.url || ''}
-                      onChange={(e)=>setDraft(d=>({ ...d, url: e.target.value }))}
-                      placeholder="bijv. https://ah.nl/allerhande/recept/..."
-                      className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white" />
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <input type="url" inputMode="url" value={draft.url || ''}
+                        onChange={(e)=>{
+                          setDraft(d=>({ ...d, url: e.target.value }));
+                          setRecipeImportFeedback(null);
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key !== 'Enter' || recipeImporting) return;
+                          event.preventDefault();
+                          importRecipeFromUrl();
+                        }}
+                        placeholder="bijv. https://ah.nl/allerhande/recept/..."
+                        className="min-w-0 flex-1 px-3 py-2.5 rounded-xl border border-slate-200 bg-white" />
+                      <Button type="button" onClick={importRecipeFromUrl} disabled={recipeImporting || !String(draft.url || '').trim()}
+                        className="shrink-0 bg-sky-50 text-sky-800 border border-sky-200">
+                        {recipeImporting ? 'Ophalen…' : 'Haal recept op'}
+                      </Button>
+                    </div>
+                    <div className="mt-1.5 text-[11px] text-slate-500">We vullen naam, porties en ingrediënten als voorstel in. Je controleert ze vóór het opslaan.</div>
+                    {recipeImportFeedback && (
+                      <div role="status" className={"mt-2 rounded-xl border px-3 py-2 text-xs font-semibold " + (
+                        recipeImportFeedback.type === 'error'
+                          ? 'border-rose-200 bg-rose-50 text-rose-800'
+                          : (recipeImportFeedback.type === 'success'
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                            : 'border-sky-200 bg-sky-50 text-sky-800')
+                      )}>
+                        {recipeImportFeedback.text}
+                      </div>
+                    )}
                   </div>
 
 

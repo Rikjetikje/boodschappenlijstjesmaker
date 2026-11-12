@@ -1,6 +1,7 @@
 import firebase from 'firebase/compat/app';
 import 'firebase/compat/auth';
 import 'firebase/compat/firestore';
+import 'firebase/compat/functions';
 
 const firebaseConfig = {
   apiKey: 'AIzaSyAVhQohz3ueJ_DNaY0HNOVcC-BkPSNFcfQ',
@@ -15,6 +16,7 @@ const firebaseApp = firebase.initializeApp(firebaseConfig);
 
 export const auth = firebaseApp.auth();
 export const db = firebaseApp.firestore();
+export const functions = firebaseApp.functions('europe-west1');
 
 db.enablePersistence({ synchronizeTabs: true }).catch((err) => {
   if (err.code === 'failed-precondition') {
