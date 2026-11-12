@@ -3767,7 +3767,7 @@ useEffect(() => {
                         <div className="font-semibold text-sm text-slate-800 truncate">{plan.name || recipeSnapshot?.name || 'Gerecht'}</div>
                         {plan.sourceType === 'custom' && <div className="text-[10px] text-slate-400 mt-0.5">Eigen gerecht</div>}
                       </div>
-                      {!muted && (recipeUrl ? (
+                      {recipeUrl ? (
                         <a href={/^https?:\/\//i.test(recipeUrl) ? recipeUrl : `https://${recipeUrl}`}
                           target="_blank" rel="noopener noreferrer" title="Bekijk recept"
                           aria-label={`Bekijk recept voor ${plan.name || recipeSnapshot?.name || 'gerecht'}`}
@@ -3780,8 +3780,8 @@ useEffect(() => {
                           className="w-10 h-10 rounded-full text-slate-300 flex items-center justify-center shrink-0 cursor-default">
                           <RecipeIcon className="w-[18px] h-[18px]" />
                         </button>
-                      ))}
-                      {!muted && (hasIngredients ? (
+                      )}
+                      {hasIngredients ? (
                         <button type="button" onClick={() => openIngredients(plan)} title="Check ingrediënten"
                           aria-label={`Check ingrediënten voor ${plan.name || recipeSnapshot?.name || 'gerecht'}`}
                           className="w-10 h-10 rounded-full text-emerald-700 hover:bg-emerald-50 flex items-center justify-center shrink-0">
@@ -3793,7 +3793,7 @@ useEffect(() => {
                           className="w-10 h-10 rounded-full text-slate-300 flex items-center justify-center shrink-0 cursor-default">
                           <IngredientsIcon className="w-[18px] h-[18px]" />
                         </button>
-                      ))}
+                      )}
                       <button type="button" onClick={() => deletePlan(plan)} className="w-10 h-10 rounded-full text-rose-600 flex items-center justify-center shrink-0" aria-label="Uit planning verwijderen">
                         <TrashIcon className="w-4 h-4" />
                       </button>
