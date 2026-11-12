@@ -98,7 +98,7 @@ const APP_ICONS = {
         .filter(date => date && date >= today)
         .sort();
       const preferred = stored || upcomingDates[0] || shiftDateKey(today, 1);
-      if (preferred >= today && preferred <= shiftDateKey(today, 6)) return preferred;
+      if (preferred >= shiftDateKey(today, -6) && preferred <= shiftDateKey(today, 6)) return preferred;
       const preferredWeekday = dateFromKey(preferred)?.getDay() ?? 1;
       const currentWeekday = dateFromKey(today)?.getDay() ?? 0;
       return shiftDateKey(today, (preferredWeekday - currentWeekday + 7) % 7);
@@ -3238,7 +3238,7 @@ useEffect(() => {
       }, [householdId, scheduleStartDate]);
 
       useEffect(() => {
-        if (!scheduleStartDate || (scheduleStartDate >= today && scheduleStartDate <= shiftDateKey(today, 6))) return;
+        if (!scheduleStartDate || (scheduleStartDate >= shiftDateKey(today, -6) && scheduleStartDate <= shiftDateKey(today, 6))) return;
         const weekday = dateFromKey(scheduleStartDate)?.getDay();
         if (Number.isFinite(weekday)) setScheduleStartDate(startDateForWeekday(weekday));
       }, [scheduleStartDate, today]);
@@ -3535,11 +3535,14 @@ useEffect(() => {
               {planDateChoices.map(date => {
                 const weekday = dateFromKey(date)?.getDay();
                 const selected = weekday === selectedWeekday;
+                const passed = date < today;
                 return (
                   <button key={date} type="button" aria-pressed={selected}
-                    aria-label={`${label} op ${weekdayLabel(date, 'long')}`}
+                    aria-label={`${label} op ${weekdayLabel(date, 'long')}${passed ? ' (geweest)' : ''}`}
                     onClick={() => onChange(date)}
-                    className={"h-10 rounded-lg border text-[10px] font-bold uppercase transition-colors " + (selected ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-transparent bg-slate-50 text-slate-500")}>
+                    className={"h-10 rounded-lg border text-[10px] font-bold uppercase transition-colors " + (passed
+                      ? (selected ? "border-slate-300 bg-slate-200 text-slate-700" : "border-transparent bg-slate-100 text-slate-400")
+                      : (selected ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-transparent bg-slate-50 text-slate-500"))}>
                     {weekdayLabel(date)}
                   </button>
                 );
@@ -3560,14 +3563,13 @@ useEffect(() => {
       const sortedPlans = useMemo(() => [...(mealPlans || [])].sort((a,b) => (
         String(a.date || '').localeCompare(String(b.date || '')) || (a.createdAt?.seconds||0) - (b.createdAt?.seconds||0)
       )), [mealPlans]);
-      const upcomingPlans = sortedPlans
-        .filter(plan => plan.date && plan.date >= today)
+      const datedPlans = sortedPlans
+        .filter(plan => plan.date)
         .sort((a, b) => dayPosition(a.date) - dayPosition(b.date)
           || String(a.date || '').localeCompare(String(b.date || ''))
           || (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0));
-      const pastPlans = sortedPlans.filter(plan => plan.date && plan.date < today).reverse();
       const undatedPlans = sortedPlans.filter(plan => !plan.date);
-      const currentPlans = [...upcomingPlans, ...undatedPlans];
+      const currentPlans = [...datedPlans, ...undatedPlans];
 
       function archivedDayPosition(recipe, index = 0) {
         const dayIndex = MENU_WEEKDAYS.findIndex(day => day.key === plannedDayKey(recipe));
@@ -3584,7 +3586,7 @@ useEffect(() => {
       }
 
       function openSavePlanning() {
-        const labelDate = dateFromKey(upcomingPlans[0]?.date || scheduleStartDate);
+        const labelDate = dateFromKey(datedPlans[0]?.date || scheduleStartDate);
         const dateLabel = labelDate
           ? new Intl.DateTimeFormat('nl-NL', { day: 'numeric', month: 'long' }).format(labelDate)
           : '';
@@ -3752,7 +3754,7 @@ useEffect(() => {
         }
       }
 
-      function renderPlans(plans, muted = false) {
+      function renderPlans(plans) {
         return (
           <div className="space-y-2">
             {plans.map(plan => {
@@ -3761,7 +3763,7 @@ useEffect(() => {
               const recipeUrl = String(recipeById.get(plan.recipeId)?.url || recipeSnapshot?.url || '').trim();
               return (
                 <Card key={plan.id}>
-                  <div className={"px-3 py-2.5 " + (muted ? "opacity-70" : "")}>
+                  <div className="px-3 py-2.5">
                     <div className="flex items-center gap-2">
                       <div className="min-w-0 flex-1">
                         <div className="font-semibold text-sm text-slate-800 truncate">{plan.name || recipeSnapshot?.name || 'Gerecht'}</div>
@@ -3799,16 +3801,13 @@ useEffect(() => {
                       </button>
                     </div>
 
-                    {!muted && (
-                      <div className="mt-1.5">
-                        {renderDayPicker({
-                          value: plan.date,
-                          onChange: date => movePlanToDate(plan, date),
-                          label: plan.name || recipeSnapshot?.name || 'Gerecht',
-                        })}
-                      </div>
-                    )}
-                    {muted && <div className="mt-1 text-xs font-semibold text-slate-500">{formatMealPlanDate(plan.date)}</div>}
+                    <div className="mt-1.5">
+                      {renderDayPicker({
+                        value: plan.date,
+                        onChange: date => movePlanToDate(plan, date),
+                        label: plan.name || recipeSnapshot?.name || 'Gerecht',
+                      })}
+                    </div>
                   </div>
                 </Card>
               );
@@ -3888,10 +3887,10 @@ useEffect(() => {
             </div>
           )}
 
-          {upcomingPlans.length ? (
+          {datedPlans.length ? (
             <div className="mt-4">
-              <div className="px-1 mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-500">Komende planning</div>
-              {renderPlans(upcomingPlans)}
+              <div className="px-1 mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-500">Planning</div>
+              {renderPlans(datedPlans)}
             </div>
           ) : (
             <div className="mt-4 py-10 text-center text-slate-500">
@@ -3902,13 +3901,6 @@ useEffect(() => {
           )}
 
           {undatedPlans.length > 0 && <div className="mt-3">{renderPlans(undatedPlans)}</div>}
-
-          {pastPlans.length > 0 && (
-            <details className="mt-4">
-              <summary className="min-h-11 flex items-center px-1 text-xs font-semibold text-slate-500 cursor-pointer">Eerdere planning ({pastPlans.length})</summary>
-              <div className="mt-2">{renderPlans(pastPlans, true)}</div>
-            </details>
-          )}
 
           {(menuWeeks || []).length > 0 && (
             <details className="mt-3 rounded-2xl border border-slate-200 bg-white overflow-hidden">
