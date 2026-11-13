@@ -4354,14 +4354,9 @@ useEffect(() => {
         const recipeUrl = validatedRecipeUrl(rawUrl);
         if (!recipeUrl) return;
 
-        lastCheckedRecipeUrlRef.current = recipeUrl;
+        lastCheckedRecipeUrlRef.current = String(rawUrl || '').trim();
         setRecipeLinkChecking(true);
         setRecipeImportFeedback({ type: 'info', text: 'Receptlink controleren…' });
-        setDraft(previous => (
-          String(previous?.url || '').trim() === String(rawUrl || '').trim()
-            ? { ...previous, url: recipeUrl }
-            : previous
-        ));
         try {
           const callable = functions.httpsCallable('importRecipe');
           const result = await callable({ householdId, url: recipeUrl });
@@ -5863,6 +5858,17 @@ function ensurePickState(recipe) {
                           setDraft(d=>({ ...d, url: e.target.value }));
                           setRecipeImportFeedback(null);
                         }}
+                        onPaste={(event) => {
+                          const input = event.currentTarget;
+                          window.setTimeout(() => {
+                            const pastedUrl = String(input.value || '').trim();
+                            if (!pastedUrl) return;
+                            if (recipeLinkCheckTimerRef.current) clearTimeout(recipeLinkCheckTimerRef.current);
+                            recipeLinkCheckTimerRef.current = null;
+                            const sequence = ++recipeLinkCheckSequenceRef.current;
+                            checkRecipeUrl(pastedUrl, sequence);
+                          }, 0);
+                        }}
                         onKeyDown={(event) => {
                           if (event.key !== 'Enter' || recipeImporting || recipeLinkChecking) return;
                           event.preventDefault();
@@ -5885,6 +5891,11 @@ function ensurePickState(recipe) {
                             : 'border-sky-200 bg-sky-50 text-sky-800')
                       )}>
                         {recipeImportFeedback.text}
+                        {recipeLinkChecking && recipeImportFeedback.type === 'info' && (
+                          <div className="mt-2 h-1 overflow-hidden rounded-full bg-sky-200" aria-hidden="true">
+                            <div className="h-full w-2/3 rounded-full bg-sky-600 animate-pulse" />
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
