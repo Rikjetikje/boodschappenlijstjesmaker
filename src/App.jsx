@@ -4187,6 +4187,7 @@ useEffect(() => {
       const [openId, setOpenId] = useState(null); // recipe id in modal
       const [draft, setDraft] = useState(null);   // editable recipe
       const [recipeImporting, setRecipeImporting] = useState(false);
+      const [recipeLinkChecking, setRecipeLinkChecking] = useState(false);
       const [recipeImportFeedback, setRecipeImportFeedback] = useState(null);
       const [quickServings, setQuickServings] = useState(5);
       const [expandedId, setExpandedId] = useState(null);
@@ -4208,6 +4209,9 @@ useEffect(() => {
         return suggestedMealPlanDate(mealPlans, startDate);
       });
       const addFeedbackTimerRef = useRef(null);
+      const recipeLinkCheckTimerRef = useRef(null);
+      const recipeLinkCheckSequenceRef = useRef(0);
+      const lastCheckedRecipeUrlRef = useRef('');
       const backfilledMenuKeysRef = useRef(new Set());
       const openedDefaultMenuWeekRef = useRef(false);
       const recipeTitleRefs = useRef(new Map());
@@ -4215,8 +4219,25 @@ useEffect(() => {
       useEffect(() => {
         return () => {
           if (addFeedbackTimerRef.current) clearTimeout(addFeedbackTimerRef.current);
+          if (recipeLinkCheckTimerRef.current) clearTimeout(recipeLinkCheckTimerRef.current);
+          recipeLinkCheckSequenceRef.current += 1;
         };
       }, []);
+
+      useEffect(() => {
+        if (recipeLinkCheckTimerRef.current) clearTimeout(recipeLinkCheckTimerRef.current);
+        const rawUrl = String(draft?.url || '').trim();
+        if (!openId || !householdId || !rawUrl || rawUrl === lastCheckedRecipeUrlRef.current) return;
+        const sequence = ++recipeLinkCheckSequenceRef.current;
+        recipeLinkCheckTimerRef.current = window.setTimeout(() => {
+          recipeLinkCheckTimerRef.current = null;
+          checkRecipeUrl(rawUrl, sequence);
+        }, 900);
+        return () => {
+          if (recipeLinkCheckTimerRef.current) clearTimeout(recipeLinkCheckTimerRef.current);
+          recipeLinkCheckTimerRef.current = null;
+        };
+      }, [draft?.url, householdId, openId]);
 
       useEffect(() => {
         const startDate = preferredMealPlanStartDate(householdId, mealPlans);
@@ -4272,6 +4293,8 @@ useEffect(() => {
         setOpenId(id);
         setDraft(rec);
         setActiveIngredientSearchId(null);
+        lastCheckedRecipeUrlRef.current = '';
+        recipeLinkCheckSequenceRef.current += 1;
         setRecipeImportFeedback(null);
       }
 
@@ -4288,6 +4311,8 @@ useEffect(() => {
         setOpenId(r.id);
         setDraft(JSON.parse(JSON.stringify(r)));
         setActiveIngredientSearchId(null);
+        lastCheckedRecipeUrlRef.current = '';
+        recipeLinkCheckSequenceRef.current += 1;
         setRecipeImportFeedback(null);
       }
 
@@ -4308,26 +4333,69 @@ useEffect(() => {
         return messages[error?.code] || error?.message || 'Het recept kon niet worden opgehaald.';
       }
 
-      async function importRecipeFromUrl() {
-        if (!householdId || !draft || recipeImporting) return;
-        let recipeUrl = String(draft.url || '').trim();
+      function validatedRecipeUrl(value = draft?.url) {
+        let recipeUrl = String(value || '').trim();
         if (!recipeUrl) {
           setRecipeImportFeedback({ type: 'error', text: 'Plak eerst een link naar het recept.' });
-          return;
+          return null;
         }
         if (!/^https?:\/\//i.test(recipeUrl)) recipeUrl = `https://${recipeUrl}`;
         try {
-          recipeUrl = new URL(recipeUrl).href;
+          return new URL(recipeUrl).href;
         } catch {
           setRecipeImportFeedback({ type: 'error', text: 'Deze receptlink is niet geldig.' });
-          return;
+          return null;
         }
+      }
+
+      async function checkRecipeUrl(rawUrl, sequence = ++recipeLinkCheckSequenceRef.current) {
+        if (!householdId || !draft || recipeImporting) return;
+        if (sequence !== recipeLinkCheckSequenceRef.current) return;
+        const recipeUrl = validatedRecipeUrl(rawUrl);
+        if (!recipeUrl) return;
+
+        lastCheckedRecipeUrlRef.current = recipeUrl;
+        setRecipeLinkChecking(true);
+        setRecipeImportFeedback({ type: 'info', text: 'Receptlink controleren…' });
+        setDraft(previous => (
+          String(previous?.url || '').trim() === String(rawUrl || '').trim()
+            ? { ...previous, url: recipeUrl }
+            : previous
+        ));
+        try {
+          const callable = functions.httpsCallable('importRecipe');
+          const result = await callable({ householdId, url: recipeUrl });
+          if (sequence !== recipeLinkCheckSequenceRef.current) return;
+          const imported = result.data || {};
+          const ingredientCount = Array.isArray(imported.ingredients) ? imported.ingredients.length : 0;
+          const recipeName = String(imported.name || '').trim();
+          setRecipeImportFeedback({
+            type: 'success',
+            text: `Link werkt${recipeName ? `: ${recipeName}` : ''}${ingredientCount ? ` · ${ingredientCount} ingrediënt${ingredientCount === 1 ? '' : 'en'} gevonden` : ''}.`,
+          });
+        } catch (error) {
+          if (sequence !== recipeLinkCheckSequenceRef.current) return;
+          console.error('Receptlink controleren mislukt:', error);
+          setRecipeImportFeedback({ type: 'error', text: `Link werkt niet: ${recipeImportErrorMessage(error)}` });
+        } finally {
+          if (sequence === recipeLinkCheckSequenceRef.current) setRecipeLinkChecking(false);
+        }
+      }
+
+      async function importRecipeFromUrl() {
+        if (!householdId || !draft || recipeImporting || recipeLinkChecking) return;
+        const recipeUrl = validatedRecipeUrl();
+        if (!recipeUrl) return;
 
         const hasIngredients = (draft.ingredients || []).some(ingredient => (
           ingredient.productId || String(ingredient.nameSnapshot || '').trim()
         ));
         if (hasIngredients && !confirm('De huidige ingrediënten vervangen door het voorstel uit de receptlink?')) return;
 
+        if (recipeLinkCheckTimerRef.current) clearTimeout(recipeLinkCheckTimerRef.current);
+        recipeLinkCheckSequenceRef.current += 1;
+        lastCheckedRecipeUrlRef.current = recipeUrl;
+        setRecipeLinkChecking(false);
         setRecipeImporting(true);
         setRecipeImportFeedback({ type: 'info', text: 'Recept en ingrediënten ophalen…' });
         setDraft(previous => ({ ...previous, url: recipeUrl }));
@@ -4335,6 +4403,7 @@ useEffect(() => {
           const callable = functions.httpsCallable('importRecipe');
           const result = await callable({ householdId, url: recipeUrl });
           const imported = result.data || {};
+          lastCheckedRecipeUrlRef.current = String(imported.url || recipeUrl).trim();
           const ingredients = (imported.ingredients || []).map(ingredient => {
             const product = productForImport(ingredient.name);
             return {
@@ -5746,6 +5815,9 @@ function ensurePickState(recipe) {
               title="Recept"
               onClose={()=>{
                 if (recipeImporting) return;
+                if (recipeLinkCheckTimerRef.current) clearTimeout(recipeLinkCheckTimerRef.current);
+                recipeLinkCheckSequenceRef.current += 1;
+                setRecipeLinkChecking(false);
                 setOpenId(null);
                 setDraft(null);
                 setRecipeImportFeedback(null);
@@ -5786,22 +5858,24 @@ function ensurePickState(recipe) {
                     <div className="flex flex-col sm:flex-row gap-2">
                       <input type="url" inputMode="url" value={draft.url || ''}
                         onChange={(e)=>{
+                          recipeLinkCheckSequenceRef.current += 1;
+                          setRecipeLinkChecking(false);
                           setDraft(d=>({ ...d, url: e.target.value }));
                           setRecipeImportFeedback(null);
                         }}
                         onKeyDown={(event) => {
-                          if (event.key !== 'Enter' || recipeImporting) return;
+                          if (event.key !== 'Enter' || recipeImporting || recipeLinkChecking) return;
                           event.preventDefault();
                           importRecipeFromUrl();
                         }}
                         placeholder="bijv. https://ah.nl/allerhande/recept/..."
                         className="min-w-0 flex-1 px-3 py-2.5 rounded-xl border border-slate-200 bg-white" />
-                      <Button type="button" onClick={importRecipeFromUrl} disabled={recipeImporting || !String(draft.url || '').trim()}
+                      <Button type="button" onClick={importRecipeFromUrl} disabled={recipeImporting || recipeLinkChecking || !String(draft.url || '').trim()}
                         className="shrink-0 bg-sky-50 text-sky-800 border border-sky-200">
                         {recipeImporting ? 'Ophalen…' : 'Haal recept op'}
                       </Button>
                     </div>
-                    <div className="mt-1.5 text-[11px] text-slate-500">We vullen naam, porties en ingrediënten als voorstel in. Je controleert ze vóór het opslaan.</div>
+                    <div className="mt-1.5 text-[11px] text-slate-500">De link wordt automatisch gecontroleerd. Bij ophalen vullen we naam, porties en ingrediënten als voorstel in.</div>
                     {recipeImportFeedback && (
                       <div role="status" className={"mt-2 rounded-xl border px-3 py-2 text-xs font-semibold " + (
                         recipeImportFeedback.type === 'error'
