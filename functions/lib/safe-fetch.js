@@ -100,7 +100,11 @@ async function fetchRecipePage(value) {
         currentUrl = new URL(location, safeUrl).href;
         continue;
       }
-      if (!response.ok) throw new Error(response.status === 404 ? 'not-found' : 'fetch-failed');
+      if (!response.ok) {
+        if ([404, 410].includes(response.status)) throw new Error('not-found');
+        if ([401, 403, 429].includes(response.status)) throw new Error('access-blocked');
+        throw new Error('fetch-failed');
+      }
       const contentType = String(response.headers.get('content-type') || '').toLowerCase();
       if (contentType && !contentType.includes('text/html') && !contentType.includes('application/xhtml+xml')) {
         throw new Error('not-html');
@@ -108,9 +112,18 @@ async function fetchRecipePage(value) {
       return { html: await readLimitedText(response), finalUrl: safeUrl.href };
     }
     throw new Error('too-many-redirects');
+  } catch (error) {
+    if (error?.name === 'AbortError' || error?.message) {
+      if (error?.name === 'AbortError' || [
+        'invalid-url', 'unsafe-url', 'not-found', 'access-blocked', 'fetch-failed',
+        'page-too-large', 'not-html', 'too-many-redirects',
+      ].includes(error?.message)) throw error;
+    }
+    if (error instanceof TypeError) throw new Error('site-unreachable');
+    throw error;
   } finally {
     clearTimeout(timeout);
   }
 }
 
-module.exports = { assertSafeUrl, fetchRecipePage, isPrivateIp };
+module.exports = { assertSafeUrl, fetchRecipePage, isPrivateIp, readLimitedText };

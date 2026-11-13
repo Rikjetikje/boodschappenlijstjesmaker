@@ -4325,12 +4325,19 @@ useEffect(() => {
           'functions/unauthenticated': 'Log opnieuw in om een recept op te halen.',
           'functions/permission-denied': 'Je hebt geen toegang tot dit huishouden.',
           'functions/invalid-argument': 'Controleer de receptlink en probeer het opnieuw.',
-          'functions/not-found': 'Op deze pagina zijn geen leesbare receptingrediënten gevonden.',
+          'functions/not-found': error?.message || 'Deze site bestaat niet of is niet bereikbaar.',
+          'functions/failed-precondition': error?.message || 'Deze site bestaat, maar ik kan de receptgegevens niet lezen.',
           'functions/deadline-exceeded': 'De receptsite reageerde niet op tijd.',
           'functions/resource-exhausted': 'De receptpagina is te groot om te importeren.',
-          'functions/unavailable': 'De receptsite kon niet worden opgehaald.',
+          'functions/unavailable': 'Deze site is tijdelijk niet bereikbaar.',
         };
         return messages[error?.code] || error?.message || 'Het recept kon niet worden opgehaald.';
+      }
+
+      function recipeImportFeedbackType(error) {
+        return ['functions/failed-precondition', 'functions/resource-exhausted'].includes(error?.code)
+          ? 'warning'
+          : 'error';
       }
 
       function validatedRecipeUrl(value = draft?.url) {
@@ -4366,12 +4373,12 @@ useEffect(() => {
           const recipeName = String(imported.name || '').trim();
           setRecipeImportFeedback({
             type: 'success',
-            text: `Link werkt${recipeName ? `: ${recipeName}` : ''}${ingredientCount ? ` · ${ingredientCount} ingrediënt${ingredientCount === 1 ? '' : 'en'} gevonden` : ''}.`,
+            text: `Deze site kan ingrediënten klaarzetten${recipeName ? `: ${recipeName}` : ''}${ingredientCount ? ` · ${ingredientCount} ingrediënt${ingredientCount === 1 ? '' : 'en'} gevonden` : ''}.`,
           });
         } catch (error) {
           if (sequence !== recipeLinkCheckSequenceRef.current) return;
           console.error('Receptlink controleren mislukt:', error);
-          setRecipeImportFeedback({ type: 'error', text: `Link werkt niet: ${recipeImportErrorMessage(error)}` });
+          setRecipeImportFeedback({ type: recipeImportFeedbackType(error), text: recipeImportErrorMessage(error) });
         } finally {
           if (sequence === recipeLinkCheckSequenceRef.current) setRecipeLinkChecking(false);
         }
@@ -4426,7 +4433,7 @@ useEffect(() => {
           });
         } catch (error) {
           console.error('Recept importeren mislukt:', error);
-          setRecipeImportFeedback({ type: 'error', text: recipeImportErrorMessage(error) });
+          setRecipeImportFeedback({ type: recipeImportFeedbackType(error), text: recipeImportErrorMessage(error) });
         } finally {
           setRecipeImporting(false);
         }
@@ -5886,9 +5893,11 @@ function ensurePickState(recipe) {
                       <div role="status" className={"mt-2 rounded-xl border px-3 py-2 text-xs font-semibold " + (
                         recipeImportFeedback.type === 'error'
                           ? 'border-rose-200 bg-rose-50 text-rose-800'
+                          : (recipeImportFeedback.type === 'warning'
+                            ? 'border-amber-200 bg-amber-50 text-amber-800'
                           : (recipeImportFeedback.type === 'success'
                             ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-                            : 'border-sky-200 bg-sky-50 text-sky-800')
+                            : 'border-sky-200 bg-sky-50 text-sky-800'))
                       )}>
                         {recipeImportFeedback.text}
                         {recipeLinkChecking && recipeImportFeedback.type === 'info' && (

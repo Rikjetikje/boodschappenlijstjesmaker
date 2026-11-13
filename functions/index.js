@@ -7,6 +7,7 @@ const { HttpsError, onCall } = require('firebase-functions/v2/https');
 const { fetchAlbertHeijnRecipe, parseAlbertHeijnRecipeId } = require('./lib/ah-recipe');
 const { parseRecipePage } = require('./lib/recipe-parser');
 const { fetchRecipePage } = require('./lib/safe-fetch');
+const { fetchValidatorRecipe } = require('./lib/schema-validator');
 
 initializeApp();
 setGlobalOptions({ region: 'europe-west1', maxInstances: 5 });
@@ -21,13 +22,16 @@ function importError(error) {
     'not-found': ['not-found', 'De receptpagina is niet gevonden.'],
     'not-html': ['failed-precondition', 'Deze link verwijst niet naar een webpagina.'],
     'too-many-redirects': ['failed-precondition', 'De receptsite verwijst te vaak door.'],
-    'fetch-failed': ['unavailable', 'De receptsite kon niet worden opgehaald.'],
+    'access-blocked': ['failed-precondition', 'Deze site bestaat, maar ik kan de receptgegevens niet lezen.'],
+    'unreadable-recipe': ['failed-precondition', 'Deze site bestaat, maar ik kan de receptgegevens niet lezen.'],
+    'site-unreachable': ['not-found', 'Deze site bestaat niet of is niet bereikbaar.'],
+    'fetch-failed': ['unavailable', 'Deze site is tijdelijk niet bereikbaar.'],
   };
   const [code, message] = messages[error?.message] || ['internal', 'Het recept kon niet worden geïmporteerd.'];
   return new HttpsError(code, message);
 }
 
-exports.importRecipe = onCall({ timeoutSeconds: 15, memory: '256MiB' }, async request => {
+exports.importRecipe = onCall({ timeoutSeconds: 30, memory: '256MiB' }, async request => {
   if (!request.auth?.uid) throw new HttpsError('unauthenticated', 'Log eerst in om een recept te importeren.');
   const householdId = String(request.data?.householdId || '').trim();
   const rawUrl = String(request.data?.url || '').trim();
@@ -41,12 +45,28 @@ exports.importRecipe = onCall({ timeoutSeconds: 15, memory: '256MiB' }, async re
     if (parseAlbertHeijnRecipeId(rawUrl)) {
       return await fetchAlbertHeijnRecipe(rawUrl);
     }
-    const { html, finalUrl } = await fetchRecipePage(rawUrl);
-    const recipe = parseRecipePage(html, finalUrl);
-    if (!recipe) {
-      throw new HttpsError('not-found', 'Op deze pagina zijn geen leesbare receptingrediënten gevonden.');
+    let directError = null;
+    try {
+      const { html, finalUrl } = await fetchRecipePage(rawUrl);
+      const recipe = parseRecipePage(html, finalUrl);
+      if (recipe) return recipe;
+    } catch (error) {
+      if (error?.message !== 'access-blocked') throw error;
+      directError = error;
     }
-    return recipe;
+    try {
+      return await fetchValidatorRecipe(rawUrl);
+    } catch (error) {
+      if (error?.name === 'AbortError') {
+        console.warn('Schema.org-fallback reageerde niet op tijd');
+      } else if (!['unreadable-recipe', 'validator-unavailable'].includes(error?.message)) {
+        console.warn('Schema.org-fallback mislukt', { reason: error?.message || error?.name });
+      }
+      if (directError || ['unreadable-recipe', 'validator-unavailable'].includes(error?.message) || error?.name === 'AbortError') {
+        throw new Error('unreadable-recipe');
+      }
+      throw error;
+    }
   } catch (error) {
     let hostname = 'ongeldig';
     try {
