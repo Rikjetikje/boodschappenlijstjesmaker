@@ -3080,7 +3080,7 @@ useEffect(() => {
                   ref={el => { groupRefs.current[`${group.category}-${group.checkedGroup ? 'checked' : 'open'}`] = el; }}
                   className={storeMode ? "mb-3" : ""}>
                   {storeMode && (!group.checkedGroup || checkedSort === 'category') && (
-                    <div className="px-3 mb-0">
+                    <div className="bm-store-category-header px-3 mb-0">
                       <span className="inline-flex items-center text-xs font-semibold px-3 py-1 rounded-tr-lg"
                             style={{
                               backgroundColor: group.checkedGroup ? '#eef1ee' : categoryColor(group.category) + '29',
