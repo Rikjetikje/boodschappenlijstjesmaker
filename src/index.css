@@ -7,6 +7,23 @@
   input, select, textarea {
     font-size: 16px !important;
   }
+
+  /* Keep iOS' scroll-edge blur inside the status-bar area, away from controls. */
+  body::before {
+    content: '';
+    position: fixed;
+    z-index: 60;
+    top: 0;
+    right: 0;
+    left: 0;
+    height: max(env(safe-area-inset-top), 1px);
+    background: #f8fafc;
+    pointer-events: none;
+  }
+
+  .bm-app-shell {
+    padding-top: 2rem;
+  }
 }
 
 /* Better tap targets and immediate-feeling taps on mobile. */
