@@ -2436,7 +2436,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
       const [vvh, setVvh] = useState(() => (window.visualViewport ? window.visualViewport.height : window.innerHeight));
       const suggestionsRef = useRef(null);
       const [pendingCheckIds, setPendingCheckIds] = useState(() => new Set());
-      const [checkedSort, setCheckedSort] = useState('category');
+      const [checkedSort, setCheckedSort] = useState('recent');
       const [openQtyId, setOpenQtyId] = useState(null);
       const pickingSuggestionRef = useRef(false);
 
@@ -3065,30 +3065,33 @@ useEffect(() => {
 
 
           <div className="relative z-0 left-1/2 w-screen -translate-x-1/2">
-            {storeMode && byCategory.length > 0 && (
-              <label className="mb-3 flex flex-wrap items-center justify-end gap-2 px-3 text-xs text-slate-600">
-                Afgestreepte producten
-                <select
-                  className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-slate-700"
-                  value={checkedSort}
-                  onChange={e => setCheckedSort(e.target.value)}
-                >
-                  <option value="category">Op categorie</option>
-                  <option value="recent">Laatst afgestreept</option>
-                </select>
-              </label>
-            )}
             <div className={storeMode ? "" : "space-y-3"}>
               {byCategory.length === 0 ? (
                 <div className="text-center py-10 text-slate-500">
                   <div className="text-4xl mb-1">🛒</div>
                   <div className="text-sm">Je lijst is leeg</div>
                 </div>
-              ) : byCategory.map((group, gi) => (
+              ) : byCategory.flatMap((group, gi) => [
+                group.checkedGroup && !byCategory[gi - 1]?.checkedGroup && (
+                  <div key="checked-sort" className="mt-5 mb-2 px-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-100 px-3 py-2">
+                      <h2 className="text-sm font-semibold text-slate-700">Afgestreept</h2>
+                      <select
+                        aria-label="Afgestreepte producten sorteren"
+                        className="min-h-10 rounded-lg border border-slate-200 bg-white px-2 text-sm font-medium text-slate-700 focus-visible:outline-emerald-600"
+                        value={checkedSort}
+                        onChange={e => setCheckedSort(e.target.value)}
+                      >
+                        <option value="recent">Laatst afgestreept</option>
+                        <option value="category">Op categorie</option>
+                      </select>
+                    </div>
+                  </div>
+                ),
                 <div key={`${group.category}-${group.checkedGroup ? 'checked' : 'open'}`}
                   ref={el => { groupRefs.current[`${group.category}-${group.checkedGroup ? 'checked' : 'open'}`] = el; }}
                   className={storeMode ? "mb-3" : ""}>
-                  {storeMode ? (
+                  {storeMode && (!group.checkedGroup || checkedSort === 'category') && (
                     <div className="px-3 mb-0">
                       <span className="inline-flex items-center text-xs font-semibold px-3 py-1 rounded-tr-lg"
                             style={{
@@ -3096,7 +3099,8 @@ useEffect(() => {
                               color: group.checkedGroup ? '#647067' : '#33423d'
                             }}>{group.category}</span>
                     </div>
-                  ) : (
+                  )}
+                  {!storeMode && (
                     <div className="max-w-xl mx-auto px-3 mb-0">
                       <span className="inline-flex items-center text-xs font-medium px-3 py-1 rounded-tr-lg"
                             style={{ backgroundColor: categoryColor(group.category) + '29', color: '#33423d' }}>
@@ -3188,7 +3192,7 @@ useEffect(() => {
                     })}
                   </div>
                 </div>
-              ))}
+              ])}
             </div>
           </div>
 
