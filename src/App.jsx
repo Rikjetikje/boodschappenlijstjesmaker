@@ -1,6 +1,13 @@
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { auth, db, firebase, functions } from './firebase';
 import { findBestProductMatch, rankProductMatches } from './productMatching';
+import {
+  dateFromKey,
+  dateInMealPlanSchedule,
+  localDateKey,
+  mealPlanDateChoices,
+  shiftDateKey,
+} from './mealPlanDates';
 import packageInfo from '../package.json';
 
 const APP_VERSION = packageInfo.version;
@@ -52,25 +59,6 @@ const APP_ICONS = {
       const isInt = Math.abs(rounded - Math.round(rounded)) < 1e-9;
       const s = isInt ? String(Math.round(rounded)) : String(rounded);
       return s.replace('.', ',');
-    }
-
-    function localDateKey(date = new Date()) {
-      const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const day = String(date.getDate()).padStart(2, '0');
-      return `${year}-${month}-${day}`;
-    }
-
-    function dateFromKey(value) {
-      const [year, month, day] = String(value || '').split('-').map(Number);
-      if (![year, month, day].every(Number.isFinite)) return null;
-      return new Date(year, month - 1, day, 12);
-    }
-
-    function shiftDateKey(value, days) {
-      const date = dateFromKey(value) || new Date();
-      date.setDate(date.getDate() + days);
-      return localDateKey(date);
     }
 
     function formatMealPlanDate(value) {
@@ -3275,17 +3263,6 @@ useEffect(() => {
         if (Number.isFinite(weekday)) setScheduleStartDate(startDateForWeekday(weekday));
       }, [scheduleStartDate, today]);
 
-      useEffect(() => {
-        const recentPastDates = (mealPlans || [])
-          .map(plan => plan.date)
-          .filter(date => date && date < today && date >= shiftDateKey(today, -6))
-          .sort();
-        const earliestRecentPlan = recentPastDates[0];
-        if (!earliestRecentPlan || !scheduleStartDate) return;
-        if (earliestRecentPlan >= scheduleStartDate && earliestRecentPlan <= shiftDateKey(scheduleStartDate, 6)) return;
-        setScheduleStartDate(earliestRecentPlan);
-      }, [mealPlans, scheduleStartDate, today]);
-
       const productById = useMemo(() => new Map((products || []).map(product => [product.id, product])), [products]);
       const recipeById = useMemo(() => new Map((recipes || []).map(recipe => [recipe.id, recipe])), [recipes]);
       const listItemByProductId = useMemo(() => {
@@ -3624,9 +3601,7 @@ useEffect(() => {
         showFeedback(`${added} product${added === 1 ? '' : 'en'} toegevoegd aan je lijst.`);
       }
 
-      const planDateChoices = useMemo(() => (
-        Array.from({ length: 7 }, (_, index) => shiftDateKey(scheduleStartDate, index))
-      ), [scheduleStartDate]);
+      const planDateChoices = useMemo(() => mealPlanDateChoices(scheduleStartDate), [scheduleStartDate]);
       const startWeekday = dateFromKey(scheduleStartDate)?.getDay() ?? 1;
 
       function weekdayLabel(value, format = 'short') {
@@ -3646,11 +3621,16 @@ useEffect(() => {
         return Number.isFinite(weekday) ? (weekday - startWeekday + 7) % 7 : 7;
       }
 
+      function dateInCurrentSchedule(value) {
+        return dateInMealPlanSchedule(value, scheduleStartDate);
+      }
+
       function renderDayPicker({ value, onChange, label }) {
+        const displayedValue = dateInCurrentSchedule(value);
         return (
           <div className="bm-day-grid grid grid-cols-7 gap-1">
               {planDateChoices.map(date => {
-                const selected = date === value;
+                const selected = date === displayedValue;
                 const passed = date < today;
                 const isToday = date === today;
                 const tone = passed
@@ -3882,8 +3862,9 @@ useEffect(() => {
               const recipeSnapshot = plan.recipeSnapshot;
               const hasIngredients = (recipeSnapshot?.ingredients || []).length > 0;
               const recipeUrl = String(recipeById.get(plan.recipeId)?.url || recipeSnapshot?.url || '').trim();
-              const planPassed = !!plan.date && plan.date < today;
-              const planIsToday = plan.date === today;
+              const displayedDate = dateInCurrentSchedule(plan.date);
+              const planPassed = !!displayedDate && displayedDate < today;
+              const planIsToday = displayedDate === today;
               const cardTone = planPassed
                 ? 'bg-slate-100 border-slate-300'
                 : (planIsToday ? 'bg-amber-50 border-amber-300' : 'bg-white border-slate-200');
