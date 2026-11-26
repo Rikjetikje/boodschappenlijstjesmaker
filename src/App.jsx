@@ -6420,6 +6420,7 @@ function ensurePickState(recipe) {
       if (!user) {
         return (
           <div className="min-h-screen bg-slate-50">
+            <div aria-hidden="true" className="bm-top-edge-guard" />
             <div className="max-w-xl mx-auto px-4 pt-10 pb-20">
               <h1 className="text-2xl font-bold text-slate-900 mb-2">Boodschappenlijstjesmaker</h1>
               <p className="text-slate-600 text-sm mb-6">Log in met Google om samen te werken.</p>
@@ -6437,6 +6438,7 @@ function ensurePickState(recipe) {
 
       return (
         <div className="min-h-screen pb-24 bg-slate-50">
+          <div aria-hidden="true" className="bm-top-edge-guard" />
           <div className="bm-app-shell max-w-xl mx-auto px-3 pt-4">
             <Header
               user={user}
