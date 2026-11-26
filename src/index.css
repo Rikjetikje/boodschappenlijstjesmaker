@@ -2,34 +2,28 @@
 @tailwind components;
 @tailwind utilities;
 
-.bm-top-edge-guard {
-  display: none;
-}
-
 /* iOS Safari: prevent auto-zoom on form fields (requires >=16px computed font-size) */
 @supports (-webkit-touch-callout: none) {
   input, select, textarea {
     font-size: 16px !important;
   }
 
-  /* A real fixed element makes iOS use a solid top inset instead of a scroll-edge blur. */
-  .bm-top-edge-guard {
-    display: block;
-    position: fixed;
-    z-index: 0;
-    top: 0;
-    right: 0;
-    left: 0;
-    height: max(env(safe-area-inset-top), 3rem);
-    background: #f8fafc;
-    pointer-events: none;
-  }
-
   .bm-app-shell {
-    position: relative;
-    z-index: 1;
     padding-top: 2rem;
   }
+}
+
+/* Keep navigation outside the scrolling content and away from iOS' scroll edge. */
+.bm-app-header {
+  position: sticky;
+  z-index: 40;
+  top: 0;
+  margin-right: -0.75rem;
+  margin-left: -0.75rem;
+  padding-right: 0.75rem;
+  padding-bottom: 0.75rem;
+  padding-left: 0.75rem;
+  background: #f8fafc;
 }
 
 /* Better tap targets and immediate-feeling taps on mobile. */
