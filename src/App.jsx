@@ -556,7 +556,11 @@ const APP_ICONS = {
         const itemRef = db.collection(`households/${hid}/lists/${activeListId}/items`);
         const planRef = db.collection(`households/${hid}/lists/${activeListId}/planned_recipes`);
         const unsubItems = itemRef.onSnapshot(snap => {
-          setItems(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+          setItems(snap.docs.map(d => ({
+            id: d.id,
+            ...d.data(),
+            checkedAt: d.get('checkedAt', { serverTimestamps: 'estimate' }) ?? null,
+          })));
         }, err => console.error("List items listener error:", err));
         const unsubPlans = planRef.onSnapshot(snap => {
           const plans = snap.docs.map(d => ({ id: d.id, ...d.data() }))
@@ -2432,6 +2436,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
       const [vvh, setVvh] = useState(() => (window.visualViewport ? window.visualViewport.height : window.innerHeight));
       const suggestionsRef = useRef(null);
       const [pendingCheckIds, setPendingCheckIds] = useState(() => new Set());
+      const [checkedSort, setCheckedSort] = useState('category');
       const [openQtyId, setOpenQtyId] = useState(null);
       const pickingSuggestionRef = useRef(false);
 
@@ -2796,6 +2801,7 @@ useEffect(() => {
         const nowChecked = !item.checked;
         await db.doc(`households/${householdId}/lists/${activeListId}/items/${item.id}`).set({
           checked: nowChecked,
+          checkedAt: nowChecked ? firebase.firestore.FieldValue.serverTimestamp() : null,
           updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
           updatedBy: (currentUser && currentUser.uid) ? currentUser.uid : '',
           updatedByName: (currentUser && currentUser.displayName) ? currentUser.displayName : '',
@@ -2862,9 +2868,11 @@ useEffect(() => {
       async function setQty(item, nextQty) {
         if (!householdId || !activeListId) return;
         const q = clamp(Number(nextQty)||0, 0, 99);
+        const checked = storeMode && q === 0;
         await db.doc(`households/${householdId}/lists/${activeListId}/items/${item.id}`).set({
           qty: q,
-          checked: storeMode ? (q===0) : false,
+          checked,
+          ...(!checked ? { checkedAt: null } : !item.checked ? { checkedAt: firebase.firestore.FieldValue.serverTimestamp() } : {}),
           updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
           updatedBy: (currentUser && currentUser.uid) ? currentUser.uid : '',
           updatedByName: (currentUser && currentUser.displayName) ? currentUser.displayName : '',
@@ -2913,7 +2921,7 @@ useEffect(() => {
               checkedGroups.push({
                 category: g.category,
                 checkedGroup: true,
-                items: checkedItems.sort((a,b) => (a._name||'').localeCompare(b._name||'', 'nl'))
+                items: checkedItems
               });
             }
             return {
@@ -2921,10 +2929,15 @@ useEffect(() => {
               items: uncheckedItems
             };
           }).filter(g => g.items.length > 0);
+          if (checkedSort === 'recent' && checkedGroups.length > 0) {
+            const checkedItems = checkedGroups.flatMap(g => g.items);
+            checkedItems.sort((a, b) => (b.checkedAt?.toMillis() ?? 0) - (a.checkedAt?.toMillis() ?? 0));
+            return [...uncheckedGroups, { category: 'Afgestreept', checkedGroup: true, items: checkedItems }];
+          }
           return [...uncheckedGroups, ...checkedGroups];
         }
         return groups;
-      }, [items, products, storeMode]);
+      }, [items, products, storeMode, checkedSort]);
 
       // Verwijzingen naar de groep-containers, zodat een leeg rakende categorie
       // als geheel kan inklappen bij het verwijderen van het laatste item.
@@ -3052,6 +3065,19 @@ useEffect(() => {
 
 
           <div className="relative z-0 left-1/2 w-screen -translate-x-1/2">
+            {storeMode && byCategory.length > 0 && (
+              <label className="mb-3 flex flex-wrap items-center justify-end gap-2 px-3 text-xs text-slate-600">
+                Afgestreepte producten
+                <select
+                  className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-slate-700"
+                  value={checkedSort}
+                  onChange={e => setCheckedSort(e.target.value)}
+                >
+                  <option value="category">Op categorie</option>
+                  <option value="recent">Laatst afgestreept</option>
+                </select>
+              </label>
+            )}
             <div className={storeMode ? "" : "space-y-3"}>
               {byCategory.length === 0 ? (
                 <div className="text-center py-10 text-slate-500">
