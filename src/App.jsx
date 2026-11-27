@@ -1,4 +1,5 @@
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
+import HeaderSearch from './HeaderSearch';
 import { auth, db, firebase, functions } from './firebase';
 import { findBestProductMatch, rankProductMatches } from './productMatching';
 import {
@@ -45,7 +46,8 @@ const APP_ICONS = {
         window.requestAnimationFrame(() => {
           if (!control.isConnected) return;
           const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-          const top = Math.max(0, window.scrollY + control.getBoundingClientRect().top - 8);
+          const headerHeight = document.querySelector('.bm-app-header')?.getBoundingClientRect().height ?? 0;
+          const top = Math.max(0, window.scrollY + control.getBoundingClientRect().top - headerHeight - 8);
           try { control.focus({ preventScroll: true }); }
           catch (error) { control.focus(); }
           window.scrollTo({ top, behavior: reduceMotion ? 'auto' : 'smooth' });
@@ -572,6 +574,22 @@ const APP_ICONS = {
     }
 
     // ---------------- UI bits ----------------
+    function SearchCategoryPicker({ category, onChange, hint }) {
+      return (
+        <div className="p-2">
+          <select
+            value={category || 'Overig'}
+            onChange={event => onChange(event.target.value)}
+            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+            aria-label="Categorie voor nieuw product"
+          >
+            {CATEGORY_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}
+          </select>
+          <p className="mt-1 px-1 text-[11px] text-slate-500">{hint}</p>
+        </div>
+      );
+    }
+
     function Button({ children, className='', ...props }) {
       return (
         <button
@@ -1006,6 +1024,7 @@ const APP_ICONS = {
       setShowAdders,
       tab,
       setTab,
+      searchSlotRef,
       lists,
       activeListId,
       onPickList,
@@ -1306,6 +1325,10 @@ const APP_ICONS = {
             </div>
           </div>
 
+          {searchSlotRef && (
+            <div ref={searchSlotRef} className="bm-app-search mx-auto max-w-xl px-2 min-[360px]:px-3" />
+          )}
+
           {showManage && (
             <Modal title="Huishouden beheren" onClose={() => setShowManage(false)}>
               {/* Invite code */}
@@ -1433,7 +1456,7 @@ const APP_ICONS = {
 
     // ---------------- Products tab ----------------
     
-function ProductsTab({ householdId, products, items, currentUser, activeListId }) {
+function ProductsTab({ householdId, products, items, currentUser, activeListId, searchTarget }) {
   const [query, setQuery] = useState('');
   const [newProductCategory, setNewProductCategory] = useState('Overig');
   const [showCreateOptions, setShowCreateOptions] = useState(false);
@@ -1891,68 +1914,22 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
 
   return (
     <div className="pb-24">
+      <HeaderSearch
+        target={searchTarget}
+        label="Product zoeken of aanmaken"
+        placeholder="Zoek product of typ iets nieuws…"
+        value={query}
+        onChange={value => { setQuery(value); setShowCreateOptions(false); }}
+        onAdd={handleProductCreateAction}
+        addLabel={showCreateOptions ? 'Product aanmaken' : 'Nieuw product'}
+        confirmAdd={showCreateOptions}
+        onClear={clearProductSearch}
+        popover={query.trim() && showCreateOptions && !exactProduct && (
+          <SearchCategoryPicker category={newProductCategory} onChange={setNewProductCategory}
+            hint="Tik op ✓ om dit product aan te maken." />
+        )}
+      />
       <div className="mb-3 space-y-2">
-        <div className="relative left-1/2 w-screen -translate-x-1/2 px-3">
-          <div className={"bg-white border-2 rounded-2xl shadow-sm h-14 flex items-center gap-2 px-3 transition-colors " + (query.trim() ? "border-emerald-500 ring-4 ring-emerald-500/10" : "border-slate-300")}>
-            <svg viewBox="0 0 24 24" className="w-5 h-5 text-slate-500 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-              <path d="m21 21-4.3-4.3" />
-              <circle cx="10.8" cy="10.8" r="7.2" />
-            </svg>
-            <input value={query} onChange={(e)=>{ setQuery(e.target.value); setShowCreateOptions(false); }}
-              onKeyDown={(e)=>{
-                if (e.key === 'Enter' && query.trim()) { e.preventDefault(); handleProductCreateAction(); }
-                if (e.key === 'Escape') { e.preventDefault(); clearProductSearch(); }
-              }}
-              placeholder="Zoek product of typ iets nieuws..."
-              className="min-w-0 flex-1 bg-transparent outline-none text-[15px] text-slate-900 placeholder:text-slate-500 font-medium" />
-            {query.trim() && (
-              <div className="flex items-center gap-1 shrink-0">
-                <button
-                  type="button"
-                  onClick={handleProductCreateAction}
-                  className="w-9 h-9 rounded-full bg-emerald-50 border border-emerald-100 text-emerald-700 flex items-center justify-center"
-                  title={showCreateOptions ? "Product aanmaken" : "Nieuw product"}
-                  aria-label={showCreateOptions ? "Product aanmaken" : "Nieuw product"}
-                >
-                  {showCreateOptions ? (
-                    <span className="text-sm font-bold">✓</span>
-                  ) : (
-                    <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-                      <path d="M12 5v14" />
-                      <path d="M5 12h14" />
-                    </svg>
-                  )}
-                </button>
-                <button
-                  type="button"
-                  onClick={clearProductSearch}
-                  className="w-9 h-9 rounded-full bg-white border border-slate-200 text-slate-500 text-xl leading-none flex items-center justify-center"
-                  title="Leegmaken"
-                  aria-label="Leegmaken"
-                >
-                  ×
-                </button>
-              </div>
-            )}
-          </div>
-
-          {query.trim() && showCreateOptions && !exactProduct && (
-            <div className="mt-2">
-              <select
-                value={newProductCategory || 'Overig'}
-                onChange={(e)=>setNewProductCategory(e.target.value)}
-                className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm"
-                title="Categorie voor nieuw product"
-              >
-                {CATEGORY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-              <div className="mt-1 text-[11px] text-slate-500 px-1">
-                Tik op ✓ om dit product aan te maken.
-              </div>
-            </div>
-          )}
-        </div>
-
         <div className="flex flex-wrap gap-2 items-center">
           <div className="flex items-center gap-1">
             {['W','2W','3W'].map(c => (
@@ -2414,7 +2391,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
         );
       }
 
-    function ListTab({ householdId, activeListId, products, items, currentUser, storeMode, showAdders, onClearList, onListCompleted }) {
+    function ListTab({ householdId, activeListId, products, items, currentUser, storeMode, showAdders, onClearList, onListCompleted, searchTarget }) {
       const [newText, setNewText] = useState('');
       const [newCategory, setNewCategory] = useState('Overig');
       const [showSuggestions, setShowSuggestions] = useState(false);
@@ -2424,11 +2401,6 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
       const [addingItem, setAddingItem] = useState(false);
       const addingItemRef = useRef(false);
       const addInputRef = useRef(null);
-
-      // Mobile UX: "magnet" add bar to top on focus (especially iOS keyboard)
-      const [stickyAdd, setStickyAdd] = useState(false);
-      const [vvh, setVvh] = useState(() => (window.visualViewport ? window.visualViewport.height : window.innerHeight));
-      const suggestionsRef = useRef(null);
       const [pendingCheckIds, setPendingCheckIds] = useState(() => new Set());
       const [checkedSort, setCheckedSort] = useState('recent');
       const [openQtyId, setOpenQtyId] = useState(null);
@@ -2456,27 +2428,6 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
         return idx === -1 ? 999 : idx;
       }
 
-
-      function scrollAddBoxIntoView(alignTop = true) {
-        const el = addInputRef.current;
-        if (!el) return;
-
-        const r = el.getBoundingClientRect();
-        const topPad = 8; // small breathing space
-        // Aim to place the input at the very top of the layout viewport.
-        const target = window.scrollY + r.top - (alignTop ? topPad : 12);
-
-        // iOS: keyboard opens AFTER focus; do a couple of passes.
-        const doScroll = () => {
-          const rr = el.getBoundingClientRect();
-          const t = window.scrollY + rr.top - (alignTop ? topPad : 12);
-          window.scrollTo({ top: Math.max(0, t), behavior: 'smooth' });
-        };
-
-        window.requestAnimationFrame(doScroll);
-        setTimeout(doScroll, 50);
-        setTimeout(doScroll, 180);
-      }
 
       function formatNeedsLine(needsByRecipe) {
         const entries = Object.values(needsByRecipe || {});
@@ -2536,64 +2487,6 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
         const label = "nodig:";
         return `${label} ${parts.join(" + ")}`;
       }
-
-      useEffect(() => {
-        // Track viewport height (iOS keyboard shrinks visual viewport)
-        const vv = window.visualViewport;
-        if (!vv) return;
-        const handler = () => setVvh(vv.height);
-        vv.addEventListener('resize', handler);
-        vv.addEventListener('scroll', handler);
-        handler();
-
-return () => {
-          vv.removeEventListener('resize', handler);
-          vv.removeEventListener('scroll', handler);
-        };
-      }, []);
-
-      
-      useEffect(() => {
-        // While typing: keep the add bar pinned; prevent the page from scrolling under the keyboard.
-        if (!stickyAdd) return;
-
-        const prevOverflow = document.body.style.overflow;
-        document.body.style.overflow = 'hidden';
-
-        // On iOS, body can still "rubberband" unless we actively block touchmove.
-        const onTouchMove = (e) => {
-          const root = suggestionsRef.current;
-          if (root && e.target && root.contains(e.target)) {
-            // allow scrolling inside the suggestions dropdown
-            return;
-          }
-          e.preventDefault();
-        };
-
-        document.addEventListener('touchmove', onTouchMove, { passive: false });
-
-        const onWheel = (e) => {
-          const root = suggestionsRef.current;
-          if (root && e.target && root.contains(e.target)) {
-            return; // allow scrolling inside dropdown
-          }
-          e.preventDefault();
-        };
-        document.addEventListener('wheel', onWheel, { passive: false });
-
-
-        return () => {
-          document.body.style.overflow = prevOverflow;
-          document.removeEventListener('touchmove', onTouchMove);
-          document.removeEventListener('wheel', onWheel);
-        };
-      }, [stickyAdd]);
-
-useEffect(() => {
-        // When the add bar is "magnetized", keep it pinned after keyboard transitions.
-        if (!stickyAdd) return;
-        scrollAddBoxIntoView(true);
-      }, [stickyAdd, vvh]);
 
       // Undo (alleen voor verwijderen)
       const [undoState, setUndoState] = useState(null); // { payload, label }
@@ -2765,7 +2658,6 @@ useEffect(() => {
           setNewText('');
           setShowSuggestions(false);
           setShowCreateOptions(false);
-          setStickyAdd(false);
         } finally {
           addingItemRef.current = false;
           setAddingItem(false);
@@ -2776,7 +2668,6 @@ useEffect(() => {
         setNewText('');
         setShowSuggestions(false);
         setShowCreateOptions(false);
-        setStickyAdd(false);
       }
 
       async function handleCreateAction() {
@@ -2936,127 +2827,68 @@ useEffect(() => {
       // Verwijzingen naar de groep-containers, zodat een leeg rakende categorie
       // als geheel kan inklappen bij het verwijderen van het laatste item.
       const groupRefs = useRef({});
+      const showCategoryPicker = Boolean(newText.trim() && showCreateOptions && !exactProduct);
+      const showSearchMatches = showSuggestions && !showCreateOptions && suggestions.length > 0;
+      const addLabel = addingItem ? 'Bezig met toevoegen'
+        : exactProduct ? 'Toevoegen'
+        : showCategoryPicker ? 'Product aanmaken' : 'Nieuw product';
 
       return (
         <div className="pb-24" onClick={() => { if (!storeMode && openQtyId) setOpenQtyId(null); }}>
           {!storeMode && (
-          <div className={stickyAdd ? "mb-3 fixed top-0 left-0 right-0 z-40 bg-slate-50 pt-2 pb-2 shadow-sm" : "mb-3 relative z-30"}>
-            <div className={stickyAdd ? "relative w-full px-3" : "relative left-1/2 w-screen -translate-x-1/2 px-3"}>
-              <div className={"bg-white border-2 rounded-2xl shadow-sm h-14 flex items-center gap-2 px-3 transition-colors " + (newText.trim() ? "border-emerald-500 ring-4 ring-emerald-500/10" : "border-slate-300")}>
-                <svg viewBox="0 0 24 24" className="w-5 h-5 text-slate-500 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-                  <path d="m21 21-4.3-4.3" />
-                  <circle cx="10.8" cy="10.8" r="7.2" />
-                </svg>
-                <input
-                  ref={addInputRef}
-                  type="text"
-                  inputMode="search"
-                  value={newText}
-                  onChange={(e)=>{ setNewText(e.target.value); setShowSuggestions(true); setShowCreateOptions(false); }}
-                  onFocus={()=>{ if (newText.trim().length>=2 && !showCreateOptions) setShowSuggestions(true); }}
-                  onBlur={()=> {
-                    // Mobile browsers may blur the input before dispatching the
-                    // delayed click for a suggestion. Keep the menu mounted while
-                    // a pointer interaction inside it is still in progress.
-                    setTimeout(()=>{
-                      if (!suggestionPointerDownRef.current) setShowSuggestions(false);
-                    }, 150);
+            <HeaderSearch
+              target={searchTarget}
+              label="Product zoeken of toevoegen"
+              placeholder="Zoek product of typ iets nieuws…"
+              inputRef={addInputRef}
+              value={newText}
+              onChange={value => { setNewText(value); setShowSuggestions(true); setShowCreateOptions(false); }}
+              onFocus={() => {
+                if (newText.trim().length >= 2 && !showCreateOptions) setShowSuggestions(true);
+              }}
+              onBlur={() => {
+                // Mobile browsers may blur before dispatching a suggestion tap.
+                setTimeout(() => {
+                  if (!suggestionPointerDownRef.current) setShowSuggestions(false);
+                }, 150);
+              }}
+              onAdd={handleCreateAction}
+              addLabel={addLabel}
+              confirmAdd={showCategoryPicker}
+              busy={addingItem}
+              onClear={() => {
+                clearSearch();
+                addInputRef.current?.focus({ preventScroll: true });
+              }}
+              popover={showCategoryPicker ? (
+                <SearchCategoryPicker category={newCategory} onChange={setNewCategory}
+                  hint="Tik op ✓ om dit product aan te maken en toe te voegen." />
+              ) : showSearchMatches && suggestions.map(s => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onPointerUp={event => {
+                    event.preventDefault();
+                    pickSuggestionProduct(s);
                   }}
-                  onKeyDown={(e)=>{
-                    if (e.key === 'Enter') { e.preventDefault(); handleCreateAction(); }
-                    if (e.key === 'Escape') { e.preventDefault(); clearSearch(); }
+                  onClick={event => {
+                    if (event.detail === 0) pickSuggestionProduct(s);
                   }}
-                  placeholder="Zoek product of typ iets nieuws…"
-                  className="min-w-0 flex-1 bg-transparent outline-none text-[15px] text-slate-900 placeholder:text-slate-500 font-medium"
-                />
-                {newText.trim() && (
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button
-                      type="button"
-                      onMouseDown={(e)=>e.preventDefault()}
-                      onClick={handleCreateAction}
-                      disabled={addingItem}
-                      className="w-11 h-11 rounded-full bg-emerald-50 border border-emerald-100 text-emerald-700 flex items-center justify-center"
-                      title={addingItem ? "Bezig met toevoegen" : (exactProduct ? "Toevoegen" : (showCreateOptions ? "Product aanmaken" : "Nieuw product"))}
-                      aria-label={addingItem ? "Bezig met toevoegen" : (exactProduct ? "Toevoegen" : (showCreateOptions ? "Product aanmaken" : "Nieuw product"))}
-                    >
-                      {addingItem ? (
-                        <span className="text-sm font-bold" aria-hidden="true">…</span>
-                      ) : showCreateOptions && !exactProduct ? (
-                        <span className="text-sm font-bold">✓</span>
-                      ) : (
-                        <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-                          <path d="M12 5v14" />
-                          <path d="M5 12h14" />
-                        </svg>
-                      )}
-                    </button>
-                    <button
-                      type="button"
-                      onMouseDown={(e)=>e.preventDefault()}
-                      onClick={()=>{ clearSearch(); setTimeout(()=>addInputRef.current?.focus(), 0); }}
-                      className="w-9 h-9 rounded-full bg-white border border-slate-200 text-slate-500 text-xl leading-none flex items-center justify-center"
-                      title="Leegmaken"
-                      aria-label="Leegmaken"
-                    >
-                      ×
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {newText.trim() && showCreateOptions && !exactProduct && (
-                <div className="mt-2">
-                  <select
-                    value={newCategory || 'Overig'}
-                    onChange={(e)=>setNewCategory(e.target.value)}
-                    className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm"
-                    title="Categorie voor nieuw product"
-                  >
-                    {CATEGORY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                  <div className="mt-1 text-[11px] text-slate-500 px-1">
-                    Tik op ✓ om dit product aan te maken en toe te voegen.
-                  </div>
-                </div>
-              )}
-
-              {showSuggestions && !showCreateOptions && suggestions.length > 0 && (
-                <div
-                  ref={suggestionsRef}
-                  onPointerDownCapture={() => { suggestionPointerDownRef.current = true; }}
-                  onPointerUpCapture={() => {
-                    setTimeout(() => { suggestionPointerDownRef.current = false; }, 0);
-                  }}
-                  onPointerCancelCapture={() => { suggestionPointerDownRef.current = false; }}
-                  className="absolute left-3 right-3 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-30 overflow-y-auto overscroll-contain"
-                  style={{ maxHeight: "240px", WebkitOverflowScrolling: "touch" }}
+                  className="flex w-full items-center gap-2 border-b border-slate-100 px-3 py-2 text-left text-sm last:border-b-0 hover:bg-slate-50"
                 >
-                  {suggestions.map(s => (
-                    <button
-                      key={s.id}
-                      type="button"
-                      onPointerUp={(e)=>{
-                        e.preventDefault();
-                        pickSuggestionProduct(s);
-                      }}
-                      onClick={(e)=>{
-                        e.preventDefault();
-                        if (e.detail === 0) pickSuggestionProduct(s);
-                      }}
-                      className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 flex items-center gap-2 border-b border-slate-100 last:border-b-0">
-                      <span className="flex-1 truncate">{s.name}</span>
-                      <span className="text-[11px] text-slate-500 shrink-0">{(s.category||'Overig').split(',')[0]}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
+                  <span className="flex-1 truncate">{s.name}</span>
+                  <span className="max-w-[40%] truncate text-[11px] text-slate-500">{(s.category || 'Overig').split(',')[0]}</span>
+                </button>
+              ))}
+              popoverProps={showSearchMatches ? {
+                onPointerDownCapture: () => { suggestionPointerDownRef.current = true; },
+                onPointerUpCapture: () => {
+                  setTimeout(() => { suggestionPointerDownRef.current = false; }, 0);
+                },
+                onPointerCancelCapture: () => { suggestionPointerDownRef.current = false; },
+              } : undefined}
+            />
           )}
-
-          {(!storeMode && stickyAdd) && <div style={{ height: showCreateOptions ? 138 : 82 }} />}
-
 
           <div className="relative z-0 left-1/2 w-screen -translate-x-1/2">
             <div>
@@ -4198,7 +4030,7 @@ useEffect(() => {
     }
 
     // ---------------- Recipes tab ----------------
-    function RecipesTab({ householdId, recipes, products, items, plannedRecipes, mealPlans, menuWeeks, plannedRecipesLoaded, activeListId, currentUser }) {
+    function RecipesTab({ householdId, recipes, products, items, plannedRecipes, mealPlans, menuWeeks, plannedRecipesLoaded, activeListId, currentUser, searchTarget }) {
       const [query, setQuery] = useState('');
       const [openId, setOpenId] = useState(null); // recipe id in modal
       const [draft, setDraft] = useState(null);   // editable recipe
@@ -5565,46 +5397,16 @@ function ensurePickState(recipe) {
           </div>
           )}
 
-          <div className="mb-3 relative left-1/2 w-screen -translate-x-1/2 px-3">
-            <div className={"bg-white border-2 rounded-2xl shadow-sm h-14 flex items-center gap-2 px-3 transition-colors " + (query.trim() ? "border-emerald-500 ring-4 ring-emerald-500/10" : "border-slate-300")}>
-              <svg viewBox="0 0 24 24" className="w-5 h-5 text-slate-500 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-                <path d="m21 21-4.3-4.3" />
-                <circle cx="10.8" cy="10.8" r="7.2" />
-              </svg>
-              <input value={query} onChange={(e)=>setQuery(e.target.value)}
-                onKeyDown={(e)=>{
-                  if (e.key === 'Enter' && query.trim()) { e.preventDefault(); handleRecipeCreateAction(); }
-                  if (e.key === 'Escape') { e.preventDefault(); clearRecipeSearch(); }
-                }}
-                placeholder="Zoek recept of maak een nieuw recept"
-                className="min-w-0 flex-1 bg-transparent outline-none text-[15px] text-slate-900 placeholder:text-slate-500 font-medium" />
-              {query.trim() && (
-                <div className="flex items-center gap-1 shrink-0">
-                  <button
-                    type="button"
-                    onClick={handleRecipeCreateAction}
-                    className="w-9 h-9 rounded-full bg-emerald-50 border border-emerald-100 text-emerald-700 flex items-center justify-center"
-                    title="Nieuw recept"
-                    aria-label="Nieuw recept"
-                  >
-                    <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-                      <path d="M12 5v14" />
-                      <path d="M5 12h14" />
-                    </svg>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={clearRecipeSearch}
-                    className="w-9 h-9 rounded-full bg-white border border-slate-200 text-slate-500 text-xl leading-none flex items-center justify-center"
-                    title="Leegmaken"
-                    aria-label="Leegmaken"
-                  >
-                    ×
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
+          <HeaderSearch
+            target={searchTarget}
+            label="Recept zoeken of aanmaken"
+            placeholder="Zoek of maak een recept…"
+            value={query}
+            onChange={setQuery}
+            onAdd={handleRecipeCreateAction}
+            addLabel="Nieuw recept"
+            onClear={clearRecipeSearch}
+          />
 
           <div className="relative left-1/2 w-screen -translate-x-1/2">
             <div className="bg-white border-y border-slate-200/80">
@@ -6182,6 +5984,8 @@ function ensurePickState(recipe) {
       const [tab, setTab] = useState('list');
       const [storeMode, setStoreMode] = useState(false);
       const [showAdders, setShowAdders] = useState(false);
+      const [searchTarget, setSearchTarget] = useState(null);
+      const hasHeaderSearch = !storeMode && tab !== 'planning';
       const mainContentRef = useRef(null);
       const mountedTabRef = useRef(false);
 
@@ -6441,7 +6245,7 @@ function ensurePickState(recipe) {
       }
 
       return (
-        <div className="min-h-screen pb-24 bg-[#F5F2EE] text-[#292725]">
+        <div className={`bm-app-shell min-h-screen pb-24 bg-[#F5F2EE] text-[#292725]${hasHeaderSearch ? ' bm-app-shell--search' : ''}`}>
             <Header
               user={user}
               householdInfo={householdInfo}
@@ -6454,6 +6258,7 @@ function ensurePickState(recipe) {
               setShowAdders={setShowAdders}
               tab={tab}
               setTab={selectTab}
+              searchSlotRef={hasHeaderSearch ? setSearchTarget : null}
               lists={lists}
               activeListId={activeListId}
               onPickList={(id)=>{
@@ -6483,6 +6288,7 @@ function ensurePickState(recipe) {
                 currentUser={user}
                 storeMode={storeMode}
                 showAdders={showAdders}
+                searchTarget={searchTarget}
                 onClearList={handleClearActiveList}
                 onListCompleted={() => clearActiveMenuPlans().catch(error => console.error('Complete menu failed:', error))}
               />
@@ -6505,6 +6311,7 @@ function ensurePickState(recipe) {
                 items={items}
                 currentUser={user}
                 activeListId={activeListId}
+                searchTarget={searchTarget}
               />
 ) : (
               <RecipesTab
@@ -6518,6 +6325,7 @@ function ensurePickState(recipe) {
                 plannedRecipesLoaded={plannedRecipesLoaded}
                 activeListId={activeListId}
                 currentUser={user}
+                searchTarget={searchTarget}
               />
             )}
             </main>

@@ -10,7 +10,7 @@
   --bm-graphite: #292725;
   --bm-header-inset: env(safe-area-inset-top, 0px);
   --bm-toolbar-height: 3.5rem;
-  --bm-header-height: calc(var(--bm-header-inset) + var(--bm-toolbar-height) + 1px);
+  --bm-search-row-height: 3.25rem;
 }
 
 html,
@@ -32,7 +32,15 @@ body,
   }
 }
 
-/* Keep navigation outside the scrolling content and away from iOS' scroll edge. */
+.bm-app-shell {
+  --bm-header-height: calc(var(--bm-header-inset) + var(--bm-toolbar-height) + var(--bm-header-search-height, 0px) + 1px);
+}
+
+.bm-app-shell--search {
+  --bm-header-search-height: var(--bm-search-row-height);
+}
+
+/* Keep navigation and search away from iOS' scroll edge. */
 .bm-app-header {
   position: sticky;
   z-index: 40;
@@ -46,7 +54,23 @@ body,
   height: var(--bm-toolbar-height);
 }
 
-/* Keep the current category below the main navigation.
+.bm-app-search {
+  height: var(--bm-search-row-height);
+}
+
+.bm-search-field {
+  background: rgb(41 39 37 / 0.055);
+}
+
+.bm-search-field:focus-within {
+  box-shadow: inset 0 0 0 1px var(--bm-terracotta);
+}
+
+.bm-search-popover {
+  max-height: min(15rem, var(--bm-search-available-space, 15rem));
+}
+
+/* Keep the current category below the app header.
    The header stays bounded by its group, so the next category pushes it away. */
 .bm-category-header {
   position: sticky;
