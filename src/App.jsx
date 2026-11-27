@@ -3096,8 +3096,8 @@ useEffect(() => {
                       </span>
                     </div>
                   )}
-                  <div className={storeMode ? (group.checkedGroup ? "bg-white divide-y divide-slate-200/80 border-y border-slate-200/80" : "bg-white divide-y divide-slate-200/80 border-y border-l-[4px] border-slate-200/80") : "bg-white border-y border-l-[4px] border-slate-200/80"}
-                       style={storeMode && !group.checkedGroup ? { borderLeftColor: categoryColor(group.category) + '88', paddingLeft: '7px' } : (!storeMode ? { borderLeftColor: categoryColor(group.category) + '88' } : undefined)}>
+                  <div className={storeMode ? "bg-white divide-y divide-slate-200/80 border-y border-slate-200/80" : "bg-white border-y border-l-[4px] border-slate-200/80"}
+                       style={!storeMode ? { borderLeftColor: categoryColor(group.category) + '88' } : undefined}>
                     {group.items.map((it, idx) => {
                       const rowQty = Math.max(1, Number(it._qty) || 1);
                       return (
