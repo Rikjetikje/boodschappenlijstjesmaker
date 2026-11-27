@@ -1164,6 +1164,18 @@ const APP_ICONS = {
 
       return (
         <header className="bm-app-header mb-3">
+          <button
+            type="button"
+            className="bm-scroll-to-top group flex w-full cursor-pointer items-center justify-center"
+            aria-label="Naar boven"
+            title="Naar boven"
+            onClick={() => {
+              const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+              window.scrollTo({ top: 0, behavior: reduceMotion ? 'auto' : 'smooth' });
+            }}
+          >
+            <span aria-hidden="true" className="invisible text-[10px] font-medium leading-none group-focus-visible:visible">Naar boven</span>
+          </button>
           <div className="bm-app-toolbar mx-auto flex max-w-xl items-center gap-2 px-2 min-[360px]:px-3">
             <nav aria-label="Hoofdnavigatie" className={storeMode ? 'flex min-w-0 flex-1 items-center gap-1' : 'grid min-w-0 flex-1 grid-cols-5'}>
               <div className={storeMode ? 'relative w-11 shrink-0' : 'relative'}>

@@ -8,7 +8,7 @@
   --bm-lime-white: #f5f2ee;
   --bm-white: #ffffff;
   --bm-graphite: #292725;
-  --bm-header-inset: env(safe-area-inset-top, 0px);
+  --bm-header-inset: max(1rem, env(safe-area-inset-top, 0px));
   --bm-toolbar-height: 3.5rem;
   --bm-search-row-height: 3.25rem;
 }
@@ -45,9 +45,17 @@ body,
   position: sticky;
   z-index: 40;
   top: 0;
-  padding-top: var(--bm-header-inset);
   border-bottom: 1px solid rgb(41 39 37 / 0.14);
   background: var(--bm-lime-white);
+}
+
+.bm-scroll-to-top {
+  height: var(--bm-header-inset);
+  min-height: 0;
+}
+
+.bm-scroll-to-top:focus-visible {
+  outline-offset: -3px;
 }
 
 .bm-app-toolbar {
