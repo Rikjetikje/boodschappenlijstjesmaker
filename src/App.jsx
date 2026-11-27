@@ -2457,7 +2457,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId, 
                 aria-expanded={expanded}
                 aria-controls={recipeDetailsId}
                 disabled={checking}
-                className="-mr-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-50"
+                className="-mr-1 flex h-11 w-11 shrink-0 appearance-none items-center justify-center bg-transparent text-slate-600 hover:text-slate-900"
                 onClick={event => {
                   event.stopPropagation();
                   onToggleRecipes();
