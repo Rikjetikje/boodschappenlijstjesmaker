@@ -1163,7 +1163,7 @@ const APP_ICONS = {
       }
 
       return (
-        <header className="bm-app-header mb-3">
+        <header className={searchSlotRef ? 'bm-app-header' : 'bm-app-header mb-3'}>
           <button
             type="button"
             className="bm-scroll-to-top group flex w-full cursor-pointer items-center justify-center"
@@ -1941,8 +1941,8 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId, 
             hint="Tik op ✓ om dit product aan te maken." />
         )}
       />
-      <div className="mb-3 space-y-2">
-        <div className="flex flex-wrap gap-2 items-center">
+      <div className="relative left-1/2 w-screen -translate-x-1/2 bg-white">
+        <div className="mx-auto flex max-w-xl flex-wrap items-center gap-2 px-3 py-2">
           <div className="flex items-center gap-1">
             {['W','2W','3W'].map(c => (
               <button
@@ -2905,7 +2905,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId, 
           <div className="relative z-0 left-1/2 w-screen -translate-x-1/2">
             <div>
               {byCategory.length === 0 ? (
-                <div className="text-center py-10 text-slate-500">
+                <div className="bg-white py-10 text-center text-slate-500">
                   <div className="text-4xl mb-1">🛒</div>
                   <div className="text-sm">Je lijst is leeg</div>
                 </div>
@@ -5421,7 +5421,7 @@ function ensurePickState(recipe) {
           />
 
           <div className="relative left-1/2 w-screen -translate-x-1/2">
-            <div className="bg-white border-y border-slate-200/80">
+            <div className="border-b border-slate-200/80 bg-white">
               {filtered.length === 0 ? (
                 <div className="max-w-xl mx-auto p-6 text-center text-slate-500">
                   <div className="text-4xl mb-1">🍲</div>
