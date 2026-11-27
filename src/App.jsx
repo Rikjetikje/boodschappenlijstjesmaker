@@ -2404,29 +2404,43 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId, 
         );
       }
 
-    function StoreItemRow({ item, recipeNames, expanded, onToggleRecipes, onCheck, checking, showAdders }) {
+    function ShoppingItemRow({
+      item, storeMode, recipeNames, expanded, onToggleRecipes, onCheck, checking,
+      showAdders, onOpenQty, showDivider,
+    }) {
       const recipeDetailsId = useId();
-      const needs = Object.entries(item.needsByRecipe || {});
+      const recipeIds = Object.keys(item.needsByRecipe || {});
       const recipesLabel = `Recepten voor ${item._name}`;
+      const showQuantity = !storeMode && item._qty > 1;
 
       return (
         <div
-          className={checking ? 'bm-check-elastic' : undefined}
+          className={[
+            !storeMode && 'mx-auto max-w-xl',
+            showDivider && 'border-b border-slate-200/80',
+            checking && 'bm-check-elastic',
+          ].filter(Boolean).join(' ')}
           style={checking ? { '--flash': categoryColor(item._cat) + '4d' } : undefined}
         >
           <div className="flex items-center gap-2 px-3" onClick={onCheck}>
-            <div className="flex min-w-0 flex-1 items-start gap-2 py-3.5">
-              <div className="w-6 shrink-0 text-right text-sm font-semibold leading-6 tabular-nums text-slate-600">
-                <span className="sr-only">Aantal: </span>{item._qty}
-              </div>
+            <div className={`flex min-w-0 flex-1 items-start gap-2 ${storeMode ? 'py-3.5' : 'py-3'}`}>
+              {storeMode && (
+                <div className="w-6 shrink-0 text-right text-sm font-semibold leading-6 tabular-nums text-slate-600">
+                  <span className="sr-only">Aantal: </span>{item._qty}
+                </div>
+              )}
               <div className="min-w-0 flex-1">
-                <div title={item._name} className={`truncate text-[15px] leading-6 ${item.checked ? 'text-slate-500 line-through' : 'text-[#292725]'}`}>
+                <div title={item._name} className={`truncate text-[15px] ${storeMode ? 'leading-6' : 'font-normal'} ${item.checked ? 'text-slate-500 line-through' : 'text-[#292725]'}`}>
                   {item._name}
                 </div>
-                {item._needsLine && <div className="truncate text-xs text-[#292725]/60">{item._needsLine}</div>}
+                {item._needsLine && (
+                  <div className={`truncate ${storeMode ? 'text-xs text-[#292725]/60' : 'text-[11px] text-slate-500'}`}>
+                    {item._needsLine}
+                  </div>
+                )}
               </div>
             </div>
-            {showAdders && (
+            {storeMode && showAdders && (
               <div className="pointer-events-none">
                 <SmallAvatar
                   url={item.updatedByPhotoURL || item.createdByPhotoURL || ''}
@@ -2435,7 +2449,8 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId, 
                 />
               </div>
             )}
-            {needs.length > 0 && (
+            {showQuantity && <ListQuantityControl itemId={item.id} qty={item._qty} onOpen={onOpenQty} />}
+            {recipeIds.length > 0 ? (
               <button
                 type="button"
                 aria-label={recipesLabel}
@@ -2461,21 +2476,16 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId, 
                   <path d="m6 9 6 6 6-6" />
                 </svg>
               </button>
-            )}
+            ) : showQuantity && <span aria-hidden="true" className="-mr-1 w-11 shrink-0" />}
           </div>
-          {needs.length > 0 && (
+          {recipeIds.length > 0 && (
             <ul id={recipeDetailsId} aria-label={recipesLabel} hidden={!expanded}
-              className="mb-3 ml-11 mr-3 space-y-1.5 rounded-lg bg-[#F5F2EE] px-3 py-2.5 text-sm text-slate-700"
+              role="list"
+              className={`-mt-1.5 space-y-0.5 pb-3 pr-3 text-xs leading-5 text-slate-600 ${storeMode ? 'pl-11' : 'pl-3'}`}
             >
-              {expanded && needs.map(([recipeId, need]) => {
-                const amount = formatRecipeNeedAmounts([need]);
-                return (
-                  <li className="flex justify-between gap-3" key={recipeId}>
-                    <span className="min-w-0 break-words">{recipeNames.get(recipeId) || 'Recept niet beschikbaar'}</span>
-                    {amount && <span className="max-w-[45%] shrink-0 text-right tabular-nums text-slate-600">{amount}</span>}
-                  </li>
-                );
-              })}
+              {expanded && recipeIds.map(recipeId => (
+                <li className="break-words" key={recipeId}>{recipeNames.get(recipeId) || 'Recept niet beschikbaar'}</li>
+              ))}
             </ul>
           )}
         </div>
@@ -2504,6 +2514,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId, 
       );
 
       useEffect(() => {
+        setOpenQtyId(null);
         setOpenRecipeItemId(null);
       }, [activeListId, storeMode]);
 
@@ -2816,7 +2827,13 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId, 
 
       function openQtyEditor(itemId) {
         if (!itemId) return;
+        setOpenRecipeItemId(null);
         setOpenQtyId(itemId);
+      }
+
+      function toggleItemRecipes(itemId) {
+        setOpenQtyId(null);
+        setOpenRecipeItemId(current => current === itemId ? null : itemId);
       }
 
       async function adjustListQty(item, delta) {
@@ -3019,33 +3036,18 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId, 
                         ) : undefined}
                       >
 
-                      {storeMode ? (
-                        <StoreItemRow
+                        <ShoppingItemRow
                           item={it}
+                          storeMode={storeMode}
                           recipeNames={recipeNames}
                           expanded={openRecipeItemId === it.id}
-                          onToggleRecipes={() => setOpenRecipeItemId(current => current === it.id ? null : it.id)}
-                          onCheck={() => toggleInStoreMode(it)}
+                          onToggleRecipes={() => toggleItemRecipes(it.id)}
+                          onCheck={storeMode ? () => toggleInStoreMode(it) : undefined}
                           checking={checking}
                           showAdders={showAdders}
+                          onOpenQty={openQtyEditor}
+                          showDivider={!storeMode && idx < group.items.length - 1}
                         />
-                      ) : (
-                        <div className={"relative mx-auto flex max-w-xl items-center px-3 py-3" + (idx < group.items.length - 1 ? " border-b border-slate-200/80" : "")}>
-                          <div className="min-w-0 flex-1 pr-2">
-                            <div title={it._name} className={"truncate text-[15px] font-normal " + (it.checked ? "line-through text-slate-500" : "text-[#292725]")}>
-                              {it._name}
-                            </div>
-                            {it._needsLine && <div className="truncate text-[11px] text-slate-500">{it._needsLine}</div>}
-                          </div>
-                          <div className="ml-2 flex items-center gap-1">
-                            <ListQuantityControl
-                              itemId={it.id}
-                              qty={rowQty}
-                              onOpen={openQtyEditor}
-                            />
-                          </div>
-                        </div>
-                      )}
 
                     </SwipeRow>
                     );
