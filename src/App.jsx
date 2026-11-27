@@ -25,7 +25,6 @@ const APP_ICONS = {
   cartFull: ICON_BASE + 'cart-full.png',
   list: ICON_BASE + 'mode-list.png',
   recipes: ICON_BASE + 'mode-recipes.png',
-  products: ICON_BASE + 'mode-products.png',
 };
 
     // ---------------- Utils ----------------
@@ -1127,12 +1126,24 @@ const APP_ICONS = {
       }
 
       function TabIcon({ type, active = false }) {
-        if (type === 'planning') {
+        if (type === 'planning' || type === 'products') {
           return (
-            <svg viewBox="0 0 24 24" className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <rect x="3" y="5" width="18" height="16" rx="2" />
-              <path d="M16 3v4M8 3v4M3 10h18" />
-              <path d="m8 15 2 2 5-5" />
+            <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor"
+              strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
+            >
+              {type === 'planning' ? (
+                <>
+                  <rect x="4.25" y="5.5" width="15.5" height="14" rx="2" />
+                  <path d="M8 3.5v4 M16 3.5v4 M4.25 9.5h15.5 M9 14l1.9 1.9 4.1-4.1" />
+                </>
+              ) : (
+                <>
+                  <path d="M21.1 15.1 A9.5 9.5 0 1 1 20.7 7.9 M20.7 4.7v3.2h-3.2" />
+                  <path d="M6.5 8h1.8l1.35 5.4a.7.7 0 0 0 .68.54h5.44a.7.7 0 0 0 .67-.5l1.07-3.69H8.75" />
+                  <circle cx="10.65" cy="16.3" r=".8" fill="currentColor" stroke="none" />
+                  <circle cx="15.65" cy="16.3" r=".8" fill="currentColor" stroke="none" />
+                </>
+              )}
             </svg>
           );
         }
