@@ -2,6 +2,7 @@ import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import HeaderSearch from './HeaderSearch';
 import { auth, db, firebase, functions } from './firebase';
 import { findBestProductMatch, rankProductMatches } from './productMatching';
+import { formatRecipeNeedAmounts, shoppingRecipeNameIndex } from './shoppingRecipeNeeds';
 import {
   dateFromKey,
   dateInMealPlanSchedule,
@@ -2403,7 +2404,85 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId, 
         );
       }
 
-    function ListTab({ householdId, activeListId, products, items, currentUser, storeMode, showAdders, onClearList, onListCompleted, searchTarget }) {
+    function StoreItemRow({ item, recipeNames, expanded, onToggleRecipes, onCheck, checking, showAdders }) {
+      const recipeDetailsId = useId();
+      const needs = Object.entries(item.needsByRecipe || {});
+      const recipesLabel = `Recepten voor ${item._name}`;
+
+      return (
+        <div
+          className={checking ? 'bm-check-elastic' : undefined}
+          style={checking ? { '--flash': categoryColor(item._cat) + '4d' } : undefined}
+        >
+          <div className="flex items-center gap-2 px-3" onClick={onCheck}>
+            <div className="flex min-w-0 flex-1 items-start gap-2 py-3.5">
+              <div className="w-6 shrink-0 text-right text-sm font-semibold leading-6 tabular-nums text-slate-600">
+                <span className="sr-only">Aantal: </span>{item._qty}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div title={item._name} className={`truncate text-[15px] leading-6 ${item.checked ? 'text-slate-500 line-through' : 'text-[#292725]'}`}>
+                  {item._name}
+                </div>
+                {item._needsLine && <div className="truncate text-xs text-[#292725]/60">{item._needsLine}</div>}
+              </div>
+            </div>
+            {showAdders && (
+              <div className="pointer-events-none">
+                <SmallAvatar
+                  url={item.updatedByPhotoURL || item.createdByPhotoURL || ''}
+                  name={(item.updatedByName || item.createdByName || '').trim()}
+                  size={20}
+                />
+              </div>
+            )}
+            {needs.length > 0 && (
+              <button
+                type="button"
+                aria-label={recipesLabel}
+                aria-expanded={expanded}
+                aria-controls={recipeDetailsId}
+                disabled={checking}
+                className="-mr-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-50"
+                onClick={event => {
+                  event.stopPropagation();
+                  onToggleRecipes();
+                }}
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  className={`h-4 w-4 motion-safe:transition-transform ${expanded ? 'rotate-180' : ''}`}
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.75"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </button>
+            )}
+          </div>
+          {needs.length > 0 && (
+            <ul id={recipeDetailsId} aria-label={recipesLabel} hidden={!expanded}
+              className="mb-3 ml-11 mr-3 space-y-1.5 rounded-lg bg-[#F5F2EE] px-3 py-2.5 text-sm text-slate-700"
+            >
+              {expanded && needs.map(([recipeId, need]) => {
+                const amount = formatRecipeNeedAmounts([need]);
+                return (
+                  <li className="flex justify-between gap-3" key={recipeId}>
+                    <span className="min-w-0 break-words">{recipeNames.get(recipeId) || 'Recept niet beschikbaar'}</span>
+                    {amount && <span className="max-w-[45%] shrink-0 text-right tabular-nums text-slate-600">{amount}</span>}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      );
+    }
+
+    function ListTab({ householdId, activeListId, products, items, recipes, mealPlans, plannedRecipes, currentUser, storeMode, showAdders, onClearList, onListCompleted, searchTarget }) {
       const [newText, setNewText] = useState('');
       const [newCategory, setNewCategory] = useState('Overig');
       const [showSuggestions, setShowSuggestions] = useState(false);
@@ -2416,7 +2495,17 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId, 
       const [pendingCheckIds, setPendingCheckIds] = useState(() => new Set());
       const [checkedSort, setCheckedSort] = useState('recent');
       const [openQtyId, setOpenQtyId] = useState(null);
+      const [openRecipeItemId, setOpenRecipeItemId] = useState(null);
       const pickingSuggestionRef = useRef(false);
+
+      const recipeNames = useMemo(
+        () => shoppingRecipeNameIndex(recipes, mealPlans, plannedRecipes),
+        [recipes, mealPlans, plannedRecipes],
+      );
+
+      useEffect(() => {
+        setOpenRecipeItemId(null);
+      }, [activeListId, storeMode]);
 
       const STORE_CATEGORY_ORDER = [
         'Groente & fruit',
@@ -2440,65 +2529,6 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId, 
         return idx === -1 ? 999 : idx;
       }
 
-
-      function formatNeedsLine(needsByRecipe) {
-        const entries = Object.values(needsByRecipe || {});
-        if (!entries.length) return "";
-        const totals = new Map();
-        const textBits = [];
-
-        entries.forEach(e => {
-          const unit = String(e?.unit || "").trim().toLowerCase();
-          const times = Math.max(1, Number(e?.times) || 1);
-          if (e?.value != null && isFinite(Number(e.value))) {
-            let key = `unit:${unit}`;
-            let value = Number(e.value) * times;
-            let kind = 'unit';
-            let displayUnit = unit;
-
-            if (unit === 'ml' || unit === 'l') {
-              key = 'volume';
-              kind = 'volume';
-              displayUnit = 'ml';
-              if (unit === 'l') value *= 1000;
-            } else if (unit === 'g' || unit === 'gr' || unit === 'kg') {
-              key = 'weight';
-              kind = 'weight';
-              displayUnit = 'gr';
-              if (unit === 'kg') value *= 1000;
-            }
-
-            const current = totals.get(key) || { value: 0, kind, displayUnit };
-            current.value += value;
-            totals.set(key, current);
-          } else {
-            const valueText = String(e?.valueText || "").trim();
-            if (valueText) {
-              const text = `${valueText} ${unit}`.trim();
-              textBits.push(times > 1 ? `${text} × ${times}` : text);
-            }
-          }
-        });
-
-        const parts = [];
-        const niceNumber = (value) => (
-          (Math.round(value * 100) / 100).toString().replace('.', ',')
-        );
-        for (const total of totals.values()) {
-          if (total.kind === 'volume' && total.value >= 1000) {
-            parts.push(`${niceNumber(total.value / 1000)} l`);
-          } else if (total.kind === 'weight' && total.value >= 1000) {
-            parts.push(`${niceNumber(total.value / 1000)} kg`);
-          } else {
-            parts.push(`${niceNumber(total.value)} ${total.displayUnit}`.trim());
-          }
-        }
-        parts.push(...textBits);
-        if (!parts.length) return "";
-
-        const label = "nodig:";
-        return `${label} ${parts.join(" + ")}`;
-      }
 
       // Undo (alleen voor verwijderen)
       const [undoState, setUndoState] = useState(null); // { payload, label }
@@ -2716,6 +2746,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId, 
 
       function toggleInStoreMode(item) {
         if (!item || pendingCheckIds.has(item.id)) return;
+        setOpenRecipeItemId(current => current === item.id ? null : current);
         if (item.checked) {
           toggle(item);
           return;
@@ -2801,8 +2832,9 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId, 
           const name = (p?.name) || it.nameSnapshot || '';
           const cat = (p?.category) || it.categorySnapshot || 'Overig';
           const key = cat || 'Overig';
+          const needed = formatRecipeNeedAmounts(Object.values(it.needsByRecipe || {}));
           if (!map[key]) map[key] = [];
-          map[key].push({ ...it, _name: name, _cat: cat, _qty: currentQty(it), _needsLine: formatNeedsLine(it.needsByRecipe) });
+          map[key].push({ ...it, _name: name, _cat: cat, _qty: currentQty(it), _needsLine: needed ? `nodig: ${needed}` : '' });
         });
         const cats = Object.keys(map).sort((a,b) => CATEGORY_OPTIONS.indexOf(a) - CATEGORY_OPTIONS.indexOf(b));
         const groups = cats.map(c => ({ category: c, items: map[c].sort((a,b)=> (a._name||'').localeCompare(b._name||'', 'nl')) }));
@@ -2949,6 +2981,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId, 
                   <div className={storeMode ? "bg-white divide-y divide-slate-200/80 border-y border-slate-200/80" : "bg-white border-y border-slate-200/80"}>
                     {group.items.map((it, idx) => {
                       const rowQty = Math.max(1, Number(it._qty) || 1);
+                      const checking = storeMode && !it.checked && pendingCheckIds.has(it.id);
                       return (
                       <SwipeRow
                         key={it.id}
@@ -2960,7 +2993,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId, 
                         onCloseReveal={!storeMode ? (()=>setOpenQtyId(null)) : undefined}
                         isLastInGroup={!storeMode && group.items.length === 1}
                         getCollapseEl={() => groupRefs.current[`${group.category}-${group.checkedGroup ? 'checked' : 'open'}`]}
-                        checking={storeMode && !it.checked && pendingCheckIds.has(it.id)}
+                        checking={checking}
                         rightReveal={!storeMode ? (
                           <div
                             onClick={(e)=>e.stopPropagation()}
@@ -2986,43 +3019,33 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId, 
                         ) : undefined}
                       >
 
-                      <div
-                        className={"relative flex items-center " + (storeMode ? "px-3 py-3.5" : "max-w-xl mx-auto px-3 py-3" + (idx < group.items.length - 1 ? " border-b border-slate-200/80" : "")) + (storeMode && !it.checked && pendingCheckIds.has(it.id) ? " bm-check-elastic" : "")}
-                        style={storeMode && !it.checked && pendingCheckIds.has(it.id) ? { '--flash': categoryColor(it._cat) + '4d' } : undefined}
-                        onClick={() => { if (storeMode) { toggleInStoreMode(it); } }}
-                      >
-                        <div className="flex-1 min-w-0 pr-2">
-                          <div title={it._name} className={"truncate " + (storeMode ? "text-[15px]" : "text-[15px] font-normal") + " " + (it.checked ? "line-through text-slate-500" : "text-[#292725]")}>
-                            {it._name}
-                          </div>
-                          {it._needsLine ? (
-                            <div className={"truncate " + (storeMode ? "text-xs text-[#292725]/60" : "text-[11px] text-slate-500")}>
-                              {it._needsLine}
+                      {storeMode ? (
+                        <StoreItemRow
+                          item={it}
+                          recipeNames={recipeNames}
+                          expanded={openRecipeItemId === it.id}
+                          onToggleRecipes={() => setOpenRecipeItemId(current => current === it.id ? null : it.id)}
+                          onCheck={() => toggleInStoreMode(it)}
+                          checking={checking}
+                          showAdders={showAdders}
+                        />
+                      ) : (
+                        <div className={"relative mx-auto flex max-w-xl items-center px-3 py-3" + (idx < group.items.length - 1 ? " border-b border-slate-200/80" : "")}>
+                          <div className="min-w-0 flex-1 pr-2">
+                            <div title={it._name} className={"truncate text-[15px] font-normal " + (it.checked ? "line-through text-slate-500" : "text-[#292725]")}>
+                              {it._name}
                             </div>
-                          ) : null}
-                        </div>
-                        {storeMode && it._qty > 1 && (
-                          <div className="mr-2 min-w-[22px] h-[22px] px-1.5 rounded-full bg-slate-200/60 text-[#536158] text-xs font-semibold flex items-center justify-center tabular-nums">{it._qty}</div>
-                        )}
-                        {storeMode && showAdders && (
-                          <div className="pointer-events-none">
-                            <SmallAvatar
-                              url={it.updatedByPhotoURL || it.createdByPhotoURL || ''}
-                              name={(it.updatedByName || it.createdByName || '').trim()}
-                              size={20}
+                            {it._needsLine && <div className="truncate text-[11px] text-slate-500">{it._needsLine}</div>}
+                          </div>
+                          <div className="ml-2 flex items-center gap-1">
+                            <ListQuantityControl
+                              itemId={it.id}
+                              qty={rowQty}
+                              onOpen={openQtyEditor}
                             />
                           </div>
-                        )}
-                        {!storeMode && (
-                        <div className="flex items-center gap-1 ml-2">
-                          <ListQuantityControl
-                            itemId={it.id}
-                            qty={rowQty}
-                            onOpen={openQtyEditor}
-                          />
                         </div>
-                        )}
-                      </div>
+                      )}
 
                     </SwipeRow>
                     );
@@ -6297,6 +6320,9 @@ function ensurePickState(recipe) {
                 activeListId={activeListId}
                 products={products}
                 items={items}
+                recipes={recipes}
+                mealPlans={mealPlans}
+                plannedRecipes={plannedRecipes}
                 currentUser={user}
                 storeMode={storeMode}
                 showAdders={showAdders}
