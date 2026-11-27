@@ -1130,27 +1130,28 @@ const APP_ICONS = {
       function HeaderTab({ id, label }) {
         const active = tab === id;
         return (
-          <Button
+          <button
+            type="button"
             onClick={()=>setTab(id)}
             title={label}
             aria-label={label}
             aria-current={active ? 'page' : undefined}
-            className={(active ? 'bg-[#AF6047] text-white shadow-sm' : 'bg-transparent text-[#292725]') + ' h-10 w-full px-0 py-0 rounded-xl flex items-center justify-center'}
+            className={(active ? 'bg-[#AF6047] text-white' : 'text-[#292725]') + ' flex h-11 min-w-0 items-center justify-center rounded-lg transition-colors'}
           >
             <TabIcon type={id} active={active} />
-          </Button>
+          </button>
         );
       }
 
       return (
         <header className="bm-app-header mb-3">
-          <div className="flex items-center gap-2">
-            <div className={(storeMode ? 'shrink-0' : 'min-w-0 flex-1') + ' bm-main-nav rounded-2xl border border-[#292725]/10 bg-white p-1 shadow-sm'}>
-              <div className={storeMode ? 'flex items-center gap-1' : 'grid grid-cols-5 gap-1'}>
-              <div className="relative">
+          <div className="bm-app-toolbar mx-auto flex max-w-xl items-center gap-2 px-2 min-[360px]:px-3">
+            <nav aria-label="Hoofdnavigatie" className={storeMode ? 'flex min-w-0 flex-1 items-center gap-1' : 'grid min-w-0 flex-1 grid-cols-5'}>
+              <div className={storeMode ? 'relative w-11 shrink-0' : 'relative'}>
               <button
+                type="button"
                 onClick={() => setShowMenu(!showMenu)}
-                className="w-full h-10 rounded-xl bg-transparent text-[#292725] flex items-center justify-center"
+                className="flex h-11 w-full min-w-0 items-center justify-center rounded-lg text-[#292725]"
                 title="Menu"
                 aria-label="Menu"
                 aria-expanded={showMenu}
@@ -1263,18 +1264,18 @@ const APP_ICONS = {
               )}
             </div>
 
-            {!storeMode ? (
-              <>
-                <HeaderTab id="list" label="Lijst" />
-                <HeaderTab id="planning" label="Planning" />
-                <HeaderTab id="recipes" label="Recepten" />
-                <HeaderTab id="products" label="Producten" />
-              </>
-            ) : (
-              <div className="flex items-center">
+              {!storeMode ? (
+                <>
+                  <HeaderTab id="list" label="Lijst" />
+                  <HeaderTab id="planning" label="Planning" />
+                  <HeaderTab id="recipes" label="Recepten" />
+                  <HeaderTab id="products" label="Producten" />
+                </>
+              ) : (
                 <button
+                  type="button"
                   onClick={()=>setShowAdders?.(v=>!v)}
-                  className={"w-10 h-10 rounded-xl flex items-center justify-center transition-colors " + (showAdders ? "bg-[#AF6047] text-white" : "bg-transparent text-[#292725]")}
+                  className={"flex h-11 w-11 items-center justify-center rounded-lg transition-colors " + (showAdders ? "bg-[#AF6047] text-white" : "text-[#292725]")}
                   title={showAdders ? "Verberg wie toevoegde" : "Toon wie toevoegde"}
                   aria-label={showAdders ? "Verberg wie toevoegde" : "Toon wie toevoegde"}
                 >
@@ -1284,15 +1285,14 @@ const APP_ICONS = {
                     {!showAdders && <path d="M4.5 4.5 L19.5 19.5" />}
                   </svg>
                 </button>
-              </div>
-            )}
-              </div>
-            </div>
+              )}
+            </nav>
 
-            <div className="bm-mode-switch shrink-0 rounded-2xl border border-[#292725]/10 bg-white p-1 shadow-sm">
+            <div className="flex shrink-0 items-center gap-2">
+              <span aria-hidden="true" className="h-6 w-px bg-[#292725]/20" />
               <button
                 type="button"
-                className="h-10 min-h-10 px-1 flex items-center gap-1.5 cursor-pointer select-none"
+                className="flex h-11 cursor-pointer select-none items-center gap-1.5 rounded-lg"
                 onClick={() => setStoreMode?.(!storeMode)}
                 title={storeMode ? "Winkelmodus uit" : "Winkelmodus aan"}
                 aria-label={storeMode ? "Winkelmodus uit" : "Winkelmodus aan"}
@@ -6442,7 +6442,6 @@ function ensurePickState(recipe) {
 
       return (
         <div className="min-h-screen pb-24 bg-[#F5F2EE] text-[#292725]">
-          <div className="bm-app-shell max-w-xl mx-auto px-3 pt-4">
             <Header
               user={user}
               householdInfo={householdInfo}
@@ -6473,7 +6472,7 @@ function ensurePickState(recipe) {
               ref={mainContentRef}
               tabIndex="-1"
               aria-label={tab === 'list' ? 'Boodschappenlijst' : (tab === 'planning' ? 'Planning' : (tab === 'products' ? 'Producten' : 'Recepten'))}
-              className="outline-none"
+              className="mx-auto max-w-xl px-3 outline-none"
             >
             {tab === 'list' ? (
               <ListTab
@@ -6522,8 +6521,6 @@ function ensurePickState(recipe) {
               />
             )}
             </main>
-          </div>
-
           {createdCode && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
               <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 text-center">

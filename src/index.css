@@ -8,6 +8,9 @@
   --bm-lime-white: #f5f2ee;
   --bm-white: #ffffff;
   --bm-graphite: #292725;
+  --bm-header-inset: env(safe-area-inset-top, 0px);
+  --bm-toolbar-height: 3.5rem;
+  --bm-header-height: calc(var(--bm-header-inset) + var(--bm-toolbar-height) + 1px);
 }
 
 html,
@@ -24,8 +27,8 @@ body,
     font-size: 16px !important;
   }
 
-  .bm-app-shell {
-    padding-top: 2rem;
+  :root {
+    --bm-header-inset: max(2rem, env(safe-area-inset-top, 0px));
   }
 }
 
@@ -34,12 +37,13 @@ body,
   position: sticky;
   z-index: 40;
   top: 0;
-  margin-right: -0.75rem;
-  margin-left: -0.75rem;
-  padding-right: 0.75rem;
-  padding-bottom: 0.75rem;
-  padding-left: 0.75rem;
+  padding-top: var(--bm-header-inset);
+  border-bottom: 1px solid rgb(41 39 37 / 0.14);
   background: var(--bm-lime-white);
+}
+
+.bm-app-toolbar {
+  height: var(--bm-toolbar-height);
 }
 
 /* Keep the current category below the main navigation.
@@ -47,7 +51,7 @@ body,
 .bm-category-header {
   position: sticky;
   z-index: 30;
-  top: 3.75rem;
+  top: var(--bm-header-height);
   background: var(--bm-white);
 }
 
@@ -90,11 +94,6 @@ button:focus-visible,
 .bm-quantity-control button {
   min-width: 34px;
   min-height: 34px;
-}
-
-.bm-main-nav button,
-.bm-mode-switch button {
-  min-height: 40px;
 }
 
 /* Brand palette: keep semantic danger colors and category colors intact. */
