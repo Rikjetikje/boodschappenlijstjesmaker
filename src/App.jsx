@@ -3053,7 +3053,7 @@ useEffect(() => {
 
 
           <div className="relative z-0 left-1/2 w-screen -translate-x-1/2">
-            <div className={storeMode ? "" : "space-y-3"}>
+            <div>
               {byCategory.length === 0 ? (
                 <div className="text-center py-10 text-slate-500">
                   <div className="text-4xl mb-1">🛒</div>
@@ -3078,26 +3078,21 @@ useEffect(() => {
                 ),
                 <div key={`${group.category}-${group.checkedGroup ? 'checked' : 'open'}`}
                   ref={el => { groupRefs.current[`${group.category}-${group.checkedGroup ? 'checked' : 'open'}`] = el; }}
-                  className={storeMode ? "mb-3" : ""}>
-                  {storeMode && (!group.checkedGroup || checkedSort === 'category') && (
-                    <div className="bm-store-category-header px-3 mb-0">
-                      <span className="inline-flex items-center text-xs font-semibold px-3 py-1 rounded-tr-lg"
-                            style={{
-                              backgroundColor: group.checkedGroup ? '#eef1ee' : categoryColor(group.category) + '29',
-                              color: group.checkedGroup ? '#647067' : '#33423d'
-                            }}>{group.category}</span>
-                    </div>
-                  )}
-                  {!storeMode && (
-                    <div className="max-w-xl mx-auto px-3 mb-0">
-                      <span className="inline-flex items-center text-xs font-medium px-3 py-1 rounded-tr-lg"
-                            style={{ backgroundColor: categoryColor(group.category) + '29', color: '#33423d' }}>
+                  >
+                  {(!group.checkedGroup || checkedSort === 'category' || !storeMode) && (
+                    <div
+                      className="bm-category-header w-full text-xs font-semibold"
+                      style={{
+                        backgroundColor: group.checkedGroup ? '#eef1ee' : categoryColor(group.category) + '29',
+                        color: group.checkedGroup ? '#647067' : '#33423d'
+                      }}
+                    >
+                      <div className={storeMode ? "px-3 py-1" : "max-w-xl mx-auto px-3 py-1"}>
                         {group.category}
-                      </span>
+                      </div>
                     </div>
                   )}
-                  <div className={storeMode ? "bg-white divide-y divide-slate-200/80 border-y border-slate-200/80" : "bg-white border-y border-l-[4px] border-slate-200/80"}
-                       style={!storeMode ? { borderLeftColor: categoryColor(group.category) + '88' } : undefined}>
+                  <div className={storeMode ? "bg-white divide-y divide-slate-200/80 border-y border-slate-200/80" : "bg-white border-y border-slate-200/80"}>
                     {group.items.map((it, idx) => {
                       const rowQty = Math.max(1, Number(it._qty) || 1);
                       return (

@@ -26,13 +26,12 @@
   background: #f8fafc;
 }
 
-/* In store mode, keep the current category below the main navigation.
-   The category header stays bounded by its group, so the next one pushes it away. */
-.bm-store-category-header {
+/* Keep the current category below the main navigation.
+   The header stays bounded by its group, so the next category pushes it away. */
+.bm-category-header {
   position: sticky;
   z-index: 30;
   top: 3.5rem;
-  background: #f8fafc;
 }
 
 /* Better tap targets and immediate-feeling taps on mobile. */
