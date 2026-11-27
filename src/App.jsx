@@ -3081,14 +3081,18 @@ useEffect(() => {
                   >
                   {(!group.checkedGroup || checkedSort === 'category' || !storeMode) && (
                     <div
-                      className="bm-category-header w-full text-xs font-semibold"
-                      style={{
-                        backgroundColor: group.checkedGroup ? '#eef1ee' : categoryColor(group.category) + '29',
-                        color: group.checkedGroup ? '#647067' : '#33423d'
-                      }}
+                      className="bm-category-header w-full"
                     >
-                      <div className={storeMode ? "px-3 py-1" : "max-w-xl mx-auto px-3 py-1"}>
-                        {group.category}
+                      <div
+                        className="w-full text-[13px] leading-5 font-bold"
+                        style={{
+                          backgroundColor: group.checkedGroup ? '#eef1ee' : categoryColor(group.category) + '29',
+                          color: group.checkedGroup ? '#647067' : '#33423d'
+                        }}
+                      >
+                        <div className={storeMode ? "px-3 py-0.5" : "max-w-xl mx-auto px-3 py-0.5"}>
+                          {group.category}
+                        </div>
                       </div>
                     </div>
                   )}
