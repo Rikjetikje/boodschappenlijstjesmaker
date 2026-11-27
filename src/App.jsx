@@ -320,32 +320,32 @@ const APP_ICONS = {
             title={plusTitle}
             aria-label={plusTitle}
             disabled={busy}
-            className="w-11 h-11 rounded-full border border-[#17372d]/20 bg-white text-[#17372d] text-sm font-medium flex items-center justify-center"
+            className="w-9 h-9 rounded-xl bg-[#F1E1D8] text-[#AF6047] text-lg font-semibold flex items-center justify-center"
           >
             {busy ? '…' : '+'}
           </button>
         );
       }
       return (
-        <div className="flex items-center gap-0.5 rounded-full bg-slate-100 border border-slate-200 p-0.5">
+        <div className="bm-quantity-control inline-grid grid-cols-[34px_28px_34px] items-center h-9 overflow-hidden rounded-xl bg-[#F1E1D8] text-[#292725]">
           <button
             type="button"
             onClick={onDec}
             title={minusTitle}
             aria-label={minusTitle}
             disabled={busy}
-            className="w-11 h-11 rounded-full bg-white text-slate-700 text-sm border border-slate-200 flex items-center justify-center"
+            className="w-[34px] h-[34px] text-lg font-medium flex items-center justify-center"
           >
-            -
+            −
           </button>
-          <div aria-live="polite" className="min-w-[22px] text-center text-sm font-medium text-slate-700 tabular-nums">{busy ? '…' : q}</div>
+          <div aria-live="polite" className="text-center text-sm font-semibold tabular-nums">{busy ? '…' : q}</div>
           <button
             type="button"
             onClick={onInc}
             title={plusTitle}
             aria-label={plusTitle}
             disabled={busy}
-            className="w-11 h-11 rounded-full bg-white text-[#17372d] text-sm border border-[#17372d]/20 flex items-center justify-center"
+            className="w-[34px] h-[34px] text-[#AF6047] text-lg font-semibold flex items-center justify-center"
           >
             +
           </button>
@@ -1109,7 +1109,7 @@ const APP_ICONS = {
       function TabIcon({ type, active = false }) {
         if (type === 'planning') {
           return (
-            <svg viewBox="0 0 24 24" className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <svg viewBox="0 0 24 24" className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <rect x="3" y="5" width="18" height="16" rx="2" />
               <path d="M16 3v4M8 3v4M3 10h18" />
               <path d="m8 15 2 2 5-5" />
@@ -1134,7 +1134,8 @@ const APP_ICONS = {
             onClick={()=>setTab(id)}
             title={label}
             aria-label={label}
-            className={(active ? 'bg-emerald-600 text-white' : 'bg-white border border-slate-200 text-slate-700') + ' h-11 w-full px-0 py-0 flex items-center justify-center'}
+            aria-current={active ? 'page' : undefined}
+            className={(active ? 'bg-[#AF6047] text-white shadow-sm' : 'bg-transparent text-[#292725]') + ' h-10 w-full px-0 py-0 rounded-xl flex items-center justify-center'}
           >
             <TabIcon type={id} active={active} />
           </Button>
@@ -1143,13 +1144,16 @@ const APP_ICONS = {
 
       return (
         <header className="bm-app-header mb-3">
-          <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2">
-            <div className="relative">
+          <div className="flex items-center gap-2">
+            <div className={(storeMode ? 'shrink-0' : 'min-w-0 flex-1') + ' bm-main-nav rounded-2xl border border-[#292725]/10 bg-white p-1 shadow-sm'}>
+              <div className={storeMode ? 'flex items-center gap-1' : 'grid grid-cols-5 gap-1'}>
+              <div className="relative">
               <button
                 onClick={() => setShowMenu(!showMenu)}
-                className="w-11 h-11 rounded-xl bg-white border border-slate-200 text-slate-700 shadow-sm flex items-center justify-center"
+                className="w-full h-10 rounded-xl bg-transparent text-[#292725] flex items-center justify-center"
                 title="Menu"
                 aria-label="Menu"
+                aria-expanded={showMenu}
               >
                 <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
                   <path d="M4 7h16" />
@@ -1260,17 +1264,17 @@ const APP_ICONS = {
             </div>
 
             {!storeMode ? (
-              <div className="grid grid-cols-4 gap-1.5 min-w-0">
+              <>
                 <HeaderTab id="list" label="Lijst" />
                 <HeaderTab id="planning" label="Planning" />
                 <HeaderTab id="recipes" label="Recepten" />
                 <HeaderTab id="products" label="Producten" />
-              </div>
+              </>
             ) : (
-              <div className="min-w-0 flex items-center">
+              <div className="flex items-center">
                 <button
                   onClick={()=>setShowAdders?.(v=>!v)}
-                  className={"w-10 h-10 rounded-full border flex items-center justify-center transition-colors " + (showAdders ? "bg-[#17372d] text-[#eaf5ef] border-transparent" : "bg-[#e7ece4] text-[#536158] border-[#d3dbcf]")}
+                  className={"w-10 h-10 rounded-xl flex items-center justify-center transition-colors " + (showAdders ? "bg-[#AF6047] text-white" : "bg-transparent text-[#292725]")}
                   title={showAdders ? "Verberg wie toevoegde" : "Toon wie toevoegde"}
                   aria-label={showAdders ? "Verberg wie toevoegde" : "Toon wie toevoegde"}
                 >
@@ -1282,19 +1286,21 @@ const APP_ICONS = {
                 </button>
               </div>
             )}
+              </div>
+            </div>
 
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="bm-mode-switch shrink-0 rounded-2xl border border-[#292725]/10 bg-white p-1 shadow-sm">
               <button
                 type="button"
-                className="min-h-11 flex items-center gap-1 cursor-pointer select-none"
+                className="h-10 min-h-10 px-1 flex items-center gap-1.5 cursor-pointer select-none"
                 onClick={() => setStoreMode?.(!storeMode)}
                 title={storeMode ? "Winkelmodus uit" : "Winkelmodus aan"}
                 aria-label={storeMode ? "Winkelmodus uit" : "Winkelmodus aan"}
                 aria-pressed={storeMode}
               >
-                <img src={storeMode ? CART_FULL : CART_EMPTY} alt="" aria-hidden="true" className="w-6 h-6 object-contain" />
-                <div className={"relative w-11 h-6 rounded-full transition-colors duration-200 " + (storeMode ? "bg-emerald-500" : "bg-slate-300")}>
-                  <div className={"absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 " + (storeMode ? "translate-x-5" : "translate-x-0")} />
+                <img src={storeMode ? CART_FULL : CART_EMPTY} alt="" aria-hidden="true" className="w-5 h-5 object-contain" />
+                <div className={"relative w-10 h-[22px] rounded-full transition-colors duration-200 " + (storeMode ? "bg-[#AF6047]" : "bg-[#F1E1D8]")}>
+                  <div className={"absolute top-0.5 left-0.5 w-[18px] h-[18px] bg-white rounded-full shadow transition-transform duration-200 " + (storeMode ? "translate-x-[18px]" : "translate-x-0")} />
                 </div>
               </button>
             </div>
@@ -2054,7 +2060,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
       </div>
 
       {(selectedCount > 0 || addFeedback) && (
-        <div className="fixed left-0 right-0 bottom-0 z-40 bg-slate-50/95 border-t border-slate-200 px-3 pt-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)]">
+        <div className="fixed left-0 right-0 bottom-0 z-40 bg-[#F5F2EE]/95 border-t border-[#292725]/10 px-3 pt-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)]">
           <div className="max-w-xl mx-auto">
             {addFeedback ? (
               <div className="bg-slate-900 text-white rounded-xl shadow-lg px-4 py-3 flex items-center gap-3">
@@ -2183,7 +2189,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
         const deleteArmedRef = useRef(false);
         const outerRef = useRef(null);
         const rightRevealRef = useRef(null);
-        const rightWidth = 138;
+        const rightWidth = 112;
         const leftWidth = 112;
         const deleteThreshold = 60;
         // Zachte "laatje rolt uit"-curve voor alle eindbewegingen (open/dicht/terug).
@@ -2391,7 +2397,7 @@ function ProductsTab({ householdId, products, items, currentUser, activeListId }
               </div>
             )}
             {rightReveal && (
-              <div ref={rightRevealRef} className="absolute inset-y-0 right-0 w-[138px] flex items-center justify-end pr-3 bg-slate-50 border-l border-slate-200">
+              <div ref={rightRevealRef} className="absolute inset-y-0 right-0 w-[112px] flex items-center justify-end pr-2 bg-[#F5F2EE] border-l border-[#292725]/10">
                 {rightReveal}
               </div>
             )}
@@ -3086,8 +3092,8 @@ useEffect(() => {
                       <div
                         className="w-full text-[13px] leading-5 font-bold"
                         style={{
-                          backgroundColor: group.checkedGroup ? '#eef1ee' : categoryColor(group.category) + '29',
-                          color: group.checkedGroup ? '#647067' : '#33423d'
+                          backgroundColor: group.checkedGroup ? '#F1E1D8' : categoryColor(group.category) + '29',
+                          color: group.checkedGroup ? '#29272599' : '#292725'
                         }}
                       >
                         <div className={storeMode ? "px-3 py-0.5" : "max-w-xl mx-auto px-3 py-0.5"}>
@@ -3114,21 +3120,21 @@ useEffect(() => {
                         rightReveal={!storeMode ? (
                           <div
                             onClick={(e)=>e.stopPropagation()}
-                            className="flex items-center gap-1 rounded-full bg-slate-100 border border-slate-200 p-1"
+                            className="bm-quantity-control inline-grid grid-cols-[34px_28px_34px] items-center h-9 overflow-hidden rounded-xl bg-[#F1E1D8] text-[#292725]"
                           >
                             <button
                               onClick={(e)=>{ e.stopPropagation(); if (rowQty > 1) adjustListQty(it, -1); }}
                               disabled={rowQty <= 1}
                               title="Minder"
-                              className={"w-7 h-7 rounded-full bg-white text-sm border border-slate-200 flex items-center justify-center " + (rowQty <= 1 ? "text-slate-300" : "text-slate-700")}
+                              className={"w-[34px] h-[34px] text-lg font-medium flex items-center justify-center " + (rowQty <= 1 ? "text-[#292725]/25" : "text-[#292725]")}
                             >
-                              -
+                              −
                             </button>
-                            <div className="min-w-[22px] text-center text-sm font-medium text-slate-700 tabular-nums">{rowQty}</div>
+                            <div className="text-center text-sm font-semibold tabular-nums">{rowQty}</div>
                             <button
                               onClick={(e)=>{ e.stopPropagation(); adjustListQty(it, +1); }}
                               title="Meer"
-                              className="w-7 h-7 rounded-full bg-white text-[#17372d] text-sm border border-[#17372d]/20 flex items-center justify-center"
+                              className="w-[34px] h-[34px] text-[#AF6047] text-lg font-semibold flex items-center justify-center"
                             >
                               +
                             </button>
@@ -3142,11 +3148,11 @@ useEffect(() => {
                         onClick={() => { if (storeMode) { toggleInStoreMode(it); } }}
                       >
                         <div className="flex-1 min-w-0 pr-2">
-                          <div title={it._name} className={"truncate " + (storeMode ? "text-[15px]" : "text-[15px] font-normal") + " " + (it.checked ? "line-through text-slate-500" : (storeMode ? "text-[#18211f]" : "text-slate-800"))}>
+                          <div title={it._name} className={"truncate " + (storeMode ? "text-[15px]" : "text-[15px] font-normal") + " " + (it.checked ? "line-through text-slate-500" : "text-[#292725]")}>
                             {it._name}
                           </div>
                           {it._needsLine ? (
-                            <div className={"truncate " + (storeMode ? "text-xs text-[#69766f]" : "text-[11px] text-slate-500")}>
+                            <div className={"truncate " + (storeMode ? "text-xs text-[#292725]/60" : "text-[11px] text-slate-500")}>
                               {it._needsLine}
                             </div>
                           ) : null}
@@ -3627,21 +3633,21 @@ useEffect(() => {
       function renderDayPicker({ value, onChange, label }) {
         const displayedValue = dateInCurrentSchedule(value);
         return (
-          <div className="bm-day-grid grid grid-cols-7 gap-1">
+          <div className="bm-day-grid grid grid-cols-7 gap-0 rounded-xl bg-[#F1E1D8] p-1">
               {planDateChoices.map(date => {
                 const selected = date === displayedValue;
                 const passed = date < today;
                 const isToday = date === today;
-                const tone = passed
-                  ? (selected ? 'border-slate-500 bg-slate-300 text-slate-800 ring-2 ring-slate-500/30' : 'border-slate-300 bg-slate-200 text-slate-600')
+                const tone = selected
+                  ? 'bg-[#AF6047] text-white shadow-sm'
                   : (isToday
-                    ? (selected ? 'border-amber-500 bg-amber-200 text-amber-950 ring-2 ring-amber-500/30' : 'border-amber-300 bg-amber-100 text-amber-900')
-                    : (selected ? 'border-emerald-500 bg-emerald-100 text-emerald-900 ring-2 ring-emerald-500/30' : 'border-slate-200 bg-white text-slate-600'));
+                    ? 'text-[#AF6047]'
+                    : (passed ? 'text-[#292725]/45' : 'text-[#292725]/75'));
                 return (
                   <button key={date} type="button" aria-pressed={selected}
                     aria-label={`${label} op ${weekdayLabel(date, 'long')}${passed ? ' (geweest)' : (isToday ? ' (vandaag)' : '')}`}
                     onClick={() => onChange(date)}
-                    className={`h-10 rounded-lg border flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold uppercase leading-none transition-colors ${tone}`}>
+                    className={`h-10 rounded-lg flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold uppercase leading-none transition-colors ${tone}`}>
                     <span>{weekdayLabel(date)}</span>
                     {isToday && <span aria-hidden="true" className="text-[7px] tracking-wide">nu</span>}
                   </button>
@@ -3946,7 +3952,7 @@ useEffect(() => {
               </select>
             </label>
             <button type="button" onClick={openCustomPlan}
-              className="shrink-0 h-11 px-3 rounded-xl bg-sky-50 text-sky-700 text-xs font-semibold">
+              className="shrink-0 h-11 px-3 rounded-xl bg-[#F1E1D8] text-[#AF6047] text-xs font-semibold">
               + Eigen
             </button>
             <div className="relative shrink-0">
@@ -5794,7 +5800,7 @@ function ensurePickState(recipe) {
           </div>
 
           {(addFeedback || (expandedRecipe && expandedPickState)) && (
-            <div className="fixed left-0 right-0 bottom-0 z-40 bg-slate-50/95 border-t border-slate-200 px-3 pt-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)]">
+            <div className="fixed left-0 right-0 bottom-0 z-40 bg-[#F5F2EE]/95 border-t border-[#292725]/10 px-3 pt-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)]">
               <div className="max-w-xl mx-auto">
                 {addFeedback ? (
                   <div className="bg-slate-900 text-white rounded-xl shadow-lg px-4 py-3 flex items-center gap-3">
@@ -5835,18 +5841,7 @@ function ensurePickState(recipe) {
                 setRecipeImportFeedback(null);
               }}
               footer={(
-                <div className="flex flex-col sm:flex-row gap-2">
-                  {(recipes || []).some(r => r.id === draft.id) && (
-                    <button
-                      onClick={()=>deleteRecipe(draft)}
-                      disabled={recipeImporting}
-                      className="px-4 py-2.5 rounded-xl bg-rose-50 text-rose-700 text-sm font-semibold"
-                    >
-                      Recept verwijderen
-                    </button>
-                  )}
-                  <Button onClick={saveRecipe} disabled={recipeImporting} className="flex-1 bg-emerald-600 text-white">Opslaan</Button>
-                </div>
+                <Button onClick={saveRecipe} disabled={recipeImporting} className="w-full bg-[#AF6047] text-white">Opslaan</Button>
               )}
             >
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -6064,22 +6059,22 @@ function ensurePickState(recipe) {
                               
                               <div>
                                 <div className="text-[11px] font-semibold text-slate-500 mb-1">Koop</div>
-                                <div className="flex items-center gap-2">
+                                <div className="bm-quantity-control grid grid-cols-[34px_1fr_34px] items-center h-10 overflow-hidden rounded-xl bg-[#F1E1D8] text-[#292725]">
                                   <button
                                     type="button"
                                     onClick={()=>updateIng(idx, { buyQty: Math.max(1, (ing.buyQty ?? 1) - 1) })}
-                                    className="w-10 h-10 rounded-xl border border-slate-200 bg-white text-slate-700 font-bold text-lg"
+                                    className="w-[34px] h-[34px] flex items-center justify-center font-medium text-lg"
                                     aria-label="Minder"
                                   >
-                                    –
+                                    −
                                   </button>
-                                  <div className="flex-1 h-10 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-center text-sm font-bold text-slate-700">
+                                  <div className="h-10 flex items-center justify-center text-sm font-semibold tabular-nums">
                                     {ing.buyQty ?? 1}
                                   </div>
                                   <button
                                     type="button"
                                     onClick={()=>updateIng(idx, { buyQty: Math.min(99, (ing.buyQty ?? 1) + 1) })}
-                                    className="w-10 h-10 rounded-xl border border-slate-200 bg-white text-slate-700 font-bold text-lg"
+                                    className="w-[34px] h-[34px] flex items-center justify-center text-[#AF6047] font-semibold text-lg"
                                     aria-label="Meer"
                                   >
                                     +
@@ -6094,7 +6089,7 @@ function ensurePickState(recipe) {
                     </div>
                     <Button
                       onClick={addIngredientRow}
-                      className="w-full mt-2 bg-emerald-50/70 border-2 border-dashed border-emerald-300 text-emerald-800 hover:bg-emerald-50 hover:border-emerald-400"
+                      className="w-full mt-2 bg-[#F1E1D8] border-2 border-dashed border-[#AF6047]/45 text-[#AF6047] hover:bg-[#F1E1D8] hover:border-[#AF6047]"
                     >
                       + Ingrediënt toevoegen
                     </Button>
@@ -6109,6 +6104,17 @@ function ensurePickState(recipe) {
                   <div className="text-[11px] text-slate-500">Tip: plakken vanuit Notities/website werkt prima.</div>
                 </div>
               </div>
+              {(recipes || []).some(r => r.id === draft.id) && (
+                <div className="mt-6 border-t border-[#292725]/10 pt-4">
+                  <button
+                    onClick={()=>deleteRecipe(draft)}
+                    disabled={recipeImporting}
+                    className="w-full min-h-11 rounded-xl text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                  >
+                    Recept verwijderen
+                  </button>
+                </div>
+              )}
             </Modal>
           )}
         </div>
@@ -6418,7 +6424,7 @@ function ensurePickState(recipe) {
 
       if (!user) {
         return (
-          <div className="min-h-screen bg-slate-50">
+          <div className="min-h-screen bg-[#F5F2EE]">
             <div className="max-w-xl mx-auto px-4 pt-10 pb-20">
               <h1 className="text-2xl font-bold text-slate-900 mb-2">Boodschappenlijstjesmaker</h1>
               <p className="text-slate-600 text-sm mb-6">Log in met Google om samen te werken.</p>
@@ -6435,7 +6441,7 @@ function ensurePickState(recipe) {
       }
 
       return (
-        <div className="min-h-screen pb-24 bg-slate-50">
+        <div className="min-h-screen pb-24 bg-[#F5F2EE] text-[#292725]">
           <div className="bm-app-shell max-w-xl mx-auto px-3 pt-4">
             <Header
               user={user}

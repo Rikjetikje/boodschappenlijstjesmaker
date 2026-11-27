@@ -2,6 +2,22 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --bm-terracotta: #af6047;
+  --bm-terracotta-soft: #f1e1d8;
+  --bm-lime-white: #f5f2ee;
+  --bm-white: #ffffff;
+  --bm-graphite: #292725;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+  background: var(--bm-lime-white);
+  color: var(--bm-graphite);
+}
+
 /* iOS Safari: prevent auto-zoom on form fields (requires >=16px computed font-size) */
 @supports (-webkit-touch-callout: none) {
   input, select, textarea {
@@ -23,7 +39,7 @@
   padding-right: 0.75rem;
   padding-bottom: 0.75rem;
   padding-left: 0.75rem;
-  background: #f8fafc;
+  background: var(--bm-lime-white);
 }
 
 /* Keep the current category below the main navigation.
@@ -31,8 +47,8 @@
 .bm-category-header {
   position: sticky;
   z-index: 30;
-  top: 3.5rem;
-  background: #fff;
+  top: 3.75rem;
+  background: var(--bm-white);
 }
 
 /* Better tap targets and immediate-feeling taps on mobile. */
@@ -44,7 +60,7 @@ button, input, select, textarea, [role="button"] {
 button:focus-visible,
 [role="button"]:focus-visible,
 [tabindex]:focus-visible {
-  outline: 3px solid rgb(16 185 129 / 0.35);
+  outline: 3px solid rgb(175 96 71 / 0.35);
   outline-offset: 2px;
 }
 
@@ -70,6 +86,64 @@ button:focus-visible,
   min-width: 0;
   min-height: 40px;
 }
+
+.bm-quantity-control button {
+  min-width: 34px;
+  min-height: 34px;
+}
+
+.bm-main-nav button,
+.bm-mode-switch button {
+  min-height: 40px;
+}
+
+/* Brand palette: keep semantic danger colors and category colors intact. */
+.bg-slate-50 { background-color: var(--bm-lime-white); }
+.bg-slate-100 { background-color: var(--bm-terracotta-soft); }
+.bg-slate-200 { background-color: rgb(41 39 37 / 0.10); }
+.bg-slate-300 { background-color: rgb(41 39 37 / 0.18); }
+.bg-slate-900 { background-color: var(--bm-graphite); }
+.text-slate-900,
+.text-slate-800 { color: var(--bm-graphite); }
+.text-slate-700 { color: rgb(41 39 37 / 0.88); }
+.text-slate-600 { color: rgb(41 39 37 / 0.74); }
+.text-slate-500 { color: rgb(41 39 37 / 0.60); }
+.text-slate-400 { color: rgb(41 39 37 / 0.45); }
+.text-slate-300 { color: rgb(41 39 37 / 0.28); }
+.border-slate-100 { border-color: rgb(41 39 37 / 0.08); }
+.border-slate-200 { border-color: rgb(41 39 37 / 0.12); }
+.border-slate-300 { border-color: rgb(41 39 37 / 0.20); }
+
+.bg-emerald-600,
+.bg-emerald-500,
+.bg-emerald-400,
+.bg-sky-600 { background-color: var(--bm-terracotta); }
+.bg-emerald-50,
+.bg-emerald-100,
+.bg-sky-50,
+.bg-sky-100 { background-color: var(--bm-terracotta-soft); }
+.text-emerald-900,
+.text-emerald-800,
+.text-emerald-700,
+.text-sky-900,
+.text-sky-800,
+.text-sky-700 { color: var(--bm-terracotta); }
+.border-emerald-600,
+.border-emerald-500,
+.border-emerald-400,
+.border-emerald-300,
+.border-emerald-200,
+.border-emerald-100,
+.border-sky-600,
+.border-sky-500,
+.border-sky-400,
+.border-sky-300,
+.border-sky-200,
+.border-sky-100 { border-color: var(--bm-terracotta); }
+.bg-sky-200 { background-color: var(--bm-terracotta-soft); }
+.bg-emerald-50\/60 { background-color: rgb(241 225 216 / 0.60); }
+.text-emerald-800\/80 { color: rgb(175 96 71 / 0.80); }
+.ring-emerald-500\/10 { --tw-ring-color: rgb(175 96 71 / 0.10); }
 
 @keyframes bmflash {
   0% { background-color: transparent; }
